@@ -1,9 +1,9 @@
 # Project Knowledge Model
 
-<!-- Last consolidated: 2026-04-12T14:46:00+02:00 -->
+<!-- Last consolidated: 2026-04-12T20:16:00+02:00 -->
 <!-- Source: lyzortx/research_notes/lab_notebooks -->
 
-**48 knowledge units** across 7 themes (36 active, 12 dead ends)
+**50 knowledge units** across 7 themes (38 active, 12 dead ends)
 
 ## Data & Labels
 
@@ -249,13 +249,27 @@ Compressed lessons from approaches that didn't work.
 - **`panel-size-ceiling`**: The 0.823 AUC ceiling is bound by the 96-phage panel and 65-bacteria holdout, not by feature
   engineering, algorithm choice, or feature representation. Seven independent attempts (GT04-GT08) all failed to break
   through, each adding 0.0-0.4pp (none significant). [validated; source: GT03, GT04, GT05, GT06, GT07, GT08, 2026-04-12
-  final assessment; see also: autoresearch-baseline, error-buckets, narrow-host-prior-collapse, depo-capsule-validated]
+  final assessment; see also: autoresearch-baseline, error-buckets, narrow-host-prior-collapse, depo-capsule-validated,
+  ambiguous-label-noise]
   - *The 6/65 holdout misses decompose into: 2 abstention (0 positives), 1 needle-in-haystack (1/96 positive), 3
     broad-phage-prior failures. The 3 rescuable misses require promoting narrow-host specialist phages (10-25% lysis
     rate) above broadly lytic phages (60-65% lysis rate) — a ranking challenge that genomic features alone cannot
     resolve because the host-specificity factors (expression regulation, phase variation, co-evolutionary dynamics)
     leave no detectable genomic signatures in presence-absence or HMM-score features. Expanding the phage panel or the
     holdout is the path forward, not more features.*
+- **`ambiguous-label-noise`**: 3,462 pairs (10% of training, 6.5% of holdout) are labeled as negative but have
+  uninterpretable ('n') raw scores — the actual experimental result was ambiguous. Excluding these from training
+  improves top-3 from 89.2% to 92.3% (+3.1pp), the largest single ranking improvement in Track GIANTS. [validated;
+  source: GT09, 2026-04-12 image review; see also: error-buckets, panel-size-ceiling, label-policy-binary]
+  - *Raw plaque image review (Zenodo 10.5281/zenodo.10202713) confirms the 'n' scores are genuinely ambiguous — plates
+    show faint signals and physical artifacts that make definitive calls impossible. For NILS53, the model's top-ranked
+    phages (LF82_P8, 536_P9, LF82_P9) all have 'n' scores. For ECOR-69, DIJ07_P1 and DIJ07_P2 have 'n' scores. The model
+    may be correct and the labels wrong. Label quality — not feature quality — is the binding constraint for ranking
+    performance.*
+- **`genophi-data-identical`**: GenoPHI's E. coli interaction matrix (402 × 94 phages) is 100% identical to ours
+  (37,788/37,788 pairs match after name normalization). Our data is already in their framework. No new training pairs
+  available from GenoPHI for existing phages. [validated; source: GT09; see also: genophi-benchmark,
+  raw-interactions-authority]
 - **`kmer-receptor-expansion-neutral`**: Expanding Gate 2 receptor coverage from 8/96 (genus-level) to 39/96
   (k-mer-based) OMP phages produces zero AUC improvement (0.824 vs 0.823, delta CI [-0.005, +0.005]). [validated;
   source: GT06; see also: omp-score-homogeneity, pairwise-cross-terms-dead-end, receptor-specificity-solved]

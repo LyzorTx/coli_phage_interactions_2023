@@ -1,4 +1,4 @@
-last_consolidated: "2026-04-12T14:46:00+02:00"
+last_consolidated: "2026-04-12T20:16:00+02:00"
 source_dir: lyzortx/research_notes/lab_notebooks
 
 themes:
@@ -548,7 +548,35 @@ themes:
           leave no detectable genomic signatures in presence-absence or HMM-score features. Expanding
           the phage panel or the holdout is the path forward, not more features.
         relates_to: [autoresearch-baseline, error-buckets, narrow-host-prior-collapse,
-                     depo-capsule-validated]
+                     depo-capsule-validated, ambiguous-label-noise]
+
+      - id: ambiguous-label-noise
+        statement: >
+          3,462 pairs (10% of training, 6.5% of holdout) are labeled as negative but have
+          uninterpretable ('n') raw scores — the actual experimental result was ambiguous.
+          Excluding these from training improves top-3 from 89.2% to 92.3% (+3.1pp), the largest
+          single ranking improvement in Track GIANTS.
+        sources: [GT09, 2026-04-12 image review]
+        status: active
+        confidence: validated
+        context: >
+          Raw plaque image review (Zenodo 10.5281/zenodo.10202713) confirms the 'n' scores are
+          genuinely ambiguous — plates show faint signals and physical artifacts that make
+          definitive calls impossible. For NILS53, the model's top-ranked phages (LF82_P8, 536_P9,
+          LF82_P9) all have 'n' scores. For ECOR-69, DIJ07_P1 and DIJ07_P2 have 'n' scores.
+          The model may be correct and the labels wrong. Label quality — not feature quality — is
+          the binding constraint for ranking performance.
+        relates_to: [error-buckets, panel-size-ceiling, label-policy-binary]
+
+      - id: genophi-data-identical
+        statement: >
+          GenoPHI's E. coli interaction matrix (402 × 94 phages) is 100% identical to ours
+          (37,788/37,788 pairs match after name normalization). Our data is already in their
+          framework. No new training pairs available from GenoPHI for existing phages.
+        sources: [GT09]
+        status: active
+        confidence: validated
+        relates_to: [genophi-benchmark, raw-interactions-authority]
 
       - id: kmer-receptor-expansion-neutral
         statement: >
