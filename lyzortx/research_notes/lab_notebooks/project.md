@@ -1613,3 +1613,53 @@ Defense features (Gate 3) are unrestricted (all known systems, not just CRISPR/R
 AUTORESEARCH all-pairs (0.810 AUC, 90.8% top-3, 0.167 Brier) is the single canonical baseline. TL18 (0.823) has
 feature integrity issues (DefenseFinder version drift, soft-leaky pairwise features). Per-phage blend (0.830) is not
 deployable and not a valid comparison target.
+
+### 2026-04-12 23:05 CEST: GIANTS → SPANDEX transition
+
+#### Executive summary
+
+Track GIANTS hit a feature-engineering ceiling (7 independent null results, GT04-GT08). The biggest remaining gains
+came from label quality (+3.1pp top-3 from excluding ambiguous 'n' pairs, GT09) and evaluation methodology (top-3
+discards ranking and potency information). SPANDEX shifts focus from features to data quality, evaluation rigor, and
+panel expansion. GT09 cancelled and folded into SX02/SX03. Details in track_SPANDEX.md.
+
+### 2026-04-12 23:05 CEST: Track SPANDEX — evaluation overhaul and panel expansion
+
+#### Executive summary
+
+Track GIANTS established the 0.823 AUC ceiling through 7 independent null results (GT04-GT08) and identified label
+quality as the binding constraint (+3.1pp top-3 from excluding ambiguous 'n' pairs). SPANDEX addresses the three
+remaining levers: evaluation methodology, label quality, and panel expansion. GT09 (BASEL panel expansion) is cancelled
+and folded into SPANDEX.
+
+#### Strategic decisions
+
+1. **Top-3 metric retired.** Top-3 collapses the full phage ranking into a binary "lucky in the first 3 slots" signal.
+   It cannot distinguish a model that ranks a true positive 4th from one that ranks it 148th, and it cannot handle
+   partial ground truth from multi-source panels. Replaced by nDCG (graded relevance) + mAP (binary retrieval quality).
+
+2. **Graded evaluation using MLC 0-4 dilution potency.** The interaction matrix encodes 5-level lysis strength, not
+   just binary. MLC=4 (lysis at 10,000x dilution) is clinically superior to MLC=1 (barely lyses at neat concentration).
+   nDCG with graded relevance rewards ranking potent phages higher. This was always available in our data but discarded
+   by the binary any_lysis label policy.
+
+3. **k-fold CV replaces fixed ST03 holdout.** 10-fold bacteria-stratified CV gives robust performance estimates not
+   dependent on which 65 bacteria happen to be in one holdout split. ST03 kept as a single-fold comparison column for
+   backwards compatibility.
+
+4. **BASEL integration done properly.** Track K TK02 was invalidated — zero BASEL rows joined training because features
+   were never computed for BASEL phages. SPANDEX runs the full annotation pipeline (Pharokka + DepoScope + feature
+   slots) on 52 BASEL genomes before integrating. BASEL data is binary only (single-concentration spot test at >10^9
+   pfu/ml), mapping to relevance=1 for positives. No graded upstream data exists.
+
+5. **Pre-flight gates on every ticket.** Each SX ticket has a variance/separability check that runs before the main
+   work. SX01 checks whether existing predictions separate MLC grades (if not, graded nDCG is cosmetic and SX04 is
+   dead). SX02 checks BASEL phage diversity and depolymerase coverage. SX03 checks feature-space overlap between BASEL
+   and Guelin phages.
+
+#### Why SPANDEX, not more GIANTS tickets
+
+GIANTS proved that the feature-engineering approach has diminishing returns within the current evaluation framework.
+The next gains come from: (a) measuring more carefully (graded metrics, k-fold CV), (b) cleaning the training signal
+(excluding ambiguous labels), and (c) expanding the phage panel (BASEL). These are evaluation and data changes, not
+feature changes — a different track with a different philosophy.
