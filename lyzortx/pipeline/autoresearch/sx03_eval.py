@@ -83,7 +83,6 @@ def load_basel_interactions() -> pd.DataFrame:
     basel = pd.read_csv(BASEL_INTERACTIONS_PATH)
     # Harmonize bacteria names: ECOR12 → ECOR-12
     basel["bacteria"] = basel["strain"].apply(lambda s: f"ECOR-{s[4:]}" if s.startswith("ECOR") else s)
-    basel["phage"] = basel["phage"]
     basel["label_any_lysis"] = basel["interaction"].astype(str)
     basel["pair_id"] = basel["bacteria"] + "__" + basel["phage"]
     basel["source"] = "basel"
@@ -343,6 +342,86 @@ def run_arm_c_generalization(
     return enriched
 
 
+def run_ranking_displacement_diagnostic(
+    arm_a: list[dict[str, object]],
+    arm_b: list[dict[str, object]],
+    arm_c: list[dict[str, object]],
+    mlc_lookup: dict[tuple[str, str], float],
+    output_dir: Path,
+) -> None:
+    """Diagnostic: do BASEL phages steal top-3 ranking slots from Guelin phages?
+
+    For ECOR holdout bacteria with both Guelin and BASEL ground truth, compare
+    the top-ranked phages in Arm A (96 Guelin only) vs Arm B (96 Guelin + BASEL training,
+    evaluated on same Guelin holdout pairs).
+    """
+    LOGGER.info("=== Diagnostic: ranking displacement analysis ===")
+
+    # Get ECOR bacteria from Arm C (these have BASEL ground truth).
+    arm_c_df = pd.DataFrame(arm_c)
+    ecor_bacteria = set(arm_c_df["bacteria"].unique())
+
+    # Filter Arm A and B predictions to ECOR bacteria only.
+    arm_a_ecor = [r for r in arm_a if str(r["bacteria"]) in ecor_bacteria]
+    arm_b_ecor = [r for r in arm_b if str(r["bacteria"]) in ecor_bacteria]
+
+    if not arm_a_ecor or not arm_b_ecor:
+        LOGGER.warning("No ECOR bacteria found in holdout — skipping displacement diagnostic")
+        return
+
+    LOGGER.info("ECOR bacteria in holdout: %d", len(ecor_bacteria))
+
+    # Compare top-3 phages per bacterium between Arm A and Arm B.
+    displacement_count = 0
+    total_bacteria = 0
+    details = []
+
+    for bacteria in sorted(ecor_bacteria):
+        a_rows = sorted(
+            [r for r in arm_a_ecor if str(r["bacteria"]) == bacteria],
+            key=lambda r: -float(r["predicted_probability"]),
+        )
+        b_rows = sorted(
+            [r for r in arm_b_ecor if str(r["bacteria"]) == bacteria],
+            key=lambda r: -float(r["predicted_probability"]),
+        )
+
+        if len(a_rows) < 3 or len(b_rows) < 3:
+            continue
+
+        a_top3 = {str(r["phage"]) for r in a_rows[:3]}
+        b_top3 = {str(r["phage"]) for r in b_rows[:3]}
+        displaced = a_top3 - b_top3
+        total_bacteria += 1
+
+        if displaced:
+            displacement_count += 1
+            details.append(
+                {
+                    "bacteria": bacteria,
+                    "a_top3": sorted(a_top3),
+                    "b_top3": sorted(b_top3),
+                    "displaced": sorted(displaced),
+                }
+            )
+
+    LOGGER.info(
+        "Displacement: %d/%d ECOR bacteria had different top-3 phages between Arm A and B",
+        displacement_count,
+        total_bacteria,
+    )
+    for d in details:
+        LOGGER.info("  %s: displaced %s", d["bacteria"], d["displaced"])
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with open(output_dir / "displacement_diagnostic.json", "w", encoding="utf-8") as f:
+        json.dump(
+            {"displacement_count": displacement_count, "total_bacteria": total_bacteria, "details": details},
+            f,
+            indent=2,
+        )
+
+
 def run_sx03_eval(
     *,
     candidate_module: ModuleType,
@@ -366,8 +445,8 @@ def run_sx03_eval(
     # Harmonize BASEL with our frame format.
     # BASEL needs the same columns as our training frame for train_and_predict_fold.
     # Minimum: pair_id, bacteria, phage, label_any_lysis, training_weight_v3
-    basel_frame = basel_interactions[["pair_id", "bacteria", "phage", "label_any_lysis"]].copy()
-    basel_frame["training_weight_v3"] = "1.0"  # Equal weight for BASEL pairs.
+    basel_frame = basel_interactions[["pair_id", "bacteria", "phage", "label_any_lysis", "source"]].copy()
+    basel_frame["training_weight_v3"] = "1.0"
 
     # Patch cache with extended phage slots (Guelin + BASEL).
     patch_context_with_extended_slots(context)
@@ -379,7 +458,7 @@ def run_sx03_eval(
     # Combined DepoScope dir for BASEL phage cross-terms.
     combined_depo_dir = Path(".scratch/deposcope_combined")
     if not combined_depo_dir.exists():
-        LOGGER.warning("Combined DepoScope dir not found — BASEL depo cross-terms will fail")
+        LOGGER.warning("Combined DepoScope dir not found — BASEL phage depo features will be missing from cross-terms")
         combined_depo_dir = None
 
     # Pre-flight overlap check.
@@ -412,6 +491,9 @@ def run_sx03_eval(
         device_type=device_type,
         deposcope_dir=combined_depo_dir,
     )
+
+    # Diagnostic: do BASEL phages steal top ranking slots for ECOR holdout bacteria?
+    run_ranking_displacement_diagnostic(arm_a, arm_b, arm_c, mlc_lookup, output_dir)
 
     # Bootstrap CIs per arm.
     LOGGER.info("Computing bootstrap CIs...")
