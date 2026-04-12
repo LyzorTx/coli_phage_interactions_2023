@@ -158,12 +158,6 @@ def slot_fixture_rows() -> dict[str, list[dict[str, object]]]:
         {"phage": "P3", "phage_kmer__tetra_freq_000": "0.02", "phage_kmer__tetra_freq_001": "0.01"},
         {"phage": "P4", "phage_kmer__tetra_freq_000": "0.03", "phage_kmer__tetra_freq_001": "0.01"},
     ]
-    phage_rbp_struct_rows = [
-        {"phage": "P1", "phage_rbp_struct__has_annotated_rbp": "1", "phage_rbp_struct__rbp_count": "2"},
-        {"phage": "P2", "phage_rbp_struct__has_annotated_rbp": "1", "phage_rbp_struct__rbp_count": "1"},
-        {"phage": "P3", "phage_rbp_struct__has_annotated_rbp": "0", "phage_rbp_struct__rbp_count": "0"},
-        {"phage": "P4", "phage_rbp_struct__has_annotated_rbp": "1", "phage_rbp_struct__rbp_count": "3"},
-    ]
     return {
         "host_defense": [],
         "host_surface": host_surface_rows,
@@ -172,13 +166,6 @@ def slot_fixture_rows() -> dict[str, list[dict[str, object]]]:
         "phage_projection": phage_projection_rows,
         "phage_stats": phage_stats_rows,
         "phage_kmer": phage_kmer_rows,
-        "phage_rbp_struct": phage_rbp_struct_rows,
-        "phage_functional": [
-            {"phage": "P1", "phage_functional__total_cds": "50", "phage_functional__has_anti_defense": "1"},
-            {"phage": "P2", "phage_functional__total_cds": "45", "phage_functional__has_anti_defense": "0"},
-            {"phage": "P3", "phage_functional__total_cds": "38", "phage_functional__has_anti_defense": "0"},
-            {"phage": "P4", "phage_functional__total_cds": "55", "phage_functional__has_anti_defense": "1"},
-        ],
     }
 
 
@@ -594,32 +581,6 @@ def test_train_runs_per_phage_blend_variant(tmp_path: Path) -> None:
     assert summary["per_phage"]["n_phages_fitted"] > 0
     assert "P1" in summary["per_phage"]["fitted_phages"]
     assert set(summary["inner_val_metrics"]) == {"roc_auc", "top3_hit_rate", "brier_score"}
-
-
-def test_train_runs_with_pairwise_rbp_receptor_features(tmp_path: Path) -> None:
-    cache_dir = create_minimal_autoresearch_cache(tmp_path)
-    output_dir = tmp_path / "train_outputs"
-
-    exit_code = autoresearch_train.main(
-        [
-            "--cache-dir",
-            str(cache_dir),
-            "--output-dir",
-            str(output_dir),
-            "--device-type",
-            "cpu",
-            "--include-phage-rbp-struct",
-            "--include-pairwise-rbp-receptor",
-        ]
-    )
-    assert exit_code == 0
-
-    summary = json.loads((output_dir / "ar07_baseline_summary.json").read_text(encoding="utf-8"))
-    assert summary["feature_space"]["pairwise_rbp_receptor_active"] is True
-    assert summary["feature_space"]["pairwise_feature_count"] > 0
-    assert summary["baseline_contract"]["pairwise_rbp_receptor_active"] is True
-    # Total features should include both slot features and pairwise cross-terms.
-    assert summary["feature_space"]["total_feature_count"] > 0
 
 
 def test_train_runs_with_isotonic_calibration(tmp_path: Path) -> None:

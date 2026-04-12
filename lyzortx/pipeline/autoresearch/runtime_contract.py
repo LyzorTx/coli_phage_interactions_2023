@@ -97,27 +97,6 @@ SLOT_SPECS = (
         block_role="phage",
         description="Raw tetranucleotide (k=4) frequency vectors from phage genomes. No SVD reduction.",
     ),
-    SlotSpec(
-        slot_name="phage_rbp_struct",
-        entity_key="phage",
-        column_prefix="phage_rbp_struct__",
-        block_role="phage",
-        description=(
-            "RBP protein language model embeddings (ProstT5→SaProt or ESM-2, 1280-dim) from "
-            "Pharokka annotations and genome FASTAs. Per-RBP embeddings mean-pooled per phage, "
-            "PCA-reduced to 32 dimensions."
-        ),
-    ),
-    SlotSpec(
-        slot_name="phage_functional",
-        entity_key="phage",
-        column_prefix="phage_functional__",
-        block_role="phage",
-        description=(
-            "Phage functional gene repertoire from Pharokka annotations: PHROG category counts/fractions, "
-            "anti-defense gene indicators, and depolymerase presence."
-        ),
-    ),
 )
 SLOT_SPEC_BY_NAME = {spec.slot_name: spec for spec in SLOT_SPECS}
 
