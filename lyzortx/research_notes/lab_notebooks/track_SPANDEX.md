@@ -58,3 +58,67 @@ phages), and (3) evaluation methodology (top-3 discards ranking information and 
 - **SX03:** Check BASEL phage feature overlap with Guelin phages. If >90% nearest-neighbor overlap, training signal is
   redundant.
 - **SX04:** Gated on SX01 pre-flight. If binary model doesn't separate MLC grades, ordinal prediction can't help.
+
+### 2026-04-12 23:28 CEST: SX01 — Graded evaluation framework + clean-label baseline
+
+#### Executive summary
+
+Implemented SPANDEX evaluation suite (nDCG with graded MLC 0-4 relevance, mAP, k-fold CV, bootstrap CIs) and
+established the clean-label baseline. Pre-flight gate passed: existing predictions separate MLC grades monotonically
+(Spearman rho=0.24 among positives, well above 0.1 threshold). SX04 lives.
+
+#### Pre-flight results
+
+Mean predicted P(lysis) by MLC grade in GT03 all_gates_rfe holdout predictions:
+
+| MLC grade | Mean P(lysis) | Median P(lysis) | N pairs |
+|-----------|---------------|-----------------|---------|
+| 0 | 0.267 | 0.118 | 5,096 |
+| 1 | 0.611 | 0.721 | 469 |
+| 2 | 0.674 | 0.785 | 312 |
+| 3 | 0.740 | 0.840 | 198 |
+| 4 | 0.816 | 0.880 | 160 |
+
+Clear monotonic increase. The binary classifier already implicitly ranks higher-potency phages higher, validating
+graded nDCG as a meaningful metric.
+
+#### SPANDEX baseline (10-fold CV, clean labels, per-phage blending)
+
+| Metric | Value | 95% CI |
+|--------|-------|--------|
+| nDCG (graded MLC 0-4) | 0.779 | [0.772, 0.796] |
+| mAP (binary >= 1) | 0.714 | [0.696, 0.732] |
+| AUC | 0.871 | [0.858, 0.883] |
+| Brier | 0.125 | [0.119, 0.131] |
+
+Per-fold variation:
+
+| Fold | Bacteria | nDCG | mAP | AUC | Brier |
+|------|----------|------|-----|-----|-------|
+| 0 | 38 | 0.771 | 0.691 | 0.882 | 0.118 |
+| 1 | 43 | 0.756 | 0.666 | 0.884 | 0.121 |
+| 2 | 42 | 0.835 | 0.786 | 0.888 | 0.113 |
+| 3 | 39 | 0.768 | 0.731 | 0.856 | 0.129 |
+| 4 | 41 | 0.783 | 0.717 | 0.858 | 0.134 |
+| 5 | 37 | 0.766 | 0.711 | 0.880 | 0.126 |
+| 6 | 35 | 0.802 | 0.744 | 0.886 | 0.116 |
+| 7 | 31 | 0.809 | 0.760 | 0.847 | 0.142 |
+| 8 | 26 | 0.719 | 0.641 | 0.890 | 0.116 |
+| 9 | 37 | 0.768 | 0.678 | 0.861 | 0.131 |
+
+#### Interpretation
+
+The AUC of 0.871 is substantially higher than the old ST03 fixed-holdout result (0.823). This is not a model
+improvement — it reflects two evaluation changes: (1) 10-fold CV uses all bacteria for evaluation instead of 65
+fixed ones, giving a more representative estimate, and (2) clean labels exclude ~3,462 ambiguous pairs that were
+mislabeled as negatives. The model and features are identical to GT03 + AX02.
+
+nDCG 0.779 and mAP 0.714 establish the SPANDEX ranking baselines. These are the first proper ranking metrics for
+this project — they replace the retired top-3 hit rate.
+
+#### Output artifacts
+
+- `lyzortx/generated_outputs/sx01_eval/preflight_results.json`
+- `lyzortx/generated_outputs/sx01_eval/kfold_predictions.csv`
+- `lyzortx/generated_outputs/sx01_eval/fold_metrics.csv`
+- `lyzortx/generated_outputs/sx01_eval/bootstrap_results.json`
