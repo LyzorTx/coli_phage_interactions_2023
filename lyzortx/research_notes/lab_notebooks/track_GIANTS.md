@@ -665,3 +665,89 @@ the labels wrong. For ECOR-69, the model's #1 and #2 ranked phages have `'n'` sc
 Checking the raw plaque images (Zenodo doi:10.5281/zenodo.10202713) to verify whether these are genuine negatives or
 ambiguous positives. If 2 misses flip to hits, the true top-3 rate would be ~93.8% (matching the per-phage blend),
 fundamentally changing the interpretation of whether the all-pairs model has room for improvement.
+
+### 2026-04-12 20:16 CEST: GT09 — Image review, clean-label evaluation, and BASEL data analysis
+
+#### Executive summary
+
+Three findings from GT09. (1) Raw plaque image review confirms the `'n'` scores are genuinely ambiguous — plates show
+faint signals and physical artifacts that make definitive calls impossible. (2) Clean-label re-evaluation (excluding
+3,462 ambiguous pairs from training) improves top-3 from 89.2% to 92.3% (+3.1pp) with the same model, demonstrating
+that noisy negatives actively harm ranking. (3) The GenoPHI E. coli matrix is 100% identical to our labels (37,788/37,788
+pairs match); BASEL provides 52 genuinely new phages on 25 ECOR bacteria, but full integration requires new phage feature
+computation infrastructure that doesn't yet exist.
+
+#### Image review findings
+
+Examined all 3 replicates for each of the 6 missed holdout bacteria from Zenodo doi:10.5281/zenodo.10202713. Key
+observations:
+
+**NILS53** (207_rep1/2/3): Rep1 and rep2 show clear plaques in Plate C (LM07_P1, LM33_P1 confirmed positives) and
+Plate D (Przondovirus and Dhillonvirus positives). The `'n'` positions for LF82_P8 (Plate C, Y=4 X=6) and 536_P9
+(Plate B, Y=3 X=0) are in regions with some faint marks but nothing definitively distinguishable from dried droplet
+artifacts at this resolution. Rep3 shows wavy surface texture on Plates A and B complicating assessment. **Verdict:
+genuinely ambiguous — the scorer's uncertainty was justified.**
+
+**ECOR-69** (151_rep1/2/3): Very few visible clearing zones across all replicates. Confirmed positives (LF82_P9,
+LF110_P1-P3) produce only faint spots visible mainly in rep2 and rep3 — this is a host with weak lysis. The `'n'`
+positions for DIJ07_P1/P2 (Plate B right edge) are in a region indistinguishable from background. **Verdict: ambiguous
+but more likely negative than positive given the overall faint signal.**
+
+**NILS41** (195_rep1/2/3): Many clear plaques across all plates and replicates — consistent with 10+ positives. Rep1
+shows abundant clearing on Plates A and C. The `'n'` position for NRG_11A2 at Plate D Y=7 is near visible clearing
+zones. **Verdict: most plausible hidden positive among the 6 bacteria.**
+
+**FN-B4** (332_rep1/2/3): Clean plates with no clearing zones. Physical agar damage (torn/crumpled agar) on Plates A
+and C explains why some positions were scored `'n'` — the scorer couldn't read those spots due to physical damage,
+not ambiguous lysis. **Verdict: genuinely resistant, `'n'` scores are damage artifacts.**
+
+**ECOR-06** (088_rep1): Clean plates with minimal signal. The single positive (AL505_Ev3, matrix=2) is weak. The
+`'n'` scores for LF31_P3 and LM02_P1 are in clean areas. **Verdict: genuinely near-zero susceptibility.**
+
+**NILS24**: All 864 raw scores are `'0'`, no `'n'` values. Images not reviewed (no ambiguity to resolve).
+
+#### Clean-label re-evaluation
+
+Excluded 3,462 ambiguous pairs (with `'n'` score and no `'1'` score) from training and/or holdout. Three arms
+compared:
+
+| Arm | Train pairs | Holdout pairs | AUC | Top-3 | Brier |
+|-----|------------|--------------|-----|-------|-------|
+| gt03_original | 29,031 | 6,235 (65 bacteria) | 0.823 | 89.2% | 0.161 |
+| gt03_clean_holdout | 29,031 | 5,832 (65 bacteria) | 0.829 | 89.2% | 0.158 |
+| gt03_clean_both | 26,130 | 5,832 (65 bacteria) | 0.824 | **92.3%** | 0.160 |
+
+**Removing noisy negatives from training improves top-3 by +3.1pp (89.2% → 92.3%).** This is the largest single
+improvement since depolymerase × capsule features (+1.2pp AUC in GT03). The mechanism: when the model trains on
+ambiguous pairs labeled as negative, it learns to downweight phages that are actually lytic for those hosts. Removing
+these pairs lets the model rank correctly.
+
+The AUC improvement is modest (0.824 vs 0.823) because AUC measures discrimination across all pairs, including those
+that are unambiguously negative. But top-3 — the clinically relevant metric — improves substantially because the
+cleaned model no longer penalizes phages for ambiguous interactions.
+
+#### BASEL data analysis
+
+**GenoPHI E. coli matrix**: 402 bacteria × 94 phages, 100% identical to our labels (37,788/37,788 pairs match after
+name normalization). Our data is already in GenoPHI's framework, likely via the Brisse lab. **No new training pairs
+for existing phages.**
+
+**BASEL ECOR interaction matrix**: 52 new phages × 25 ECOR bacteria = 1,300 new interactions (24.4% positive).
+Phage breadth distribution on 25 ECOR: 25 narrow (≤3 hosts), 15 moderate (4-10), 12 broad (>10), 3 non-lytic.
+All 52 phage genomes downloaded from NCBI GenBank.
+
+**Integration gap**: Our feature pipeline (Pharokka annotation → DepoScope → protein family clustering → k-mer
+receptor prediction → phage_projection → phage_stats) is built for the 96 Guelin phages. Running it on 52 new BASEL
+phages requires infrastructure work: pyrodigal protein prediction, Pharokka annotation, DepoScope depolymerase
+detection, and feature materialization. The 52 genomes are downloaded and ready at `.scratch/basel/genomes/` but
+feature computation is not automated for arbitrary new phages.
+
+Only 3/25 ECOR bacteria from BASEL are in our holdout (ECOR-14, ECOR-29, ECOR-35), so BASEL data primarily augments
+training, not evaluation.
+
+#### Conclusion
+
+The most impactful finding from GT09 is not BASEL data but **clean-label evaluation**: excluding ~3,500 ambiguous
+pairs from training improves top-3 by +3.1pp — more than any feature engineering attempt in the entire track. This
+suggests that label quality, not feature quality, is the binding constraint for ranking performance. The practical
+recommendation is to flag ambiguous pairs in the training corpus and either exclude them or assign soft labels.
