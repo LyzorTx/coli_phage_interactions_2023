@@ -176,6 +176,13 @@ The ordinal regressor learns the potency ordering slightly better (Spearman 0.30
 predicting all 5 MLC levels, diluting the primary binary signal. With 79% of pairs at MLC=0, the regressor
 optimizes heavily for the zero-inflation, degrading its ability to separate lysis from non-lysis.
 
+**Caveats:** (1) No explicit zero-inflation handling was applied (e.g., Tweedie loss, hurdle model). Vanilla
+squared-error regression is a sufficient first test since the decision threshold is +2pp nDCG — more sophisticated
+ordinal approaches would add complexity without changing the conclusion. (2) The SX01 binary baseline includes
+per-phage blending; SX04 does not. Part of the AUC/mAP regression is attributable to missing blending, not purely
+the ordinal objective. This doesn't change the adoption decision — even with blending parity, the nDCG gain would
+remain below 2pp.
+
 **Decision:** Binary classification is the better default. The nDCG improvement (+0.4pp) does not meet the 2pp
 threshold and comes at too high a cost to discrimination metrics. The pre-flight finding that binary predictions
 already separate MLC grades (Spearman 0.24) means the binary model captures enough potency information without
