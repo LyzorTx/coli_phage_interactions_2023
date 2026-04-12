@@ -104,6 +104,52 @@ Limitation: phage_projection features for BASEL are zero-filled because the TL17
 built from Guelin phages only. PLM PCA features are also zero-filled (would need ProstT5+SaProt inference).
 For SX03, BASEL phages rely on depo×capsule cross-terms and phage_stats but not phage_projection or PLM.
 
+### 2026-04-13 01:15 CEST: SX03 — BASEL data integration + cross-source evaluation
+
+#### Executive summary
+
+Three-arm comparison: adding BASEL training data gives negligible lift (+0.3pp nDCG, CIs overlap). The model
+generalizes moderately to unseen BASEL phages (AUC 0.72, nDCG 0.65) — useful but far below within-panel performance
+(AUC 0.87). Pre-flight correctly flagged 100% feature-space overlap (BASEL phage_projection is zero-filled).
+
+#### Pre-flight overlap
+
+BASEL phage features cluster entirely within Guelin feature space (cosine overlap 100% at threshold 0.1). This is
+because phage_projection (33 RBP family features) is zero-filled for BASEL — all BASEL phages look identical in that
+slot. Only phage_stats (GC, genome length) provides non-zero differentiation. Flagged as expected.
+
+#### Results
+
+| Arm | nDCG | 95% CI | mAP | AUC | Description |
+|-----|------|--------|-----|-----|-------------|
+| A (baseline) | 0.779 | [0.771, 0.795] | 0.711 | 0.870 | Our clean data only (SX01 replication) |
+| B (+ BASEL) | 0.782 | [0.774, 0.798] | 0.713 | 0.870 | BASEL added to training |
+| C (generalize) | 0.648 | [0.603, 0.710] | 0.407 | 0.721 | Predict for unseen BASEL phages |
+
+#### Interpretation
+
+**Arm B (BASEL training): negligible lift.** Adding 1,240 BASEL pairs (302 positive) to 32K clean training pairs
+is a 3.8% increase — too small to move the needle. The overlapping CIs (A: [0.771,0.795] vs B: [0.774,0.798])
+confirm no statistically significant improvement. This is consistent with the pre-flight flag (BASEL features
+cluster within Guelin space) and the `panel-size-ceiling` knowledge finding.
+
+**Arm C (generalization): moderate.** AUC 0.72 for unseen BASEL phages is well above chance (0.50) but well
+below the 0.87 achieved for known Guelin phages. The model can discriminate lysis from non-lysis for new phages
+based on host features + phage_stats + depo×capsule cross-terms alone, but ranking quality (nDCG 0.65, mAP 0.41)
+is substantially degraded. The gap is expected: BASEL phages have zero-filled phage_projection and PLM features,
+so the model relies on the small number of non-zero phage features (GC, genome length, depo count/has_depo).
+
+**Biological implication:** The model has learned transferable host-side patterns (which bacteria are generally
+susceptible, which capsule types are penetrable) that generalize to new phages. But phage-specific features
+(which RBP families, which receptor targets) are missing for BASEL, capping generalization. Computing proper
+phage_projection features (TL17 RBP BLAST) for BASEL would likely close part of this gap.
+
+#### Output artifacts
+
+- `lyzortx/generated_outputs/sx03_eval/all_predictions.csv`
+- `lyzortx/generated_outputs/sx03_eval/bootstrap_results.json`
+- `lyzortx/generated_outputs/sx03_eval/preflight_overlap.json`
+
 ### 2026-04-12 23:28 CEST: SX01 — Graded evaluation framework + clean-label baseline
 
 #### Executive summary
