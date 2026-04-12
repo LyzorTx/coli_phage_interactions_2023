@@ -26,8 +26,8 @@ import pandas as pd
 from lyzortx.log_config import setup_logging
 from lyzortx.pipeline.autoresearch import build_contract, prepare_cache, runtime_contract
 from lyzortx.pipeline.steel_thread_v0.steps._io_helpers import read_csv_rows, safe_round
+from lyzortx.pipeline.track_c.steps.build_v1_host_feature_pair_table import DEFENSE_DERIVED_COLUMNS
 from lyzortx.pipeline.track_g.steps import train_v1_binary_classifier
-from lyzortx.pipeline.track_g.steps.run_feature_block_ablation_suite import partition_track_c_columns
 
 LOGGER = logging.getLogger(__name__)
 
@@ -110,7 +110,9 @@ def partition_track_c_defense_columns(track_c_columns: Sequence[str]) -> tuple[s
     partitioned = train_v1_binary_classifier.deduplicate_preserving_order(track_c_columns)
     if not partitioned:
         raise ValueError("Track C feature table has no columns.")
-    defense_columns = partition_track_c_columns(partitioned)["defense_subtypes"]
+    defense_columns = [
+        col for col in partitioned if col.startswith("host_defense_subtype_") or col in DEFENSE_DERIVED_COLUMNS
+    ]
     if not defense_columns:
         raise ValueError("No defense subtype columns were found in Track C features.")
     return tuple(defense_columns)
