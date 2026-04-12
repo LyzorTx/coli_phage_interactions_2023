@@ -3,7 +3,7 @@
 <!-- Last consolidated: 2026-04-12T20:16:00+02:00 -->
 <!-- Source: lyzortx/research_notes/lab_notebooks -->
 
-**50 knowledge units** across 7 themes (38 active, 12 dead ends)
+**54 knowledge units** across 7 themes (42 active, 12 dead ends)
 
 ## Data & Labels
 
@@ -16,7 +16,24 @@ Labeling policy, data quality, split contracts, and training corpus.
   also: raw-interactions-authority]
 - **`raw-interactions-authority`**: raw_interactions.csv is the authoritative training corpus; all derived training
   cohorts and evaluation splits trace back to this file. [validated; source: ST0.2, AR01, DEPLOY01]
-
+- **`mlc-dilution-potency`**: The interaction_matrix.csv MLC scores (0-4) encode dilution potency: 0=no lysis, 1=lysis
+  at 1:1 only (~5x10^8 pfu/ml), 2=lysis at 1:10, 3=lysis at 1:100, 4=lysis at 1:10,000 with visible plaques. Higher MLC
+  indicates more robust infection and better therapeutic candidacy. [validated; source: 2026-04-12 SPANDEX design,
+  Gaborieau 2024; see also: label-policy-binary, raw-interactions-authority]
+  - *Derived from raw_interactions.csv per-dilution per-replicate scores via DILUTION_WEIGHT_MAP in
+    build_track_a_foundation.py. The raw data has 9 observations per pair (3 replicates x 3 concentrations). Current
+    pipeline binarizes to any_lysis (MLC > 0), discarding potency information. Distribution: 79.3% MLC=0, 7.8% MLC=1,
+    6.0% MLC=2, 3.6% MLC=3, 3.3% MLC=4.*
+- **`basel-binary-only`**: BASEL × ECOR interaction data (52 phages × 25 ECOR bacteria from GenoPHI) is confirmed binary
+  only — no graded upstream data exists. BASEL used a single high-titer spot test (>10^9 pfu/ml), not a dilution series.
+  BASEL EOP data on Zenodo covers K-12 defense experiments only, not the ECOR host range panel. [validated; source:
+  2026-04-12 SPANDEX design, Maffei 2021, Maffei 2025, Noonan 2025; see also: mlc-dilution-potency,
+  external-data-neutral, genophi-data-identical]
+  - *BASEL spot test at >10^9 pfu/ml is ~2x higher than our maximum concentration (~5x10^8). BASEL positive maps to MLC
+    >= 1 (lysis at high titer confirmed). BASEL negative maps to high-confidence MLC=0 (failed at even higher titer than
+    our max). 1,240 observed pairs (302 positive, 24.4%), 160 missing. The matrix is already sparse — not all 52 phages
+tested on all 25 bacteria.*
+  
 ## Features & Feature Engineering
 
 What works, what doesn't, leakage risks, and encoding decisions.
@@ -180,6 +197,20 @@ Holdout protocol, benchmark methodology, and error analysis.
   improved). [validated; source: 2026-04-09 APEX holdout; see also: st03-canonical-benchmark, bootstrap-strain-level]
   - *On 65-74 bacteria evaluation sets, 1 strain flip = 1.4-1.5pp top-3. Inner-val bacteria overlap with training
     distribution; holdout bacteria are cv_group-disjoint. Holdout is the only honest top-3 test.*
+- **`top3-metric-retired`**: Top-3 hit rate is retired as an evaluation metric starting with Track SPANDEX. It collapses
+  the entire ranking into a binary signal, discards potency information, and cannot handle sparse ground truth from
+  multi-source panels. Replaced by nDCG (graded relevance using MLC 0-4) and mAP (binary retrieval quality). [validated;
+  source: 2026-04-12 SPANDEX design; see also: mlc-dilution-potency, st03-canonical-benchmark, bootstrap-strain-level]
+  - *Top-3 assigns identical scores to a model ranking a true positive 4th vs 148th. With mixed-source data (our MLC 0-4
+    - BASEL binary), nDCG naturally handles graded relevance while mAP handles partial ground truth (score only observed
+    pairs per bacterium). AUC and Brier retained as secondary metrics.*
+- **`kfold-cv-replaces-fixed-holdout`**: 10-fold bacteria-stratified cross-validation replaces the single fixed ST03
+  holdout (65 bacteria) as the primary evaluation protocol in Track SPANDEX. Every bacterium is evaluated exactly once;
+  performance estimates are robust to holdout composition. [preliminary; source: 2026-04-12 SPANDEX design; see also:
+  st03-canonical-benchmark, split-contract, top3-metric-retired]
+  - *ST03 remains available as a single-fold comparison column for backwards compatibility with GIANTS results. The 10x
+    model fitting cost is acceptable with LightGBM (minutes, not hours). k-fold also enables cross-source evaluation
+    when BASEL bacteria overlap with different folds.*
 
 ## Deployment & Train/Inference Parity
 
@@ -204,7 +235,11 @@ Compressed lessons from approaches that didn't work.
 
 - **`external-data-neutral`**: VHRdb, BASEL, KlebPhaCol, and GPB external interaction datasets showed neutral cumulative
   lift over the internal-only baseline; adding them did not improve predictions. [validated; source: TK01, TK02, TK03,
-  TI09]
+  TI09; see also: basel-binary-only, genophi-data-identical]
+  - *Caveat: TK02 BASEL integration was invalidated — zero BASEL rows actually joined into training because features
+    were never computed for BASEL phages. The "neutral" result tested nothing. Track SPANDEX (SX02-SX03) is the first
+    proper BASEL integration attempt with full feature computation. KlebPhaCol is organism-mismatch (Klebsiella, not E.
+    coli). VHRdb had no joinable training rows in the production fixture.*
 - **`label-derived-features-leaky`**: Label-derived features (legacy_label_breadth_count, defense_evasion_*,
   receptor_variant_ seen_in_training_positives) caused severe leakage and were removed entirely from TL18. [validated;
   source: TG04, TG05, TG06, TG08, TG12; see also: pairwise-block-leaky]

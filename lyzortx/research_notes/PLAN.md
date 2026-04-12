@@ -42,6 +42,10 @@ graph LR
     tgiants["Track GIANTS: Three-Layer Biological Prediction"]
   end
 
+  subgraph s7["Stage 7"]
+    tspandex["Track SPANDEX: Sparse Panel Data Expansion"]
+  end
+
   ta --> tb
   ta --> tc
   ta --> td
@@ -60,6 +64,7 @@ graph LR
   tg --> tdeploy
   ta --> tautoresearch
   tautoresearch --> tgiants
+  tgiants --> tspandex
 ```
 
 ## Track ST: Steel Thread v0
@@ -1009,15 +1014,73 @@ graph LR
   - Evaluate combined feature set on ST03 holdout with 3 seeds and 1000 bootstrap resamples
   - Compare to GT03 all_gates_rfe baseline (0.823 AUC) with bootstrap CIs
   - Record results and biological interpretation in track_GIANTS.md
-- [ ] **GT09** BASEL phage panel expansion. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on tasks:
-      `GT07`, `GT08`.
-  - Download 56 BASEL phages from Zenodo record 15736582 with their 25 ECOR strain interaction matrix (Gaborieau 2024,
-    BASEL completion 2025)
-  - Harmonize phage and host naming with our existing interaction matrix
-  - Extend interaction matrix from 96 to ~152 phages; compute features for new phages using existing pipeline
-  - Re-evaluate best feature set from GT07/GT08 on expanded panel with ST03 holdout protocol (3 seeds, 1000 bootstrap
-    resamples)
-  - Compare to GT03 baseline and best GT07/GT08 result with bootstrap CIs
-  - Analyze whether additional narrow-host phage diversity helps break the broad-phage prior dominance identified in the
-    pair-level analysis
-  - Record results in track_GIANTS.md
+- [~] **GT09** BASEL phage panel expansion (superseded by Track SPANDEX). Model: `claude-opus-4-6`. CI image profile:
+      `base`. Depends on tasks: `GT07`, `GT08`.
+  - Superseded by Track SPANDEX which integrates BASEL expansion with a new evaluation framework (graded nDCG/mAP
+    replacing top-3, k-fold CV, clean labels, ordinal prediction). Original GT09 scope folded into SX02 and SX03.
+
+## Track SPANDEX: Sparse Panel Data Expansion
+
+- **Guiding Principle:** Overhaul evaluation metrics (graded nDCG + mAP replacing top-3), adopt k-fold cross-validation,
+  exclude ambiguous labels, integrate BASEL phage panel, and test ordinal lysis potency prediction. Addresses the
+  panel-size ceiling (0.823 AUC) and label-quality constraint (ambiguous 'n' scores) identified in Track GIANTS. Data
+  landscape: Our panel has graded MLC 0-4 scores (dilution potency). BASEL (52 phages × 25 ECOR bacteria) is binary only
+  — their spot test used >10^9 pfu/ml (single concentration), equivalent to our MLC≥1. BASEL lysis maps to relevance=1,
+  BASEL no-lysis maps to relevance=0.
+- [ ] **SX01** Graded evaluation framework + clean-label baseline. Model: `claude-opus-4-6`. CI image profile: `base`.
+  - PRE-FLIGHT GATE: Using existing GT03 holdout predictions, check whether mean predicted P(lysis) increases
+    monotonically across MLC grades 1→2→3→4. If predictions are flat across grades (Spearman ρ < 0.1 between predicted
+    prob and MLC grade among positives), graded nDCG collapses to binary mAP — drop graded nDCG and cancel SX04.
+  - Implement per-bacterium nDCG with graded relevance (MLC 0-4 scores)
+  - Implement per-bacterium mAP (binary threshold ≥1)
+  - Both metrics must support partial ground truth — score only observed pairs per bacterium, ignore pairs with NULL
+    label
+  - Implement k-fold CV over bacteria (k=10, bacteria-stratified, deterministic fold assignment) as the primary
+    evaluation protocol
+  - Implement bootstrap CIs paired by bacterium for both metrics (1000 resamples)
+  - Delete top-3 hit rate from the metric suite entirely — no legacy column
+  - Keep AUC + Brier as secondary metrics
+  - Rerun best model (GT03 all_gates_rfe + AX02 per-phage blending) on clean training data (exclude pairs where any raw
+    observation has score='n' and no score='1')
+  - Evaluate with new metric suite — this establishes the SPANDEX baseline
+  - Record pre-flight results and baseline metrics in track_SPANDEX.md
+- [ ] **SX02** BASEL phage feature computation. Model: `claude-opus-4-6`. CI image profile: `base`.
+  - PRE-FLIGHT GATE: Before running full annotation pipeline, check BASEL phage taxonomy (family distribution from
+    genome headers or NCBI metadata) and genome size distribution. If >80% of BASEL phages are from a single family,
+    flag low diversity risk. Check how many BASEL phages have recognizable depolymerases by running DepoScope — if <5
+    phages have depolymerases, depo×capsule cross-terms (our only validated pairwise feature) will be sparse for BASEL.
+  - Run Pharokka on 52 BASEL phage genomes (already downloaded at .scratch/basel/genomes/)
+  - Run DepoScope on Pharokka CDS output to identify depolymerases
+  - Materialize all phage feature slots (phage_projection, phage_stats, phage_rbp_struct)
+  - Compute pairwise cross-terms (depo×capsule, receptor×OMP) for BASEL phages × all bacteria in the panel
+  - Verify feature distributions are non-degenerate (CV, unique value counts) for BASEL phages vs original Guelin phages
+  - Record annotation statistics and feature quality in track_SPANDEX.md
+- [ ] **SX03** BASEL data integration + cross-source evaluation. Model: `claude-opus-4-6`. CI image profile: `base`.
+      Depends on tasks: `SX01`, `SX02`.
+  - PRE-FLIGHT GATE: Before training, compute expected marginal contribution of BASEL data — 1,240 new pairs (302
+    positive) added to ~32K clean training pairs = 3.8% increase. If BASEL phage features cluster entirely within
+    existing Guelin phage feature space (nearest-neighbor overlap >90%), the training signal is likely redundant — run
+    the evaluation anyway but flag low expected lift.
+  - Build unified observed-pairs table with source tracking (our panel MLC 0-4 relevance, BASEL binary relevance 0/1)
+  - Training arm A: Train on our clean data only → evaluate with k-fold CV (SX01 baseline replication)
+  - Training arm B: Train on our clean data + BASEL → evaluate with k-fold CV on same folds (does BASEL training data
+    help original predictions?)
+  - Generalization arm C: Hold out all BASEL phages from training → predict BASEL phage × ECOR bacteria interactions
+    from genomic features only → evaluate with nDCG/mAP on observed BASEL pairs (can the model predict for unseen
+    phages?)
+  - Diagnostic: For ECOR holdout bacteria with both Guelin and BASEL ground truth, compare full-panel ranking (148
+    phages) vs original-only ranking (96 phages) — do BASEL phages steal top ranking slots?
+  - Compare all arms with bootstrap CIs
+  - Record results, cross-source analysis, and biological interpretation in track_SPANDEX.md
+- [ ] **SX04** Ordinal lysis potency prediction. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on tasks:
+      `SX01`.
+  - PRE-FLIGHT GATE (from SX01): If SX01 pre-flight showed predicted probabilities are flat across MLC grades (Spearman
+    ρ < 0.1), cancel this ticket — ordinal prediction cannot help when the feature space does not separate potency
+    levels.
+  - LightGBM regression predicting MLC score (0-4) directly instead of binary classification
+  - Handle zero-inflation (79% MLC=0) via appropriate loss or two-stage model
+  - BASEL pairs excluded from ordinal training (binary only, cannot contribute graded signal)
+  - Evaluate with graded nDCG and Spearman rank correlation against MLC ground truth
+  - Compare to binary classification baseline from SX01 — does explicit potency prediction improve nDCG?
+  - If improvement >2pp nDCG, adopt ordinal prediction as default for future tracks
+  - Record results in track_SPANDEX.md
