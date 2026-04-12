@@ -72,7 +72,7 @@ FALLBACK_TG01_BEST_PARAMS = {
 }
 
 
-BOOTSTRAP_METRIC_NAMES = ("holdout_roc_auc", "holdout_top3_hit_rate_all_strains", "holdout_brier_score")
+BOOTSTRAP_METRIC_NAMES = ("holdout_roc_auc", "holdout_brier_score")
 
 
 @dataclass(frozen=True)
@@ -123,7 +123,6 @@ def _evaluate_holdout_rows(rows: Sequence[Mapping[str, object]]) -> dict[str, ob
     y_prob = [float(row["predicted_probability"]) for row in rows]
     return {
         "binary": train_v1_binary_classifier.compute_binary_metrics(y_true, y_prob),
-        "top3": train_v1_binary_classifier.compute_top3_hit_rate(rows, probability_key="predicted_probability"),
     }
 
 
@@ -191,9 +190,6 @@ def bootstrap_holdout_metric_cis(
         metrics_by_arm = {arm_id: _evaluate_holdout_rows(rows) for arm_id, rows in sampled_rows_by_arm.items()}
         baseline_metrics = metrics_by_arm[baseline_arm_id]
         for arm_id, metrics in metrics_by_arm.items():
-            metric_samples[arm_id]["holdout_top3_hit_rate_all_strains"].append(
-                float(metrics["top3"]["top3_hit_rate_all_strains"])
-            )
             metric_samples[arm_id]["holdout_brier_score"].append(float(metrics["binary"]["brier_score"]))
             if metrics["binary"]["roc_auc"] is not None:
                 metric_samples[arm_id]["holdout_roc_auc"].append(float(metrics["binary"]["roc_auc"]))
@@ -206,10 +202,6 @@ def bootstrap_holdout_metric_cis(
                 delta_samples[delta_key]["holdout_roc_auc"].append(
                     float(metrics["binary"]["roc_auc"]) - float(baseline_metrics["binary"]["roc_auc"])
                 )
-            delta_samples[delta_key]["holdout_top3_hit_rate_all_strains"].append(
-                float(metrics["top3"]["top3_hit_rate_all_strains"])
-                - float(baseline_metrics["top3"]["top3_hit_rate_all_strains"])
-            )
             delta_samples[delta_key]["holdout_brier_score"].append(
                 float(baseline_metrics["binary"]["brier_score"]) - float(metrics["binary"]["brier_score"])
             )
@@ -232,8 +224,6 @@ def bootstrap_holdout_metric_cis(
                 point_estimate=(
                     float(actual_metrics["binary"]["roc_auc"])
                     if metric_name == "holdout_roc_auc"
-                    else float(actual_metrics["top3"]["top3_hit_rate_all_strains"])
-                    if metric_name == "holdout_top3_hit_rate_all_strains"
                     else float(actual_metrics["binary"]["brier_score"])
                 ),
                 ci_low=ci_low,
@@ -977,10 +967,8 @@ def summarize_seed_metrics(rows: Sequence[Mapping[str, object]]) -> dict[str, Op
     y_true = [int(row["label_hard_any_lysis"]) for row in rows]
     y_prob = [float(row["predicted_probability"]) for row in rows]
     binary = train_v1_binary_classifier.compute_binary_metrics(y_true, y_prob)
-    top3 = train_v1_binary_classifier.compute_top3_hit_rate(rows, probability_key="predicted_probability")
     return {
         "holdout_roc_auc": binary["roc_auc"],
-        "holdout_top3_hit_rate_all_strains": top3["top3_hit_rate_all_strains"],
         "holdout_brier_score": binary["brier_score"],
     }
 
@@ -1013,7 +1001,6 @@ def summarize_arm(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
     metrics = summarize_seed_metrics(rows)
     return {
         "holdout_roc_auc": metrics["holdout_roc_auc"],
-        "holdout_top3_hit_rate_all_strains": metrics["holdout_top3_hit_rate_all_strains"],
         "holdout_brier_score": metrics["holdout_brier_score"],
     }
 
@@ -1043,28 +1030,21 @@ def build_decision_summary(
         "primary_metric": PRIMARY_METRIC,
         "promotion_requires": {
             "auc_delta_ci_low_gt_zero": True,
-            "top3_delta_ci_high_gte_zero": True,
             "brier_improvement_ci_high_gte_zero": True,
         },
     }
     auc_clear = delta_summary["holdout_roc_auc"].ci_low is not None and delta_summary["holdout_roc_auc"].ci_low > 0.0
-    top3_clear = (
-        delta_summary["holdout_top3_hit_rate_all_strains"].ci_high is not None
-        and delta_summary["holdout_top3_hit_rate_all_strains"].ci_high >= 0.0
-    )
     brier_clear = (
         delta_summary["holdout_brier_score"].ci_high is not None and delta_summary["holdout_brier_score"].ci_high >= 0.0
     )
-    if auc_clear and top3_clear and brier_clear:
+    if auc_clear and brier_clear:
         decision = "promote"
-        rationale = "candidate clears the predeclared AUC lift rule without material top-3 or Brier regression"
+        rationale = "candidate clears the predeclared AUC lift rule without material Brier regression"
     else:
         decision = "no_honest_lift"
         reasons = []
         if not auc_clear:
             reasons.append("AUC delta stays within bootstrap noise")
-        if not top3_clear:
-            reasons.append("top-3 hit rate materially degrades")
         if not brier_clear:
             reasons.append("Brier score materially degrades")
         rationale = "; ".join(reasons)

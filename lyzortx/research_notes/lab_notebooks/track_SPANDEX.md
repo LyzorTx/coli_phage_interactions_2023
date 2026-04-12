@@ -82,33 +82,33 @@ Mean predicted P(lysis) by MLC grade in GT03 all_gates_rfe holdout predictions:
 Clear monotonic increase. The binary classifier already implicitly ranks higher-potency phages higher, validating
 graded nDCG as a meaningful metric.
 
-#### SPANDEX baseline (10-fold CV, clean labels, per-phage blending)
+#### SPANDEX baseline (10-fold CV, clean labels, RFE + per-phage blending)
 
 | Metric | Value | 95% CI |
 |--------|-------|--------|
-| nDCG (graded MLC 0-4) | 0.779 | [0.772, 0.796] |
-| mAP (binary >= 1) | 0.714 | [0.696, 0.732] |
-| AUC | 0.871 | [0.858, 0.883] |
+| nDCG (graded MLC 0-4) | 0.779 | [0.771, 0.795] |
+| mAP (binary >= 1) | 0.711 | [0.693, 0.729] |
+| AUC | 0.870 | [0.857, 0.882] |
 | Brier | 0.125 | [0.119, 0.131] |
 
-Per-fold variation:
+Per-fold variation (RFE selects 207-257 features from 507 per fold):
 
 | Fold | Bacteria | nDCG | mAP | AUC | Brier |
 |------|----------|------|-----|-----|-------|
-| 0 | 38 | 0.771 | 0.691 | 0.882 | 0.118 |
-| 1 | 43 | 0.756 | 0.666 | 0.884 | 0.121 |
-| 2 | 42 | 0.835 | 0.786 | 0.888 | 0.113 |
-| 3 | 39 | 0.768 | 0.731 | 0.856 | 0.129 |
-| 4 | 41 | 0.783 | 0.717 | 0.858 | 0.134 |
-| 5 | 37 | 0.766 | 0.711 | 0.880 | 0.126 |
-| 6 | 35 | 0.802 | 0.744 | 0.886 | 0.116 |
-| 7 | 31 | 0.809 | 0.760 | 0.847 | 0.142 |
-| 8 | 26 | 0.719 | 0.641 | 0.890 | 0.116 |
-| 9 | 37 | 0.768 | 0.678 | 0.861 | 0.131 |
+| 0 | 38 | 0.766 | 0.683 | 0.880 | 0.119 |
+| 1 | 43 | 0.765 | 0.673 | 0.884 | 0.121 |
+| 2 | 42 | 0.833 | 0.782 | 0.888 | 0.113 |
+| 3 | 39 | 0.770 | 0.731 | 0.856 | 0.131 |
+| 4 | 41 | 0.786 | 0.719 | 0.857 | 0.134 |
+| 5 | 37 | 0.759 | 0.708 | 0.877 | 0.126 |
+| 6 | 35 | 0.808 | 0.745 | 0.885 | 0.116 |
+| 7 | 31 | 0.812 | 0.759 | 0.848 | 0.142 |
+| 8 | 26 | 0.718 | 0.641 | 0.890 | 0.116 |
+| 9 | 37 | 0.754 | 0.659 | 0.861 | 0.130 |
 
 #### Interpretation
 
-The AUC of 0.871 is substantially higher than the old ST03 fixed-holdout result (0.823). This is not a model
+The AUC of 0.870 is substantially higher than the old ST03 fixed-holdout result (0.823). This is not a model
 improvement — it reflects two evaluation changes: (1) 10-fold CV uses all bacteria for evaluation instead of 65
 fixed ones, giving a more representative estimate, and (2) clean labels exclude ~3,462 ambiguous pairs that were
 mislabeled as negatives. The model and features are identical to GT03 + AX02.

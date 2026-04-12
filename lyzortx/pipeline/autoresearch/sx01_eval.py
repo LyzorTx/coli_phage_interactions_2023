@@ -157,22 +157,107 @@ def train_and_predict_fold(
     seed: int,
     device_type: str,
 ) -> list[dict[str, object]]:
-    """Train on training_frame, predict on holdout_frame. Returns prediction rows."""
-    from lyzortx.pipeline.autoresearch.candidate_replay import build_candidate_holdout_rows
-
-    rows = build_candidate_holdout_rows(
-        candidate_module=candidate_module,
-        context=context,
-        holdout_frame=holdout_frame,
-        seed=seed,
-        device_type=device_type,
-        include_host_defense=True,
-        include_pairwise_depo_capsule=True,
-        include_pairwise_receptor_omp=True,
-        variant="per-phage-blend",
-        blend_alpha=0.5,
-        training_frame_override=training_frame,
+    """Train with RFE + per-phage blending, predict on holdout_frame."""
+    from lyzortx.autoresearch.per_phage_model import fit_per_phage_models, predict_per_phage
+    from lyzortx.pipeline.autoresearch.candidate_replay import temporary_module_attribute
+    from lyzortx.pipeline.autoresearch.derive_pairwise_depo_capsule_features import (
+        compute_pairwise_depo_capsule_features,
     )
+    from lyzortx.pipeline.autoresearch.derive_pairwise_receptor_omp_features import (
+        compute_pairwise_receptor_omp_features,
+    )
+    from lyzortx.pipeline.autoresearch.gt03_eval import apply_rfe
+
+    # Build entity feature tables.
+    host_slots = ["host_surface", "host_typing", "host_stats", "host_defense"]
+    phage_slots = ["phage_projection", "phage_stats"]
+
+    host_table = candidate_module.build_entity_feature_table(
+        context.slot_artifacts, slot_names=host_slots, entity_key="bacteria"
+    )
+    phage_table = candidate_module.build_entity_feature_table(
+        context.slot_artifacts, slot_names=phage_slots, entity_key="phage"
+    )
+    host_typed, _, host_categorical = candidate_module.type_entity_features(host_table, "bacteria")
+    phage_typed, _, phage_categorical = candidate_module.type_entity_features(phage_table, "phage")
+
+    # Build design matrices.
+    train_design = candidate_module.build_raw_pair_design_matrix(
+        training_frame, host_features=host_typed, phage_features=phage_typed
+    )
+    holdout_design = candidate_module.build_raw_pair_design_matrix(
+        holdout_frame, host_features=host_typed, phage_features=phage_typed
+    )
+
+    # Add pairwise cross-terms.
+    compute_pairwise_depo_capsule_features(train_design)
+    compute_pairwise_depo_capsule_features(holdout_design)
+    compute_pairwise_receptor_omp_features(train_design)
+    compute_pairwise_receptor_omp_features(holdout_design)
+
+    # Identify feature columns.
+    prefixes = tuple(f"{s}__" for s in host_slots + phage_slots) + (
+        "pair_depo_capsule__",
+        "pair_receptor_omp__",
+    )
+    feature_columns = [col for col in train_design.columns if col.startswith(prefixes)]
+    categorical_columns = [col for col in (host_categorical + phage_categorical) if col in feature_columns]
+
+    # Apply RFE.
+    y_train = train_design["label_any_lysis"].astype(int).to_numpy(dtype=int)
+    rfe_features = apply_rfe(train_design, feature_columns, categorical_columns, y_train, seed=42)
+    rfe_categorical = [c for c in categorical_columns if c in rfe_features]
+    sample_weight = train_design["training_weight_v3"].astype(float).to_numpy(dtype=float)
+
+    LOGGER.info(
+        "Fold training: %d features after RFE (from %d), %d train, %d holdout",
+        len(rfe_features),
+        len(feature_columns),
+        len(train_design),
+        len(holdout_design),
+    )
+
+    # Train all-pairs model.
+    with temporary_module_attribute(candidate_module, "PAIR_SCORER_RANDOM_STATE", seed):
+        estimator = candidate_module.build_pair_scorer(device_type=device_type)
+    estimator.fit(
+        train_design[rfe_features],
+        y_train,
+        sample_weight=sample_weight,
+        categorical_feature=rfe_categorical,
+    )
+    all_pairs_predictions = estimator.predict_proba(holdout_design[rfe_features])[:, 1]
+
+    # Per-phage blending.
+    host_feature_columns = [
+        col
+        for col in rfe_features
+        if col.startswith(("host_surface__", "host_typing__", "host_stats__", "host_defense__"))
+    ]
+    per_phage_models = fit_per_phage_models(
+        train_design, host_feature_columns, device_type=device_type, random_state=seed
+    )
+    predictions, _ = predict_per_phage(
+        per_phage_models, holdout_design, host_feature_columns, all_pairs_predictions, blend_alpha=0.5
+    )
+
+    # Build result rows.
+    rows = []
+    for row, probability in zip(
+        holdout_design.loc[:, ["pair_id", "bacteria", "phage", "label_any_lysis"]].to_dict(orient="records"),
+        predictions,
+    ):
+        rows.append(
+            {
+                "arm_id": "spandex_baseline",
+                "seed": seed,
+                "pair_id": str(row["pair_id"]),
+                "bacteria": str(row["bacteria"]),
+                "phage": str(row["phage"]),
+                "label_hard_any_lysis": int(row["label_any_lysis"]),
+                "predicted_probability": safe_round(float(probability)),
+            }
+        )
     return rows
 
 
