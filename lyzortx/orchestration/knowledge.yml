@@ -1,4 +1,4 @@
-last_consolidated: "2026-04-12T23:00:00+02:00"
+last_consolidated: "2026-04-13T01:40:00+02:00"
 source_dir: lyzortx/research_notes/lab_notebooks
 
 themes:
@@ -448,6 +448,22 @@ themes:
           evaluation when BASEL bacteria overlap with different folds.
         relates_to: [st03-canonical-benchmark, split-contract, top3-metric-retired]
 
+      - id: new-phage-generalization
+        statement: >
+          The model generalizes moderately to unseen BASEL phages (AUC 0.72, nDCG 0.65)
+          trained only on Guelin panel data — well above chance but below within-panel
+          performance (AUC 0.87). Host-side features transfer; phage-specific features
+          (zero-filled projection/PLM for BASEL) cap ranking quality.
+        sources: [SX03]
+        status: active
+        confidence: validated
+        context: >
+          BASEL phage features were zero-filled for phage_projection (no TL17 BLAST DB)
+          and PLM PCA. Only phage_stats (GC, genome length) and depo cross-terms provided
+          non-zero phage differentiation. Computing proper RBP family features for BASEL
+          phages would likely close part of the AUC gap.
+        relates_to: [deployment-goal, per-phage-not-deployable, basel-binary-only]
+
   # ── DEPLOYMENT ─────────────────────────────────────────────────────────────
   - key: deployment
     title: Deployment & Train/Inference Parity
@@ -494,17 +510,31 @@ themes:
         statement: >
           VHRdb, BASEL, KlebPhaCol, and GPB external interaction datasets showed neutral
           cumulative lift over the internal-only baseline; adding them did not improve predictions.
-        sources: [TK01, TK02, TK03, TI09]
+        sources: [TK01, TK02, TK03, TI09, SX03]
         status: dead-end
         confidence: validated
         context: >
-          Caveat: TK02 BASEL integration was invalidated — zero BASEL rows actually joined
-          into training because features were never computed for BASEL phages. The "neutral"
-          result tested nothing. Track SPANDEX (SX02-SX03) is the first proper BASEL
-          integration attempt with full feature computation. KlebPhaCol is organism-mismatch
-          (Klebsiella, not E. coli). VHRdb had no joinable training rows in the production
-          fixture.
-        relates_to: [basel-binary-only, genophi-data-identical]
+          TK02 was invalidated (zero joined rows). SX03 is the first proper BASEL test with
+          full feature computation (Pharokka + DepoScope on 52 genomes): Arm B (our data +
+          BASEL training) gave nDCG +0.3pp with overlapping CIs vs baseline — confirmed
+          neutral. 1,240 BASEL pairs (3.8% of training) is too small to move the needle.
+        relates_to: [basel-binary-only, genophi-data-identical, new-phage-generalization]
+
+      - id: ordinal-regression-not-better
+        statement: >
+          LightGBM regression predicting MLC 0-4 potency does not improve over binary
+          classification: nDCG +0.4pp (CIs overlap) but mAP -3.1pp and AUC -3.9pp. Binary
+          classification already separates potency grades (Spearman 0.24 among positives).
+        sources: [SX04]
+        status: dead-end
+        confidence: validated
+        context: >
+          79% zero-inflation (MLC=0) dilutes regression capacity for lysis/no-lysis
+          discrimination. The binary model implicitly captures potency information — MLC=4
+          pairs get P(lysis)=0.82 vs MLC=1 at P(lysis)=0.61. No explicit zero-inflation
+          handling (Tweedie, hurdle model) was tested; vanilla regression was sufficient to
+          reject the approach since the +0.4pp nDCG gain is well below the 2pp threshold.
+        relates_to: [mlc-dilution-potency, top3-metric-retired]
 
       - id: label-derived-features-leaky
         statement: >
