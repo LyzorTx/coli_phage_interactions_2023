@@ -157,24 +157,102 @@ def compute_phage_stats(phage_names: list[str]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def build_depo_cluster_features(depo_predictions: pd.DataFrame) -> pd.DataFrame:
-    """Build depolymerase cluster membership features matching Guelin slot schema.
+def build_combined_deposcope_files(depo_predictions: pd.DataFrame) -> dict[str, int]:
+    """Combine Guelin + BASEL DepoScope predictions into unified files.
 
-    Uses the existing Guelin depolymerase cluster assignments to maintain
-    consistent cluster IDs across panels.
+    The pairwise cross-term code (derive_pairwise_depo_capsule_features.py)
+    reads from .scratch/deposcope/predictions.csv. We create a combined file
+    so cross-terms work for both Guelin and BASEL phages at training time.
+
+    Returns per-phage depo counts for BASEL phages.
     """
-    # Full cluster assignment would require BLASTing BASEL depo sequences against
-    # Guelin cluster representatives. For now, return per-phage depo counts —
-    # the depo×capsule cross-terms use has_depo and depo_count as key signals.
-    LOGGER.info("Building depolymerase feature rows for BASEL phages (count + has_depo)")
+    guelin_preds_path = Path(".scratch/deposcope/predictions.csv")
+    combined_dir = Path(".scratch/deposcope_combined")
+    combined_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build per-phage depo summary from DepoScope predictions.
+    # Combine predictions.
+    guelin_preds = pd.read_csv(guelin_preds_path)
+    combined_preds = pd.concat([guelin_preds, depo_predictions], ignore_index=True)
+    combined_preds.to_csv(combined_dir / "predictions.csv", index=False)
+    LOGGER.info(
+        "Combined DepoScope predictions: %d Guelin + %d BASEL = %d total",
+        len(guelin_preds),
+        len(depo_predictions),
+        len(combined_preds),
+    )
+
+    # Copy cluster file (BASEL depos don't have cluster assignments yet —
+    # cross-terms will use has_depo and depo_count for BASEL phages).
+    guelin_clusters_path = Path(".scratch/deposcope/depo_clusters_cluster.tsv")
+    if guelin_clusters_path.exists():
+        import shutil
+
+        shutil.copy2(guelin_clusters_path, combined_dir / "depo_clusters_cluster.tsv")
+
+    # Per-phage depo counts for BASEL.
     basel_depos = (
         depo_predictions[depo_predictions["is_depolymerase"]].copy() if len(depo_predictions) > 0 else pd.DataFrame()
     )
     phage_depo_counts = basel_depos.groupby("phage").size().to_dict() if len(basel_depos) > 0 else {}
-
     return phage_depo_counts
+
+
+def compute_rbp_struct_features(phage_names: list[str]) -> pd.DataFrame:
+    """Compute phage_rbp_struct features for BASEL phages.
+
+    Sets has_annotated_rbp and rbp_count from Pharokka merged output.
+    PLM PCA features are zero-filled (would need ProstT5+SaProt inference).
+    """
+    rows = []
+    for name in phage_names:
+        outdir = PHAROKKA_OUTPUT_DIR / name
+        tsv_files = list(outdir.glob("*_cds_final_merged_output.tsv"))
+        rbp_count = 0
+        if tsv_files:
+            import csv
+
+            with open(tsv_files[0], encoding="utf-8") as f:
+                reader = csv.DictReader(f, delimiter="\t")
+                for row in reader:
+                    annot = (row.get("annot", "") + " " + row.get("phrog", "")).lower()
+                    if any(kw in annot for kw in ("tail fiber", "tail spike", "receptor binding", "rbp")):
+                        rbp_count += 1
+        rows.append({"phage": name, "rbp_count": rbp_count, "has_annotated_rbp": int(rbp_count > 0)})
+
+    df = pd.DataFrame(rows)
+    LOGGER.info("RBP struct: %d phages, %d with annotated RBPs", len(df), df["has_annotated_rbp"].sum())
+    return df
+
+
+def verify_feature_distributions(guelin_df: pd.DataFrame, basel_df: pd.DataFrame, slot_name: str) -> None:
+    """Log CV and unique value counts comparing BASEL vs Guelin features."""
+
+    numeric_cols = [c for c in guelin_df.columns if c != "phage" and guelin_df[c].dtype in ("float64", "int64")]
+    if not numeric_cols:
+        LOGGER.info("  %s: no numeric columns to compare", slot_name)
+        return
+
+    LOGGER.info("Feature distribution verification for %s (%d numeric columns):", slot_name, len(numeric_cols))
+    for col in numeric_cols[:10]:  # Sample first 10 columns.
+        g_vals = guelin_df[col].dropna()
+        b_vals = basel_df[col].dropna() if col in basel_df.columns else pd.Series(dtype=float)
+        g_cv = float(g_vals.std() / g_vals.mean()) if g_vals.mean() != 0 and len(g_vals) > 1 else 0
+        b_cv = float(b_vals.std() / b_vals.mean()) if len(b_vals) > 1 and b_vals.mean() != 0 else 0
+        g_unique = int(g_vals.nunique())
+        b_unique = int(b_vals.nunique()) if len(b_vals) > 0 else 0
+        LOGGER.info("  %s: Guelin CV=%.3f (%d unique), BASEL CV=%.3f (%d unique)", col, g_cv, g_unique, b_cv, b_unique)
+
+    # Overall summary.
+    guelin_nonzero = sum(1 for c in numeric_cols if guelin_df[c].abs().sum() > 0)
+    basel_nonzero = sum(1 for c in numeric_cols if col in basel_df.columns and basel_df[c].abs().sum() > 0)
+    LOGGER.info(
+        "  %s summary: %d/%d columns nonzero in Guelin, %d/%d in BASEL",
+        slot_name,
+        guelin_nonzero,
+        len(numeric_cols),
+        basel_nonzero,
+        len(numeric_cols),
+    )
 
 
 def write_extended_slot(
@@ -224,26 +302,39 @@ def main() -> None:
     stats_df = compute_phage_stats(phage_names)
     LOGGER.info("Phage stats: %d phages, columns: %s", len(stats_df), list(stats_df.columns))
 
-    # Step 4: Build depo features.
-    phage_depo_counts = build_depo_cluster_features(depo_predictions)
+    # Step 4: Build combined DepoScope files for pairwise cross-terms.
+    phage_depo_counts = build_combined_deposcope_files(depo_predictions)
     LOGGER.info(
         "BASEL phages with depolymerases: %d/%d", sum(1 for v in phage_depo_counts.values() if v > 0), len(phage_names)
     )
 
-    # Step 5: Extend slot CSVs.
+    # Step 5: Compute RBP struct features.
+    LOGGER.info("Computing phage_rbp_struct features...")
+    rbp_df = compute_rbp_struct_features(phage_names)
+
+    # Step 6: Extend slot CSVs.
     # phage_stats
     guelin_stats = pd.read_csv(EXISTING_CACHE_DIR / "phage_stats" / "features.csv")
+    verify_feature_distributions(guelin_stats, stats_df, "phage_stats")
     write_extended_slot("phage_stats", guelin_stats, stats_df)
 
     # phage_projection — BASEL phages get zero-filled RBP family features.
-    # Full BLAST-based family assignment would require the TL17 database.
     guelin_proj = pd.read_csv(EXISTING_CACHE_DIR / "phage_projection" / "features.csv")
     basel_proj = pd.DataFrame({"phage": phage_names})
     for col in guelin_proj.columns:
         if col != "phage":
             basel_proj[col] = 0.0
-    # RBP family features are zero-filled — would need TL17 BLAST DB to assign.
+    verify_feature_distributions(guelin_proj, basel_proj, "phage_projection")
     write_extended_slot("phage_projection", guelin_proj, basel_proj)
+
+    # phage_rbp_struct — rbp_count and has_rbp from Pharokka, zero-fill PLM PCA.
+    guelin_rbp = pd.read_csv(EXISTING_CACHE_DIR / "phage_rbp_struct" / "features.csv")
+    # Map BASEL rbp features to slot column names.
+    basel_rbp = pd.DataFrame({"phage": rbp_df["phage"]})
+    basel_rbp["phage_rbp_struct__has_annotated_rbp"] = rbp_df["has_annotated_rbp"]
+    basel_rbp["phage_rbp_struct__rbp_count"] = rbp_df["rbp_count"]
+    verify_feature_distributions(guelin_rbp, basel_rbp, "phage_rbp_struct")
+    write_extended_slot("phage_rbp_struct", guelin_rbp, basel_rbp)
 
     # Summary.
     depo_phages = sum(1 for v in phage_depo_counts.values() if v > 0)
@@ -251,6 +342,9 @@ def main() -> None:
     LOGGER.info("SX02 BASEL Feature Computation Summary")
     LOGGER.info("  Phages annotated: %d", len(phage_names))
     LOGGER.info("  Phages with DepoScope depolymerases: %d/%d", depo_phages, len(phage_names))
+    LOGGER.info("  Phages with annotated RBPs: %d/%d", rbp_df["has_annotated_rbp"].sum(), len(phage_names))
+    LOGGER.info("  Combined DepoScope predictions at: .scratch/deposcope_combined/")
+    LOGGER.info("  Extended slots (3): phage_stats, phage_projection, phage_rbp_struct")
     LOGGER.info("  Extended slots written to: %s", OUTPUT_DIR)
     LOGGER.info("=" * 60)
 
