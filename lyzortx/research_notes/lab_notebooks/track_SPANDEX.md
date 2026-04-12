@@ -59,6 +59,47 @@ phages), and (3) evaluation methodology (top-3 discards ranking information and 
   redundant.
 - **SX04:** Gated on SX01 pre-flight. If binary model doesn't separate MLC grades, ordinal prediction can't help.
 
+### 2026-04-13 00:29 CEST: SX02 — BASEL phage feature computation
+
+#### Executive summary
+
+Ran Pharokka annotation + DepoScope depolymerase prediction on 52 BASEL phage genomes. Pre-flight gate passed:
+genome sizes span 39-170 kb (4.3x ratio, indicating multiple phage families), and 44/52 phages have DepoScope
+depolymerases — our only validated pairwise feature (depo×capsule) will have signal for most BASEL phages.
+Extended phage_stats and phage_projection slots to 148 phages (96 Guelin + 52 BASEL).
+
+#### Pre-flight results
+
+Genome size distribution (proxy for family diversity):
+
+| Size class | Count | Fraction |
+|------------|-------|----------|
+| Small (<50 kb, podoviruses) | 13 | 25% |
+| Medium (50-100 kb, sipho/drexler) | 14 | 27% |
+| Large (>100 kb, myoviruses) | 25 | 48% |
+
+Not dominated by a single family. Diverse panel.
+
+#### DepoScope results
+
+- 8,701 proteins scanned across 52 phages (mean 167 CDS per phage)
+- 80 depolymerases predicted (score >= 0.5)
+- 44/52 phages have at least one depolymerase (85%)
+- 8 phages with zero depolymerases (likely use non-enzymatic adsorption)
+- Runtime: 227s on MPS (Apple Silicon GPU)
+
+#### Extended slot CSVs
+
+| Slot | Guelin | BASEL | Total | Notes |
+|------|--------|-------|-------|-------|
+| phage_stats | 96 | 52 | 148 | GC, length, N50, record count |
+| phage_projection | 96 | 52 | 148 | BASEL rows zero-filled for RBP family features (no TL17 BLAST DB) |
+
+Limitation: phage_projection features for BASEL are zero-filled because the TL17 RBP family BLAST database was
+built from Guelin phages only. BASEL phages would need BLAST against this DB to get non-zero RBP family
+memberships. For SX03 integration, this means BASEL phages will rely on depo×capsule cross-terms and phage_stats
+but not phage_projection RBP family features.
+
 ### 2026-04-12 23:28 CEST: SX01 — Graded evaluation framework + clean-label baseline
 
 #### Executive summary
