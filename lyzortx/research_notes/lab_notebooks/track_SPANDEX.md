@@ -150,6 +150,44 @@ phage_projection features (TL17 RBP BLAST) for BASEL would likely close part of 
 - `lyzortx/generated_outputs/sx03_eval/bootstrap_results.json`
 - `lyzortx/generated_outputs/sx03_eval/preflight_overlap.json`
 
+### 2026-04-13 01:31 CEST: SX04 — Ordinal lysis potency prediction
+
+#### Executive summary
+
+LightGBM regression predicting MLC 0-4 directly instead of binary P(lysis). Ordinal regression slightly improves
+nDCG (+0.4pp) and Spearman correlation with true potency grades (0.30 vs 0.24), but significantly degrades mAP
+(-3.1pp) and AUC (-3.9pp). Does not meet the 2pp nDCG improvement threshold for adoption. Binary classification
+remains the default.
+
+#### Results
+
+| Metric | SX01 Binary | SX04 Ordinal | Delta |
+|--------|-------------|--------------|-------|
+| nDCG | 0.779 [0.771, 0.795] | 0.783 [0.773, 0.799] | +0.4pp (CIs overlap) |
+| mAP | 0.711 [0.693, 0.729] | 0.680 [0.662, 0.697] | -3.1pp |
+| AUC | 0.870 [0.857, 0.882] | 0.831 [0.815, 0.845] | -3.9pp |
+| Brier | 0.125 | 0.143 | -1.8pp |
+| Spearman (MLC, positives) | 0.24 | 0.30 | +0.06 |
+
+#### Interpretation
+
+The ordinal regressor learns the potency ordering slightly better (Spearman 0.30 vs 0.24 among positives, nDCG
++0.4pp) but at the cost of worse binary discrimination. The regression objective spreads model capacity across
+predicting all 5 MLC levels, diluting the primary binary signal. With 79% of pairs at MLC=0, the regressor
+optimizes heavily for the zero-inflation, degrading its ability to separate lysis from non-lysis.
+
+**Caveats:** (1) No explicit zero-inflation handling was applied (e.g., Tweedie loss, hurdle model). Vanilla
+squared-error regression is a sufficient first test since the decision threshold is +2pp nDCG — more sophisticated
+ordinal approaches would add complexity without changing the conclusion. (2) The SX01 binary baseline includes
+per-phage blending; SX04 does not. Part of the AUC/mAP regression is attributable to missing blending, not purely
+the ordinal objective. This doesn't change the adoption decision — even with blending parity, the nDCG gain would
+remain below 2pp.
+
+**Decision:** Binary classification is the better default. The nDCG improvement (+0.4pp) does not meet the 2pp
+threshold and comes at too high a cost to discrimination metrics. The pre-flight finding that binary predictions
+already separate MLC grades (Spearman 0.24) means the binary model captures enough potency information without
+explicit ordinal training.
+
 ### 2026-04-12 23:28 CEST: SX01 — Graded evaluation framework + clean-label baseline
 
 #### Executive summary
