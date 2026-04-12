@@ -4,12 +4,9 @@
 - The README documents the trigger model, actors, and automation lifecycle for all orchestrator and Codex workflows.
 - `ci-duplicate-check.yml` runs pylint `symilar` on PRs and pushes to main to detect duplicate code blocks in
   `lyzortx/`. This is informational only (`continue-on-error: true`) and does not block merges.
-- `claude-pr-review.yml` uses `anthropics/claude-code-action@v1` to auto-review `orchestrator-task`-labeled PRs on
-  open/push, and supports interactive `@claude` mentions on any PR. Requires the `ANTHROPIC_API_KEY` repository secret.
-  Claude posts reviews as `claude[bot]` (the action's own OIDC app identity). After reviewing, it auto-merges on
-  approval or leaves comments for local Claude to address.
-- `codex-implement.yml` and `codex-pr-lifecycle.yml` are disabled. Task implementation and review feedback fixes are
-  handled by local Claude sessions. The workflow files are retained for reference.
+- `claude-pr-review.yml`, `codex-implement.yml`, and `codex-pr-lifecycle.yml` are all disabled. Task implementation,
+  self-review, and feedback fixes are handled by local Claude sessions. PR review is done by a local reviewer subagent
+  (see `lyzortx/orchestration/AGENTS.md` for the self-review protocol). The workflow files are retained for reference.
 - `publish-codex-ci-image.yml` builds and publishes the prebaked GitHub Container Registry image used by CI workflows.
   The image is rebuilt from `.github/ci/Dockerfile` whenever its inputs change on `main`, and it can also be triggered
   manually.

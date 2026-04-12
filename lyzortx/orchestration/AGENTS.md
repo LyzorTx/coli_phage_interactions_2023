@@ -6,19 +6,32 @@
 
 # Implementation Workflow
 
-- `codex-implement.yml` and `codex-pr-lifecycle.yml` are disabled in GitHub Actions. Task implementation and review
-  feedback fixes happen locally (laptop-based Claude sessions), not in CI.
+- `codex-implement.yml`, `codex-pr-lifecycle.yml`, and `claude-pr-review.yml` are all disabled in GitHub Actions. Task
+  implementation, review, and feedback fixes happen locally (laptop-based Claude sessions), not in CI.
 - The orchestrator (`orchestrator.yml`) still runs in CI: it ticks on issue close events and `workflow_dispatch`, marks
   tasks done, and creates new issues.
-- `claude-pr-review.yml` still runs in CI: it auto-reviews orchestrator-task PRs and either approves+merges or posts
-  review comments.
 - Full lifecycle:
   1. Orchestrator tick creates a GitHub issue for the next pending task.
   2. Local Claude implements the task and pushes a PR (`Closes #N`).
-  3. `claude-pr-review.yml` reviews the PR.
-  4. If the review has comments, local Claude reads the feedback, pushes fixes, and requests re-review.
-  5. On approval, `claude-pr-review.yml` enables auto-merge. If auto-merge fails, local Claude merges manually.
+  3. Local Claude spawns a **reviewer subagent** (see below) to self-review the PR.
+  4. If the self-review has findings, local Claude fixes them and re-runs the reviewer.
+  5. When the reviewer approves, local Claude merges the PR.
   6. The merged PR closes the linked issue, which triggers an orchestrator tick to dispatch the next task.
+  7. Local Claude continues to the next task in the track without waiting for human input.
+
+# Self-Review via Subagent
+
+- After pushing a PR, the implementing agent must spawn a **separate reviewer subagent** to review the diff.
+- The reviewer subagent must NOT receive the implementing agent's conversation context — it starts fresh from the diff
+  and acceptance criteria only. This prevents confirmation bias.
+- The reviewer subagent assesses the PR in this priority order (reject on higher-priority issues before looking at
+  lower ones):
+  1. **Acceptance criteria met?** Does the PR implement what the ticket asks for? Are all criteria satisfied with real
+     results (not scaffolding, not zero-row outputs)?
+  2. **Scientific/biological/logical correctness.** Biological plausibility, statistical rigor, honest interpretation.
+     Wrong biology or flawed statistics are worse than ugly code.
+  3. **Code correctness.** Bugs, logic errors, off-by-one, wrong variable usage.
+  4. **Code cleanliness.** Naming, structure, readability. Do NOT nitpick style — ruff handles formatting.
 
 # Knowledge Model Rendering
 
@@ -87,9 +100,7 @@
 
 # PR Lifecycle Feedback Contract
 
-- `codex-pr-lifecycle.yml` is disabled. Review feedback is addressed by local Claude sessions, not CI.
-- `claude-pr-review.yml` decides whether to auto-merge (on approval with zero unresolved threads) or post review
-  comments for local Claude to address.
-- Keep lifecycle feedback detection simple: read visible PR feedback surfaces (top-level PR comments, inline review
-  comments, and non-empty review bodies) and do not reintroduce unresolved-thread counting as the criterion for
-  whether there is work to do.
+- `codex-pr-lifecycle.yml` and `claude-pr-review.yml` are both disabled. Review is handled by the local implementing
+  agent's self-review subagent (see "Self-Review via Subagent" above), followed by human review.
+- The self-review subagent replaces the CI-based Claude Auto Review. It runs locally, costs no CI minutes, and provides
+  faster feedback loops.

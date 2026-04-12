@@ -74,22 +74,14 @@ Detailed coding, testing, scientific review, CI, and orchestration policies live
 - When scope is ambiguous, prefer alignment with the plan unless the user overrides.
 - Use the `/replan` skill when completed work is questioned or assumptions are invalidated.
 
-# Waiting for PR Review
+# Self-Review Before Requesting Human Review
 
-- After pushing a PR, use a background polling loop to get notified when Claude Auto Review completes:
-  ```bash
-  while true; do
-    result=$(gh pr checks <PR_NUMBER> 2>&1)
-    if echo "$result" | grep -q "Claude Auto Review.*pass"; then
-      echo "REVIEW PASSED"; echo "$result"; break
-    elif echo "$result" | grep -q "Claude Auto Review.*fail"; then
-      echo "REVIEW FAILED — has feedback"; echo "$result"; break
-    fi
-    sleep 30
-  done
-  ```
-- Run this with `run_in_background: true`. Do other work while waiting — don't block.
-- On completion, check inline review comments and address any feedback before requesting re-review.
+- After pushing a PR, spawn a **reviewer subagent** to self-review the diff. Do NOT pass your conversation context to
+  the reviewer — it must start fresh from the diff and acceptance criteria only (prevents confirmation bias).
+- The reviewer assesses in priority order: (1) acceptance criteria met, (2) scientific/biological/logical correctness,
+  (3) code correctness, (4) code cleanliness. See `lyzortx/orchestration/AGENTS.md` for full protocol.
+- Fix any findings and re-run the reviewer until clean. When the reviewer approves, merge the PR and continue to the
+  next task in the track.
 
 # PR Creation for Orchestrator Tasks
 
