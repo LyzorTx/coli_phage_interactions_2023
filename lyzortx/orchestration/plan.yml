@@ -1672,7 +1672,7 @@ tracks:
       title: BASEL phage feature computation
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks: []
       acceptance_criteria:
       - 'PRE-FLIGHT GATE: Before running full annotation pipeline, check BASEL phage

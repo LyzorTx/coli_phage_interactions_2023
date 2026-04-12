@@ -1044,7 +1044,7 @@ graph LR
     observation has score='n' and no score='1')
   - Evaluate with new metric suite — this establishes the SPANDEX baseline
   - Record pre-flight results and baseline metrics in track_SPANDEX.md
-- [ ] **SX02** BASEL phage feature computation. Model: `claude-opus-4-6`. CI image profile: `base`.
+- [x] **SX02** BASEL phage feature computation. Model: `claude-opus-4-6`. CI image profile: `base`.
   - PRE-FLIGHT GATE: Before running full annotation pipeline, check BASEL phage taxonomy (family distribution from
     genome headers or NCBI metadata) and genome size distribution. If >80% of BASEL phages are from a single family,
     flag low diversity risk. Check how many BASEL phages have recognizable depolymerases by running DepoScope — if <5
