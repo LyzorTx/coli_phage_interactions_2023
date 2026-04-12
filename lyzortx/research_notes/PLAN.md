@@ -1027,7 +1027,7 @@ graph LR
   landscape: Our panel has graded MLC 0-4 scores (dilution potency). BASEL (52 phages × 25 ECOR bacteria) is binary only
   — their spot test used >10^9 pfu/ml (single concentration), equivalent to our MLC≥1. BASEL lysis maps to relevance=1,
   BASEL no-lysis maps to relevance=0.
-- [ ] **SX01** Graded evaluation framework + clean-label baseline. Model: `claude-opus-4-6`. CI image profile: `base`.
+- [x] **SX01** Graded evaluation framework + clean-label baseline. Model: `claude-opus-4-6`. CI image profile: `base`.
   - PRE-FLIGHT GATE: Using existing GT03 holdout predictions, check whether mean predicted P(lysis) increases
     monotonically across MLC grades 1→2→3→4. If predictions are flat across grades (Spearman ρ < 0.1 between predicted
     prob and MLC grade among positives), graded nDCG collapses to binary mAP — drop graded nDCG and cancel SX04.
