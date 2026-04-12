@@ -1072,7 +1072,7 @@ graph LR
     phages) vs original-only ranking (96 phages) — do BASEL phages steal top ranking slots?
   - Compare all arms with bootstrap CIs
   - Record results, cross-source analysis, and biological interpretation in track_SPANDEX.md
-- [ ] **SX04** Ordinal lysis potency prediction. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on tasks:
+- [x] **SX04** Ordinal lysis potency prediction. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on tasks:
       `SX01`.
   - PRE-FLIGHT GATE (from SX01): If SX01 pre-flight showed predicted probabilities are flat across MLC grades (Spearman
     ρ < 0.1), cancel this ticket — ordinal prediction cannot help when the feature space does not separate potency
