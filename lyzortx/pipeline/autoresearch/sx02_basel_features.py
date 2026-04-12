@@ -244,7 +244,7 @@ def verify_feature_distributions(guelin_df: pd.DataFrame, basel_df: pd.DataFrame
 
     # Overall summary.
     guelin_nonzero = sum(1 for c in numeric_cols if guelin_df[c].abs().sum() > 0)
-    basel_nonzero = sum(1 for c in numeric_cols if col in basel_df.columns and basel_df[c].abs().sum() > 0)
+    basel_nonzero = sum(1 for c in numeric_cols if c in basel_df.columns and basel_df[c].abs().sum() > 0)
     LOGGER.info(
         "  %s summary: %d/%d columns nonzero in Guelin, %d/%d in BASEL",
         slot_name,

@@ -92,13 +92,17 @@ Not dominated by a single family. Diverse panel.
 
 | Slot | Guelin | BASEL | Total | Notes |
 |------|--------|-------|-------|-------|
-| phage_stats | 96 | 52 | 148 | GC, length, N50, record count |
+| phage_stats | 96 | 52 | 148 | GC, length, N50, record count. CV comparable (GC: 0.121 vs 0.125). |
 | phage_projection | 96 | 52 | 148 | BASEL rows zero-filled for RBP family features (no TL17 BLAST DB) |
+| phage_rbp_struct | 96 | 52 | 148 | rbp_count from Pharokka (52/52 have RBPs), PLM PCA zero-filled |
+
+Combined DepoScope predictions written to `.scratch/deposcope_combined/` (18,830 proteins: 10,129 Guelin + 8,701
+BASEL). SX03 must pass `deposcope_dir=Path(".scratch/deposcope_combined")` to
+`compute_pairwise_depo_capsule_features()` for cross-terms to include BASEL phages.
 
 Limitation: phage_projection features for BASEL are zero-filled because the TL17 RBP family BLAST database was
-built from Guelin phages only. BASEL phages would need BLAST against this DB to get non-zero RBP family
-memberships. For SX03 integration, this means BASEL phages will rely on depo×capsule cross-terms and phage_stats
-but not phage_projection RBP family features.
+built from Guelin phages only. PLM PCA features are also zero-filled (would need ProstT5+SaProt inference).
+For SX03, BASEL phages rely on depo×capsule cross-terms and phage_stats but not phage_projection or PLM.
 
 ### 2026-04-12 23:28 CEST: SX01 — Graded evaluation framework + clean-label baseline
 
