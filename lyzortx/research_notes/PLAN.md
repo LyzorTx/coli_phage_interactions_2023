@@ -1055,7 +1055,7 @@ graph LR
   - Compute pairwise cross-terms (depo×capsule, receptor×OMP) for BASEL phages × all bacteria in the panel
   - Verify feature distributions are non-degenerate (CV, unique value counts) for BASEL phages vs original Guelin phages
   - Record annotation statistics and feature quality in track_SPANDEX.md
-- [ ] **SX03** BASEL data integration + cross-source evaluation. Model: `claude-opus-4-6`. CI image profile: `base`.
+- [x] **SX03** BASEL data integration + cross-source evaluation. Model: `claude-opus-4-6`. CI image profile: `base`.
       Depends on tasks: `SX01`, `SX02`.
   - PRE-FLIGHT GATE: Before training, compute expected marginal contribution of BASEL data — 1,240 new pairs (302
     positive) added to ~32K clean training pairs = 3.8% increase. If BASEL phage features cluster entirely within
