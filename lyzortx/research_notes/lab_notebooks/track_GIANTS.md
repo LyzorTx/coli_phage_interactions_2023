@@ -643,3 +643,25 @@ detectable by presence-absence or HMM-score features.
 **One validated discovery (Gate 1, +1.2pp) and seven null results.** The null results are as informative as the
 positive: they establish that the 0.823 ceiling is not breakable by feature engineering, algorithm choice, or
 representation changes alone — it is bound by the 96-phage panel size and the 65-bacteria holdout resolution.
+
+#### Label quality finding: uninterpretable scores in holdout misses
+
+Raw score analysis reveals that at least 2 of the 6 holdout misses have uninterpretable (`'n'`) scores for the
+model's top-ranked phages — meaning the actual plaque images were ambiguous, not confirmed negatives:
+
+| Bacterium | Model's top FP | Raw score | Image file | Interpretation |
+|-----------|---------------|-----------|------------|----------------|
+| ECOR-69 | DIJ07_P2 (rank 1) | `'n'` in rep3 | 151_rep3.jpg | Ambiguous plaque |
+| ECOR-69 | DIJ07_P1 (rank 2) | `'n'` in rep3 | 151_rep3.jpg | Ambiguous plaque |
+| NILS53 | LF82_P8 (rank 1) | `'n'` in rep2 | 207_rep2.jpg | Ambiguous plaque |
+| NILS53 | 536_P9 (rank 4) | `'n'` in rep2 | 207_rep2.jpg | Ambiguous plaque |
+| NILS53 | LF82_P9 (rank 3) | `'n'` in rep2 | 207_rep2.jpg | Ambiguous plaque |
+| NILS41 | NRG_11A2 | `'n'` in rep2 | 195_rep2.jpg | Ambiguous plaque |
+
+If any of these uninterpretable scores are actually positive, the corresponding bacterium flips from a top-3 miss to
+a hit. For NILS53, the model's #1, #3, and #4 ranked phages all have `'n'` scores — the model may be *correct* and
+the labels wrong. For ECOR-69, the model's #1 and #2 ranked phages have `'n'` scores.
+
+Checking the raw plaque images (Zenodo doi:10.5281/zenodo.10202713) to verify whether these are genuine negatives or
+ambiguous positives. If 2 misses flip to hits, the true top-3 rate would be ~93.8% (matching the per-phage blend),
+fundamentally changing the interpretation of whether the all-pairs model has room for improvement.
