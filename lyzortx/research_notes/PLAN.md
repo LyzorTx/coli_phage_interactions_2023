@@ -1009,7 +1009,7 @@ graph LR
   - Evaluate combined feature set on ST03 holdout with 3 seeds and 1000 bootstrap resamples
   - Compare to GT03 all_gates_rfe baseline (0.823 AUC) with bootstrap CIs
   - Record results and biological interpretation in track_GIANTS.md
-- [~] **GT09** BASEL phage panel expansion. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on tasks:
+- [ ] **GT09** BASEL phage panel expansion. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on tasks:
       `GT07`, `GT08`.
   - Download 56 BASEL phages from Zenodo record 15736582 with their 25 ECOR strain interaction matrix (Gaborieau 2024,
     BASEL completion 2025)

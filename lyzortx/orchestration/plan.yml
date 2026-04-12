@@ -1615,7 +1615,7 @@ tracks:
       - Record results and biological interpretation in track_GIANTS.md
     - id: GT09
       title: BASEL phage panel expansion
-      status: cancelled
+      status: pending
       model: claude-opus-4-6
       ci_image_profile: base
       depends_on_tasks:
