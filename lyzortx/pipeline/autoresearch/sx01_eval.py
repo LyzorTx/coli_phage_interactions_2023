@@ -156,6 +156,7 @@ def train_and_predict_fold(
     holdout_frame: pd.DataFrame,
     seed: int,
     device_type: str,
+    deposcope_dir: Path | None = None,
 ) -> list[dict[str, object]]:
     """Train with RFE + per-phage blending, predict on holdout_frame."""
     from lyzortx.autoresearch.per_phage_model import fit_per_phage_models, predict_per_phage
@@ -190,8 +191,9 @@ def train_and_predict_fold(
     )
 
     # Add pairwise cross-terms.
-    compute_pairwise_depo_capsule_features(train_design)
-    compute_pairwise_depo_capsule_features(holdout_design)
+    depo_kwargs = {"deposcope_dir": deposcope_dir} if deposcope_dir else {}
+    compute_pairwise_depo_capsule_features(train_design, **depo_kwargs)
+    compute_pairwise_depo_capsule_features(holdout_design, **depo_kwargs)
     compute_pairwise_receptor_omp_features(train_design)
     compute_pairwise_receptor_omp_features(holdout_design)
 
