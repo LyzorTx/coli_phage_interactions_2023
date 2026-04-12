@@ -26,8 +26,8 @@ import pandas as pd
 from lyzortx.log_config import setup_logging
 from lyzortx.pipeline.autoresearch import build_contract, prepare_cache, runtime_contract
 from lyzortx.pipeline.steel_thread_v0.steps._io_helpers import read_csv_rows, safe_round
+from lyzortx.pipeline.track_c.steps.build_v1_host_feature_pair_table import DEFENSE_DERIVED_COLUMNS
 from lyzortx.pipeline.track_g.steps import train_v1_binary_classifier
-from lyzortx.pipeline.track_g.steps.run_feature_block_ablation_suite import partition_track_c_columns
 
 LOGGER = logging.getLogger(__name__)
 
@@ -110,7 +110,9 @@ def partition_track_c_defense_columns(track_c_columns: Sequence[str]) -> tuple[s
     partitioned = train_v1_binary_classifier.deduplicate_preserving_order(track_c_columns)
     if not partitioned:
         raise ValueError("Track C feature table has no columns.")
-    defense_columns = partition_track_c_columns(partitioned)["defense_subtypes"]
+    defense_columns = [
+        col for col in partitioned if col.startswith("host_defense_subtype_") or col in DEFENSE_DERIVED_COLUMNS
+    ]
     if not defense_columns:
         raise ValueError("No defense subtype columns were found in Track C features.")
     return tuple(defense_columns)
@@ -324,21 +326,6 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--include-host-defense",
         action="store_true",
         help="Replay the optional host_defense block on top of the imported train.py baseline.",
-    )
-    replicate_parser.add_argument(
-        "--include-phage-rbp-struct",
-        action="store_true",
-        help="Add phage_rbp_struct slot (RBP protein descriptors, AX01).",
-    )
-    replicate_parser.add_argument(
-        "--include-phage-functional",
-        action="store_true",
-        help="Add phage_functional slot (PHROG categories, AX04).",
-    )
-    replicate_parser.add_argument(
-        "--include-pairwise-rbp-receptor",
-        action="store_true",
-        help="Add pairwise RBP × receptor cross-terms (AX03). Requires --include-phage-rbp-struct.",
     )
     replicate_parser.add_argument(
         "--include-pairwise-depo-capsule",
@@ -624,9 +611,6 @@ def build_candidate_holdout_rows(
     seed: int,
     device_type: str,
     include_host_defense: bool,
-    include_phage_rbp_struct: bool = False,
-    include_phage_functional: bool = False,
-    include_pairwise_rbp_receptor: bool = False,
     include_pairwise_depo_capsule: bool = False,
     include_pairwise_receptor_omp: bool = False,
     variant: str = "all-pairs",
@@ -638,10 +622,6 @@ def build_candidate_holdout_rows(
     if include_host_defense:
         host_slots.append("host_defense")
     phage_slots = ["phage_projection", "phage_stats"]
-    if include_phage_rbp_struct:
-        phage_slots.append("phage_rbp_struct")
-    if include_phage_functional:
-        phage_slots.append("phage_functional")
 
     host_table = candidate_module.build_entity_feature_table(
         context.slot_artifacts,
@@ -667,15 +647,6 @@ def build_candidate_holdout_rows(
         holdout_frame, host_features=host_typed, phage_features=phage_typed
     )
 
-    # Pairwise RBP × receptor cross-terms (AX03).
-    if include_pairwise_rbp_receptor:
-        from lyzortx.pipeline.autoresearch.derive_pairwise_rbp_receptor_features import (
-            compute_pairwise_rbp_receptor_features,
-        )
-
-        compute_pairwise_rbp_receptor_features(train_design)
-        compute_pairwise_rbp_receptor_features(holdout_design)
-
     # Pairwise depolymerase × capsule cross-terms (GT01).
     if include_pairwise_depo_capsule:
         from lyzortx.pipeline.autoresearch.derive_pairwise_depo_capsule_features import (
@@ -694,12 +665,8 @@ def build_candidate_holdout_rows(
         compute_pairwise_receptor_omp_features(train_design)
         compute_pairwise_receptor_omp_features(holdout_design)
 
-    # Build prefix list from the slots we actually assembled, not from the candidate module.
-    # Old candidates may lack prefixes for newer slots (phage_rbp_struct, phage_functional).
     all_slot_names = host_slots + phage_slots
     replay_prefixes = tuple(f"{s}__" for s in all_slot_names)
-    if include_pairwise_rbp_receptor:
-        replay_prefixes = (*replay_prefixes, "pair_rbp_receptor__")
     if include_pairwise_depo_capsule:
         replay_prefixes = (*replay_prefixes, "pair_depo_capsule__")
     if include_pairwise_receptor_omp:
@@ -1133,20 +1100,6 @@ def replicate_candidate(args: argparse.Namespace) -> Path:
         include_host_defense=args.include_host_defense,
     )
 
-    # Load APEX phage slots that the candidate module doesn't know about.
-    for apex_slot, apex_flag in [
-        ("phage_rbp_struct", getattr(args, "include_phage_rbp_struct", False)),
-        ("phage_functional", getattr(args, "include_phage_functional", False)),
-    ]:
-        if apex_flag and apex_slot not in context.slot_artifacts:
-            context.slot_artifacts[apex_slot] = candidate_module.load_slot_artifact(
-                cache_dir=cache_dir,
-                schema_manifest=context.schema_manifest,
-                cache_manifest=context.cache_manifest,
-                slot_name=apex_slot,
-                require_materialized_features=True,
-            )
-
     use_st03 = getattr(args, "use_st03_split", False)
     if use_st03:
         holdout_frame = load_st03_holdout_frame()
@@ -1167,9 +1120,6 @@ def replicate_candidate(args: argparse.Namespace) -> Path:
             seed=seed,
             device_type=args.device_type,
             include_host_defense=args.include_host_defense,
-            include_phage_rbp_struct=getattr(args, "include_phage_rbp_struct", False),
-            include_phage_functional=getattr(args, "include_phage_functional", False),
-            include_pairwise_rbp_receptor=getattr(args, "include_pairwise_rbp_receptor", False),
             include_pairwise_depo_capsule=getattr(args, "include_pairwise_depo_capsule", False),
             include_pairwise_receptor_omp=getattr(args, "include_pairwise_receptor_omp", False),
             variant=getattr(args, "variant", "all-pairs"),
@@ -1247,9 +1197,6 @@ def replicate_candidate(args: argparse.Namespace) -> Path:
             "replication_seeds": list(args.replication_seeds),
             "device_type": args.device_type,
             "include_host_defense": args.include_host_defense,
-            "include_phage_rbp_struct": getattr(args, "include_phage_rbp_struct", False),
-            "include_phage_functional": getattr(args, "include_phage_functional", False),
-            "include_pairwise_rbp_receptor": getattr(args, "include_pairwise_rbp_receptor", False),
             "include_pairwise_depo_capsule": getattr(args, "include_pairwise_depo_capsule", False),
             "include_pairwise_receptor_omp": getattr(args, "include_pairwise_receptor_omp", False),
             "variant": getattr(args, "variant", "all-pairs"),

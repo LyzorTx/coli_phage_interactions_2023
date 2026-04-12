@@ -28,7 +28,6 @@ from lyzortx.pipeline.steel_thread_v0.steps.st04_train_baselines import (
 from lyzortx.pipeline.track_c.steps.build_v1_host_feature_pair_table import EXTENDED_CATEGORICAL_COLUMNS
 from lyzortx.pipeline.track_c.steps import build_v1_host_feature_pair_table
 from lyzortx.pipeline.track_d import run_track_d
-from lyzortx.pipeline.track_e import run_track_e
 from lyzortx.pipeline.steel_thread_v0.steps import (
     st01_label_policy,
     st01b_confidence_tiers,
@@ -554,7 +553,9 @@ def ensure_prerequisite_outputs(args: argparse.Namespace) -> None:
     if not args.track_d_genome_kmer_path.exists() or not args.track_d_distance_path.exists():
         run_track_d.main(["--step", "all"])
     if not args.track_e_rbp_compatibility_path.exists() or not args.track_e_isolation_distance_path.exists():
-        run_track_e.main(["--step", "all"])
+        raise FileNotFoundError(
+            "Track E feature artifacts missing. Track E is a dead-ended track and cannot be rebuilt automatically."
+        )
 
 
 def make_lightgbm_estimator(params: Mapping[str, object], seed_offset: int, *, base_random_state: int) -> Any:

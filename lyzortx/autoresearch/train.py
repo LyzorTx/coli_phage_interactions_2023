@@ -29,10 +29,6 @@ from lyzortx.autoresearch.per_phage_model import (
     predict_per_phage,
 )
 from lyzortx.log_config import setup_logging
-from lyzortx.pipeline.autoresearch.derive_pairwise_rbp_receptor_features import (
-    PAIRWISE_PREFIX,
-    compute_pairwise_rbp_receptor_features,
-)
 from lyzortx.pipeline.autoresearch.runtime_contract import (
     CACHE_CONTRACT_ID,
     CACHE_MANIFEST_FILENAME,
@@ -79,11 +75,9 @@ REQUIRED_BASELINE_SLOTS = (
     "phage_projection",
     "phage_stats",
 )
-OPTIONAL_ADDITIVE_ABLATION_SLOTS = ("host_defense", "phage_rbp_struct", "phage_functional")
+OPTIONAL_ADDITIVE_ABLATION_SLOTS = ("host_defense",)
 
 SLOT_PREFIXES = tuple(f"{slot}__" for slot in (*REQUIRED_BASELINE_SLOTS, *OPTIONAL_ADDITIVE_ABLATION_SLOTS))
-# Pairwise features are not entity-level slots — they use their own prefix.
-ALL_FEATURE_PREFIXES = (*SLOT_PREFIXES, PAIRWISE_PREFIX)
 
 
 @dataclass(frozen=True)
@@ -129,24 +123,6 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--include-host-defense",
         action="store_true",
         help="Add the reserved host_defense block as an additive ablation on top of the adsorption-first baseline.",
-    )
-    parser.add_argument(
-        "--include-phage-rbp-struct",
-        action="store_true",
-        help="Add the phage_rbp_struct slot (RBP protein descriptors) as an additive ablation.",
-    )
-    parser.add_argument(
-        "--include-phage-functional",
-        action="store_true",
-        help="Add the phage_functional slot (PHROG categories, anti-defense, depolymerase) as an additive ablation.",
-    )
-    parser.add_argument(
-        "--include-pairwise-rbp-receptor",
-        action="store_true",
-        help=(
-            "Add label-free pairwise RBP × receptor cross-term features (AX03). "
-            "Requires --include-phage-rbp-struct to provide phage RBP features."
-        ),
     )
     parser.add_argument(
         "--variant",
@@ -332,8 +308,6 @@ def load_and_validate_cache(
     *,
     cache_dir: Path = DEFAULT_CACHE_DIR,
     include_host_defense: bool = False,
-    include_phage_rbp_struct: bool = False,
-    include_phage_functional: bool = False,
 ) -> CacheContext:
     cache_manifest, schema_manifest, provenance_manifest = validate_cache_manifest(cache_dir)
 
@@ -362,10 +336,6 @@ def load_and_validate_cache(
     selected_slots = list(REQUIRED_BASELINE_SLOTS)
     if include_host_defense:
         selected_slots.append("host_defense")
-    if include_phage_rbp_struct:
-        selected_slots.append("phage_rbp_struct")
-    if include_phage_functional:
-        selected_slots.append("phage_functional")
     slot_artifacts = {
         slot_name: load_slot_artifact(
             cache_dir=cache_dir,
@@ -535,9 +505,6 @@ def run_baseline(
     context: CacheContext,
     device_type: str,
     include_host_defense: bool,
-    include_phage_rbp_struct: bool = False,
-    include_phage_functional: bool = False,
-    include_pairwise_rbp_receptor: bool = False,
     variant: str = "all-pairs",
     blend_alpha: float = DEFAULT_BLEND_ALPHA,
     calibrate: str = "none",
@@ -549,10 +516,6 @@ def run_baseline(
     if include_host_defense:
         host_slots.append("host_defense")
     phage_slots = ["phage_projection", "phage_stats"]
-    if include_phage_rbp_struct:
-        phage_slots.append("phage_rbp_struct")
-    if include_phage_functional:
-        phage_slots.append("phage_functional")
 
     host_table = build_entity_feature_table(context.slot_artifacts, slot_names=host_slots, entity_key="bacteria")
     phage_table = build_entity_feature_table(context.slot_artifacts, slot_names=phage_slots, entity_key="phage")
@@ -570,13 +533,7 @@ def run_baseline(
         inner_val_pairs, host_features=host_typed, phage_features=phage_typed
     )
 
-    # Pairwise RBP × receptor cross-terms (AX03): computed from entity-level features already in the design matrix.
-    pairwise_columns: list[str] = []
-    if include_pairwise_rbp_receptor:
-        pairwise_columns = compute_pairwise_rbp_receptor_features(train_design)
-        compute_pairwise_rbp_receptor_features(inner_val_design)
-
-    feature_columns = [col for col in train_design.columns if col.startswith(ALL_FEATURE_PREFIXES)]
+    feature_columns = [col for col in train_design.columns if col.startswith(SLOT_PREFIXES)]
     if not feature_columns:
         raise ValueError("AUTORESEARCH baseline constructed zero pair features.")
 
@@ -681,8 +638,6 @@ def run_baseline(
             "type": "raw_slot_features",
             "host_slots": host_slots,
             "phage_slots": phage_slots,
-            "pairwise_rbp_receptor_active": include_pairwise_rbp_receptor,
-            "pairwise_feature_count": len(pairwise_columns),
             "numeric_columns": numeric_feature_columns,
             "categorical_columns": categorical_feature_columns,
             "total_feature_count": len(feature_columns),
@@ -724,16 +679,11 @@ def run_baseline(
 def main(argv: Optional[Sequence[str]] = None) -> int:
     setup_logging()
     args = parse_args(argv)
-    if args.include_pairwise_rbp_receptor and not args.include_phage_rbp_struct:
-        LOGGER.error("--include-pairwise-rbp-receptor requires --include-phage-rbp-struct")
-        return 1
     start_time = time.monotonic()
 
     context = load_and_validate_cache(
         cache_dir=args.cache_dir,
         include_host_defense=args.include_host_defense,
-        include_phage_rbp_struct=args.include_phage_rbp_struct,
-        include_phage_functional=args.include_phage_functional,
     )
     validate_no_holdout_leakage(context.cache_dir)
     validate_split_membership(context)
@@ -742,16 +692,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     active_optional = []
     if args.include_host_defense:
         active_optional.append("host_defense")
-    if args.include_phage_rbp_struct:
-        active_optional.append("phage_rbp_struct")
-    if args.include_phage_functional:
-        active_optional.append("phage_functional")
     LOGGER.info(
         "Baseline feature slots: %s",
         ", ".join(REQUIRED_BASELINE_SLOTS + tuple(active_optional)),
     )
-    if args.include_pairwise_rbp_receptor:
-        LOGGER.info("Pairwise RBP × receptor features: ENABLED (AX03)")
     LOGGER.info("Reserved-but-ignored baseline ablations: %s", ", ".join(OPTIONAL_ADDITIVE_ABLATION_SLOTS))
     LOGGER.info("Fixed single-GPU wall-clock budget: %d seconds", FIXED_SINGLE_GPU_WALL_CLOCK_BUDGET_SECONDS)
     LOGGER.info("train.py is the short-loop experiment surface; cache rebuilding belongs in prepare.py.")
@@ -763,9 +707,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         context=context,
         device_type=args.device_type,
         include_host_defense=args.include_host_defense,
-        include_phage_rbp_struct=args.include_phage_rbp_struct,
-        include_phage_functional=args.include_phage_functional,
-        include_pairwise_rbp_receptor=args.include_pairwise_rbp_receptor,
         variant=args.variant,
         blend_alpha=args.blend_alpha,
         calibrate=args.calibrate,
@@ -799,9 +740,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "baseline_contract": {
             "minimum_slots": list(REQUIRED_BASELINE_SLOTS),
             "host_defense_active": args.include_host_defense,
-            "phage_rbp_struct_active": args.include_phage_rbp_struct,
-            "phage_functional_active": args.include_phage_functional,
-            "pairwise_rbp_receptor_active": args.include_pairwise_rbp_receptor,
             "host_defense_role": "reserved_additive_ablation",
             "variant": args.variant,
             "blend_alpha": args.blend_alpha,
