@@ -1719,3 +1719,57 @@ tickets shifted by one. Full technical rationale in track_SPANDEX.md (2026-04-13
 | SX08 | SX09 | Per-functional-class PLM blocks |
 | SX09 | — | Deleted (MLC sensitivity study superseded by SX05) |
 | SX10 | SX10 | Final consolidation (deps updated, MLC axis removed) |
+
+### 2026-04-14 01:37 CEST: SPANDEX wave-2 plan (SX11–SX15)
+
+#### Executive summary
+
+Five new SPANDEX tickets planned for the second wave. Scope was explicitly narrowed down from ~15 candidates to 5
+after walking through the twelve post-SPANDEX shortcomings identified during the closing review: the three
+highest-EV structural attacks plus one consolidation ticket and one evaluation-framework ticket. Vision-based
+label re-reading was cut because prior spot checks already showed poor image quality (see
+`label-vision-reading-spot-checked-dead` knowledge unit). Six other candidate feature families (CRISPR spacers,
+phage anti-defense genes, Kaptive K-typing, phylogroup residualization, within-family HVS detection,
+structure-based tip features) were deferred to keep wave-2 focused.
+
+#### Strategic framing
+
+Wave 1 (SX05–SX10) fixed label semantics (SX05 MLC 0–3) and reclaimed the BASEL zero-fill gap (SX06 real TL17
+features). It left three structural shortcomings untouched:
+
+1. **Binary training target** can't learn potency — the single biggest structural lever I had flagged as
+   unexploited at wave-1 close.
+2. **OMP homogeneity** collapses every receptor × host cross-term we've tried.
+3. **Whole-protein phage features** average over the 5-mer motifs where receptor specificity actually lives.
+
+Wave 2 attacks all three with one ticket each (SX11, SX13, SX12 respectively), plus one for stratified
+evaluation honesty (SX14) and one for unified-evaluation-framework simplification (SX15). Everything else
+recognized as important is tracked in knowledge / open questions but deferred out of wave-2 scope.
+
+#### Ticket lineup (see `track_SPANDEX.md` for full details)
+
+| ID | Topic | Key hypothesis |
+|----|-------|----------------|
+| SX11 | Potency loss-function ablation (hurdle / LambdaRank / ordinal all-threshold) | SX04's null was loss-choice-specific, not a verdict on the concept |
+| SX12 | Moriniere 5-mer phage features (direct) | GT06's intermediate-classifier path discarded signal; direct-feature use is the honest test |
+| SX13 | OMP k-mer host features + SX12 × SX13 cross-term | Mirroring Moriniere onto the host side recovers allelic variation the HMM score averages away |
+| SX14 | Wave-2 consolidation + stratified evaluation | Honest reporting by within-family / cross-family / narrow-host / phylogroup-orphan subsets |
+| SX15 | Unified Guelin+BASEL k-fold framework (bacteria + phage axes) | Replaces the three-arm SX01/SX03 maze with one honest number; tests deployability on genuinely unseen phages |
+
+#### Cuts and why
+
+- **Vision label re-read (was SX12 in an earlier draft):** prior spot checks showed the plaque images are too
+  noisy for a vision model to confidently disambiguate the `n` scores. Dead-end recorded in knowledge.
+- **CRISPR spacer pairwise match, phage anti-defense, Kaptive K-typing, phylogroup residualization:** all
+  scientifically sound, all deferred. If wave-2 leaves the 10.9 pp cross-panel AUC gap intact, these are the
+  first candidates for wave 3.
+- **Two-tower / GNN architectures:** out of scope per wave-1 "keep LightGBM" scope discipline.
+- **Within-family HVS detection, structure-based tip features, reference-DB OMP allele typing:** higher
+  engineering cost for uncertain marginal gain relative to the k-mer approach (SX12 + SX13).
+
+#### Execution plan
+
+- Commit the plan, tick the orchestrator, then implement SX11–SX15 sequentially as PRs with local self-review
+  subagents, same workflow as SX05–SX10.
+- At wave close (after SX15), produce a fundamentals-style science/biology review of results with case-by-case
+  explanations, mirroring the post-SPANDEX wave-1 review format.

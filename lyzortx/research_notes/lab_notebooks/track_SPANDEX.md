@@ -644,3 +644,76 @@ validation on the cross-panel predictions to anchor confidence — neither in SP
   `lyzortx/generated_outputs/sx03_eval/`
 
 These artifacts are the canonical SPANDEX evaluation outputs and the reference point for the next track.
+
+### 2026-04-14 01:37 CEST: SPANDEX wave-2 plan (SX11–SX15)
+
+#### Executive summary
+
+Closing SPANDEX wave-1 surfaced three structural shortcomings in priority order: (1) training target is binary
+`any_lysis`, so the model can't distinguish weak vs strong positives; (2) whole-gene OMP HMM scores are near-constant
+across clinical *E. coli* (`omp-score-homogeneity`), so every receptor × OMP cross-term collapses; (3) phage-side
+features encode whole-protein similarity, while receptor specificity lives in 5-mer motifs at RBP tip regions
+(Moriniere 2026). Wave 2 attacks all three with tight scope: four engineering tickets (SX11–SX14) plus one
+evaluation-framework ticket (SX15) that replaces the three-arm SX01/SX03 reporting with a unified Guelin+BASEL
+k-fold on both bacteria and phage axes. Vision-based re-reading of the `n` labels was explicitly cut — prior spot
+checks already showed it wasn't promising (see `label-vision-reading-spot-checked-dead` knowledge unit).
+
+#### Shortcomings targeted
+
+| Shortcoming | Knowledge unit | Wave-2 ticket |
+|-------------|----------------|---------------|
+| Binary target, no potency learning | `ordinal-regression-not-better` | SX11 |
+| RBP motif representation | `plm-rbp-redundant` | SX12 |
+| OMP homogeneity on host side | `omp-score-homogeneity` | SX13 |
+| Narrow-host prior collapse | `narrow-host-prior-collapse` | SX12 + SX13 indirectly |
+| Three-arm evaluation ambiguity | — | SX15 |
+| Opaque aggregate metrics | — | SX14 stratified layer |
+
+#### Ticket summary
+
+- **SX11 — Potency loss-function ablation.** Tests three alternative losses that respect the zero-inflated ordinal
+  target shape: hurdle (two-stage), LambdaRank, and ordinal all-threshold. SX04's vanilla MLC regression null was
+  loss-choice-specific, not a verdict on the concept.
+- **SX12 — Moriniere 5-mer phage features.** Direct import of the 815 receptor-predictive k-mers from Moriniere
+  Dataset S6 as marginal phage features (GT06 used them only as an intermediate classifier; this tests them
+  directly).
+- **SX13 — OMP k-mer host features + SX12 × SX13 cross-term.** Mirrors the Moriniere trick onto the host side:
+  k-mer profile each host's 12 core OMPs so loop-level allelic variation becomes visible. Cross-term arm activates
+  the phage × host motif interaction.
+- **SX14 — Wave-2 consolidation + stratified evaluation.** Bakes winning arms into a final baseline; reports all
+  metrics decomposed into within-family / cross-family / narrow-host / phylogroup-orphan subsets so we can see
+  where each arm's lift actually came from.
+- **SX15 — Unified k-fold framework.** Replaces SX01/SX03 with a single unified Guelin+BASEL k-fold on both
+  bacteria axis (394 hosts) and phage axis (148 phages). BASEL+ mapped to MLC=2 for nDCG relevance, with
+  sensitivity check under MLC=1 and MLC=3. Acceptance requires wave-2 arm ranking invariant across the three
+  mappings.
+
+#### What wave 2 explicitly doesn't address
+
+By design, the following shortcomings stay on the table:
+
+- Label noise (`ambiguous-label-noise`) — vision re-read was cut; the ~10% ambiguous-`n` floor remains.
+- CRISPR spacer pairwise features, phage anti-defense features, Kaptive K-typing, phylogroup residualization —
+  all genuinely good ideas, all deferred to keep wave-2 scope to the three highest-EV structural attacks.
+- Panel-size ceiling, cross-panel gap beyond whatever SX12+SX13 deliver — panel-bound per `panel-size-ceiling`,
+  not addressable in-silico.
+
+#### Dependency graph
+
+```
+SX11 (potency) ───────────────┐
+SX12 (phage kmers) ───────┐   │
+                          ├──►│
+SX13 (host kmers, cross)──┘   │
+                              ▼
+                         SX14 (consolidation + stratified)
+                              │
+                              ▼
+                         SX15 (unified k-fold framework)
+```
+
+SX11 and SX12 independent. SX13 depends on SX12 for the cross-term arm. SX14 consolidates; SX15 re-evaluates.
+
+#### Next step
+
+Tick the orchestrator and start SX11/SX12 in parallel.

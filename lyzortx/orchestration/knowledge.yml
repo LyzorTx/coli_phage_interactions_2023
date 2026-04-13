@@ -768,6 +768,26 @@ themes:
           would not help because the host side — not the phage side — is the bottleneck.
         relates_to: [omp-score-homogeneity, pairwise-cross-terms-dead-end, receptor-specificity-solved]
 
+      - id: label-vision-reading-spot-checked-dead
+        statement: >
+          Using a vision model to re-read the ambiguous 'n' plaque-image scores (the
+          plate crops backing the ~10% of training rows labeled negative but with
+          uninterpretable raw scores) was evaluated via manual spot checks before
+          2026-04 and did not look promising enough to justify a full re-read
+          pipeline. Do not propose vision-based 'n' resolution as a feature / label
+          fix; the label noise floor is accepted as-is for now.
+        sources: [2026-04 spot checks before SPANDEX wave-2 plan]
+        status: dead-end
+        confidence: validated
+        context: >
+          The underlying ambiguity persists — ~3,462 pairs have score='n' with no
+          interpretable positives and are labeled 0. GT09 showed excluding these
+          pairs alone improves top-3 by +3.1 pp (ambiguous-label-noise). But a
+          vision-driven label correction loop isn't a viable shortcut given the
+          plate image quality. Future tracks should either expand the wet-lab panel
+          or accept the label noise as a fixed ceiling.
+        relates_to: [ambiguous-label-noise, panel-size-ceiling]
+
       - id: plm-rbp-redundant
         statement: >
           ProstT5+SaProt PLM embeddings of RBP sequences (1280-dim, PCA to 32) achieve 33.9%
