@@ -16,21 +16,41 @@ Labeling policy, data quality, split contracts, and training corpus.
   also: raw-interactions-authority]
 - **`raw-interactions-authority`**: raw_interactions.csv is the authoritative training corpus; all derived training
   cohorts and evaluation splits trace back to this file. [validated; source: ST0.2, AR01, DEPLOY01]
-- **`mlc-dilution-potency`**: Our pipeline's MLC scores (0-4) are derived from 4 raw dilutions (log_dilution 0, -1, -2,
-  -4) and disagree with the paper's MLC definition. Our MLC=4 is determined entirely by a single unreplicated
-  observation at 5x10^4 pfu/ml — a dilution the paper explicitly EXCLUDED from MLC because it was not replicated. MLC=3
-  vs MLC=4 in our data is one observation away from being MLC=3 — it is structurally noisy and should be treated as a
-  suspect label class. [validated; source: 2026-04-12 SPANDEX design, Gaborieau 2024 Methods, 2026-04-13 verification;
-  see also: label-policy-binary, raw-interactions-authority, ambiguous-label-noise]
-  - *Paper Methods quote on MLC=4: "The outcome of interaction at 5x10^4 pfu/ml was not taken into account in the
-    calculation of the MLC score because it was not verified by a replicate." Our pipeline's DILUTION_WEIGHT_MAP maps
-    log_dilution=-4 (5x10^4) to MLC=4, contradicting the paper. Verified: MLC=3 and MLC=4 sample pairs differ only in
-    the single -4 observation ('0' vs '1') — all higher-concentration observations are identical. Separately, paper
-    Methods also flag lawn clearing at HIGH phage concentration as potentially non-productive (LFW or abortive
-    infection); this applies most to MLC=1 pairs (lysis only at MOI~10 with no amplification to lower dilutions).
-    Distribution: 79.3% MLC=0, 7.8% MLC=1 (LFW/Abi suspect), 6.0% MLC=2, 3.6% MLC=3 (clean — replicated,
-    low-concentration productive), 3.3% MLC=4 (suspect — single unreplicated observation). Both MLC=1 and MLC=4 warrant
-    sensitivity analysis (SX09).*
+- **`mlc-dilution-potency`**: MLC (minimum lytic concentration) is a derived score, not a raw feature —
+  raw_interactions.csv contains only binary scores (0/1/n) at four tested log_dilutions (0, -1, -2, -4). The paper
+  defines MLC 0-4 over three replicated concentrations (5x10^8, 5x10^7, 5x10^6 pfu/ml) and explicitly excludes the
+  unreplicated 5x10^4 (log_dilution=-4) data. Paper's MLC=3 vs MLC=4 is a morphological distinction at 5x10^6
+  (individual plaques vs entire lawn lysis) that our binary spot data physically cannot capture. SX05 aligns our
+  pipeline with the paper: drop log_dilution=-4 from MLC computation, reducing our MLC range to 0-3. MLC=1 is a standard
+  low-potency interaction — not a problem despite the paper's LFW/Abi caveat on lawn clearing at high phage
+  concentration. [validated; source: Gaborieau 2024 Methods "Evaluating phage-bacteria interaction outcomes by plaque
+  assay experiments", Gaborieau 2024 Fig 2b legend, 2026-04-13 raw CSV verification; see also: label-policy-binary,
+  raw-interactions-authority, ambiguous-label-noise, top3-metric-retired]
+  - *EXACT PAPER QUOTES (Methods, "Evaluating phage-bacteria interaction outcomes by plaque assay experiments" section):
+    - MLC definition: "We encoded each phage-bacteria interaction using the MLC   score, which corresponds to the lowest
+    concentration of the phage at which   a lytic interaction is observed." - What counts as lytic: "We considered an
+    interaction to be lytic when we   observed individual lysis plaques or full clearing at any phage   concentration.
+    Individual lysis plaques ascertain the lysis of the   bacterial population with production of new virions. Clearing
+    of the   bacterial lawn at high phage concentration could result from productive   lysis of the bacterial population
+    by the phage, or from another mechanism   such as lysis from without, or abortive infection." - Guelin MLC range:
+    "The MLC score is null in the case of non-lytic   interaction and ranges from 1 (lytic interaction at the highest
+    phage   titre) to 4 (uncountable number of lysis plaques at 5 x 10^6 pfu/ml)." - Replicate structure: "5 x 10^8
+    pfu/ml (replicates R1, R2 and R3),   5 x 10^7 pfu/ml (replicates R2 and R3), 5 x 10^6 pfu/ml (replicates R1, R2
+    and R3) and 5 x 10^4 pfu/ml (replicate R1)." - Exclusion of 5x10^4: "The outcome of interaction at 5 x 10^4 pfu/ml
+    was   not taken into account in the calculation of the MLC score because it was   not verified by a replicate."
+    EXACT PAPER QUOTE (Fig 2b legend): "0, no lytic interaction was observed; 1, lytic interaction at the highest phage
+    titre (5 x 10^8 pfu/ml); 2, lytic interaction at the middle phage concentration (5 x 10^7 pfu/ml); interactions
+    observed at the lowest phage concentration (5 x 10^6 pfu/ml) are distinguished between 3 (individualized lysis
+    plaque) and 4 (entire lysis of the bacterial lawn)." RAW DATA SHAPE (raw_interactions.csv, verified 2026-04-13):
+    columns are bacteria, phage, image, replicate, plate, log_dilution, X, Y, score. Only binary scores {0, 1, n} and
+    only four log_dilutions {0, -1, -2, -4} — no -3 (5x10^5 was never tested). No plaque-morphology column, so the
+    paper's MLC=3 vs MLC=4 morphological split cannot be reconstructed. EXECUTIVE DECISION (SX05): Drop log_dilution=-4
+    from DILUTION_WEIGHT_MAP, reducing our MLC range to {0, 1, 2, 3}. Pairs whose only positive observation was at -4
+    become MLC=0; pairs previously MLC=4 (which by definition also had lysis at -2) become MLC=3. This aligns with the
+    paper's own protocol and eliminates the ~3.3% of pairs whose MLC=4 was derived from unreplicated data. MLC=1 stays
+    as-is (NOT suspect — standard low-potency interaction; the paper's LFW/Abi caveat is a biological note, not an
+    exclusion criterion). USE: MLC 0-3 provides graded relevance weights for nDCG evaluation (SX01). Training labels
+    remain binary (any_lysis) per label-policy-binary.*
 - **`basel-binary-only`**: BASEL × ECOR interaction data (52 phages × 25 ECOR bacteria from GenoPHI) is confirmed binary
   only — no graded upstream data exists. BASEL used a single high-titer spot test (>10^9 pfu/ml), not a dilution series.
   BASEL EOP data on Zenodo covers K-12 defense experiments only, not the ECOR host range panel. [validated; source:

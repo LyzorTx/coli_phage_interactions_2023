@@ -1084,8 +1084,31 @@ graph LR
   - Compare to binary classification baseline from SX01 — does explicit potency prediction improve nDCG?
   - If improvement >2pp nDCG, adopt ordinal prediction as default for future tracks
   - Record results in track_SPANDEX.md
-- [ ] **SX05** BASEL TL17 phage_projection features + SX03 re-evaluation. Model: `claude-opus-4-6`. CI image profile:
-      `base`. Depends on tasks: `SX02`, `SX03`.
+- [ ] **SX05** Fix MLC mapping — align DILUTION_WEIGHT_MAP with paper protocol. Model: `claude-opus-4-6`. CI image
+      profile: `base`. Depends on tasks: `SX01`.
+  - MOTIVATION: Our pipeline's DILUTION_WEIGHT_MAP = {0: 1, -1: 2, -2: 3, -4: 4} repurposes the unreplicated 5x10^4
+    pfu/ml observation (log_dilution=-4) as MLC=4, contradicting the paper's own protocol. Paper Methods (Gaborieau
+    2024, "Evaluating phage-bacteria interaction outcomes by plaque assay experiments"): "The outcome of interaction at
+    5 x 10^4 pfu/ml was not taken into account in the calculation of the MLC score because it was not verified by a
+    replicate." Additionally, the paper's MLC=4 is a MORPHOLOGICAL distinction ("entire lysis of the bacterial lawn at 5
+    x 10^6") that our binary 0/1/n raw data physically cannot capture. Executive decision: drop log_dilution=-4 from MLC
+    computation, matching paper protocol and eliminating a noisy label class.
+  - Change DILUTION_WEIGHT_MAP in lyzortx/pipeline/track_a/steps/build_track_a_foundation.py from {0: 1, -1: 2, -2: 3,
+    -4: 4} to {0: 1, -1: 2, -2: 3}. Update DILUTION_POTENCY_LABEL_MAP consistently (drop -4: "very_high").
+  - Ensure find_best_dilution_any_lysis and downstream scoring ignore log_dilution=-4 rows entirely (not just the weight
+    lookup). Verify no other code path reads the -4 dilution for scoring.
+  - Regenerate interaction_matrix.csv. Verify: pairs previously MLC=4 become MLC=3 (all MLC=4 pairs must also have lysis
+    at 5x10^6 by definition of minimum); total pair count unchanged; MLC=0 counts unchanged.
+  - Add unit test confirming DILUTION_WEIGHT_MAP has exactly 3 keys {0, -1, -2} and that a pair with lysis only at
+    log_dilution=-4 yields MLC=0 (not MLC=4)
+  - Re-run SX01 10-fold CV on the corrected labels; compare nDCG/mAP/AUC/Brier to the original SX01 baseline to document
+    the label-correction delta
+  - Update mlc-dilution-potency knowledge unit to reflect that the fix is applied (no longer suspect — conformant with
+    paper)
+  - Record the rationale, the quantitative effect (how many pairs relabeled, metric deltas), and the paper quote that
+    justifies the change in track_SPANDEX.md
+- [ ] **SX06** BASEL TL17 phage_projection features + SX03 re-evaluation. Model: `claude-opus-4-6`. CI image profile:
+      `base`. Depends on tasks: `SX02`, `SX03`, `SX05`.
   - CORRECTION: SX02 zero-filled phage_projection (33 features) for BASEL phages despite the TL17 reference bank
     existing. This compromised SX03 Arm B and Arm C. Verified: Guelin-vs-BASEL lysis correlation is only r=0.58 per
     bacterium, so BASEL contains real novel signal the model currently cannot access.
@@ -1096,11 +1119,11 @@ graph LR
   - Verify non-zero feature counts per BASEL phage are broadly comparable to Guelin
   - Re-run SX03 arms B and C with corrected phage_projection; compare to SX03 baseline to quantify the lift from fixing
     the TL17 gap alone
-  - Record results in track_SPANDEX.md; note whether this closes the generalization gap alone or whether SX06 (PLM) is
+  - Record results in track_SPANDEX.md; note whether this closes the generalization gap alone or whether SX07 (PLM) is
     still needed
-- [ ] **SX06** BASEL PLM embeddings + SX03 re-evaluation. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on
-      tasks: `SX05`.
-  - CONDITIONAL: If SX05 alone closes the Arm C generalization gap to within 3pp AUC of within-panel performance,
+- [ ] **SX07** BASEL PLM embeddings + SX03 re-evaluation. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on
+      tasks: `SX06`.
+  - CONDITIONAL: If SX06 alone closes the Arm C generalization gap to within 3pp AUC of within-panel performance,
     consider skipping this ticket — known knowledge plm-rbp-redundant indicates PLM features showed zero lift on ST03
     holdout, so the expected value of this work is modest.
   - Restore precompute_rbp_plm_embeddings.py from git history (deleted in PR 393) and run ProstT5 + SaProt on BASEL RBP
@@ -1108,10 +1131,10 @@ graph LR
   - Transform BASEL PLM embeddings via the existing Guelin-fit PCA (do NOT refit PCA — leakage risk) to produce 32 PLM
     PC features per BASEL phage
   - Rebuild extended phage_rbp_struct slot CSV with real BASEL PLM features
-  - Re-run SX03 arms B and C with corrected PLM; compare to SX05 result
+  - Re-run SX03 arms B and C with corrected PLM; compare to SX06 result
   - Record results in track_SPANDEX.md
-- [ ] **SX07** Continuous depolymerase features via MMseqs2 bitscore (quick win). Model: `claude-opus-4-6`. CI image
-      profile: `base`. Depends on tasks: `SX01`.
+- [ ] **SX08** Continuous depolymerase features via MMseqs2 bitscore (quick win). Model: `claude-opus-4-6`. CI image
+      profile: `base`. Depends on tasks: `SX05`.
   - MOTIVATION: Current depo×capsule cross-terms use binary cluster membership (in_cluster_N × capsule_score).
     Depolymerases that narrowly miss the MMseqs2 clustering threshold contribute zero signal even when they share
     substrate specificity — this is a generalization cliff for both unseen phages and k-fold CV. Scope discipline: keep
@@ -1119,11 +1142,11 @@ graph LR
   - Replace in_cluster_N binary features with MMseqs2 bitscore against each cluster representative — continuous
     similarity instead of threshold-based membership
   - Use existing reference bank; no new clustering needed. Minutes of implementation
-  - Evaluate via k-fold CV (within-panel) and SX05 Arm C (cross-panel). Compare nDCG, mAP, AUC against SX05 baseline.
-  - If cross-panel AUC improves by >2pp, adopt as Gate 1 default and flag SX08 as lower priority
+  - Evaluate via k-fold CV (within-panel) and SX06 Arm C (cross-panel). Compare nDCG, mAP, AUC against SX06 baseline.
+  - If cross-panel AUC improves by >2pp, adopt as Gate 1 default and flag SX09 as lower priority
   - Record results and bitscore-vs-cluster analysis in track_SPANDEX.md
-- [ ] **SX08** Per-functional-class PLM blocks (minimal mean-pooling). Model: `claude-opus-4-6`. CI image profile:
-      `base`. Depends on tasks: `SX06`.
+- [ ] **SX09** Per-functional-class PLM blocks (minimal mean-pooling). Model: `claude-opus-4-6`. CI image profile:
+      `base`. Depends on tasks: `SX07`.
   - MOTIVATION: The current phage_rbp_struct slot double-pools PLM embeddings (mean-pool within protein, then mean-pool
     across all RBPs of the phage). This blurs tail fiber + depolymerase + baseplate signals into one vector. Keep
     LightGBM; use the minimal mean-pooling that fits a fixed-width feature vector.
@@ -1134,35 +1157,16 @@ graph LR
     block when the phage has none
   - Keep classes separate: phage_depo_plm_*, phage_tailfiber_plm_*, phage_baseplate_plm_*, phage_portal_plm_* as
     independent feature blocks. PCA each to 16-32 dims.
-  - Evaluate via k-fold CV and SX05 Arm C. Compare against existing phage_rbp_struct (aggregated mean-pool) and against
-    SX07 (bitscore) results.
+  - Evaluate via k-fold CV and SX06 Arm C. Compare against existing phage_rbp_struct (aggregated mean-pool) and against
+    SX08 (bitscore) results.
   - Record results and per-class-vs-aggregated analysis in track_SPANDEX.md
-- [ ] **SX09** MLC label quality sensitivity (MLC=1 LFW + MLC=4 unreplicated). Model: `claude-opus-4-6`. CI image
-      profile: `base`. Depends on tasks: `SX01`.
-  - MOTIVATION: Two MLC label classes are suspect for different reasons. MLC=1: paper flags lawn clearing at high phage
-    concentration as potentially non-productive (lysis from without or abortive infection). MLC=1 in our scoring is
-    lysis only at MOI~10 with no amplification to lower dilutions — the structural signature LFW/Abi would produce. 7.8%
-    of pairs, 46% of positives. MLC=4: paper Methods explicitly EXCLUDED 5x10^4 pfu/ml observations from MLC calculation
-    because they were unreplicated. Our pipeline maps log_dilution=-4 (5x10^4) to MLC=4. Verified: MLC=3 vs MLC=4 in our
-    data hinges on a single unreplicated observation. 3.3% of pairs, 19.6% of positives.
-  - PRE-FLIGHT: Quantify MLC=4 instability — how many MLC=4 pairs would flip to MLC=3 if we ignored the -4 dilution
-    observation? What fraction of MLC=1 pairs show inter-replicate disagreement at log_dilution=0? If MLC=4 is mostly a
-    1-observation flip from MLC=3, the distinction is structurally noise.
-  - Build five training cohorts from clean-label data (already excluding n-scores from GT09): (a) all positives (SX01
-    baseline); (b) exclude MLC=1 positives; (c) downweight MLC=1 to 0.5x; (d) collapse MLC=4 into MLC=3 (treat them as
-    one class, ignore the -4 dilution observation per paper protocol); (e) both b and d combined
-  - Evaluate all cohorts on SPANDEX metric suite with 10-fold CV (nDCG using the relevance scale that results from each
-    cohort, mAP, AUC, Brier)
-  - Compare on standard eval and on held-out MLC>=2 pairs only (cleaner positives)
-  - Record results, MLC label quality findings, and recommended exclusion policy in track_SPANDEX.md. The recommended
-    policy feeds into SX10 consolidation.
 - [ ] **SX10** Final SPANDEX baseline consolidation. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on
       tasks: `SX05`, `SX06`, `SX07`, `SX08`, `SX09`.
   - PURPOSE: Prevent "what is our current best model?" ambiguity at track close. Consolidate all winning changes from
     SX05-SX09 into a single definitive evaluation and declare the final SPANDEX baseline.
   - Select the winning configuration for each axis — BASEL features (zero-fill vs TL17 vs TL17+PLM), depo representation
-    (cluster vs bitscore vs per-class PLM), MLC=1 handling (include vs exclude vs downweight) — based on SX05-SX09
-    results
+    (cluster vs bitscore vs per-class PLM) — based on SX06-SX09 results. MLC label scheme is fixed by SX05 (no
+    per-cohort selection needed).
   - Train the consolidated best model with the winning configurations
   - Run full 10-fold CV evaluation with bootstrap CIs on nDCG, mAP, AUC, Brier
   - Run SX03 Arm C (unseen-phage generalization) with the consolidated model
