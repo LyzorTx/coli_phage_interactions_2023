@@ -1084,3 +1084,51 @@ graph LR
   - Compare to binary classification baseline from SX01 — does explicit potency prediction improve nDCG?
   - If improvement >2pp nDCG, adopt ordinal prediction as default for future tracks
   - Record results in track_SPANDEX.md
+- [ ] **SX05** BASEL phage feature computation — proper (correction). Model: `claude-opus-4-6`. CI image profile:
+      `base`. Depends on tasks: `SX02`, `SX03`.
+  - CORRECTION TICKET: SX02 zero-filled phage_projection (33 features) and phage_rbp_struct PLM PCA (32 features) for
+    BASEL phages despite the TL17 reference bank and PLM infrastructure existing. This compromised SX03 Arm B (pooled
+    training) and Arm C (generalization) — the model saw BASEL phages as indistinguishable bags of (GC, length, depo
+    count). Verified: Guelin-vs-BASEL lysis correlation is only r=0.58 per bacterium, so BASEL contains real novel
+    signal the model currently cannot access.
+  - Run MMseqs2 easy-search on BASEL protein FASTAs against
+    lyzortx/generated_outputs/track_l/tl17_phage_compatibility_preprocessor/tl17_rbp_reference_bank.faa to compute real
+    phage_projection features (33 TL17 RBP family columns)
+  - Restore precompute_rbp_plm_embeddings.py from git history (deleted in PR 393) and run ProstT5 + SaProt on BASEL RBP
+    protein sequences
+  - Transform BASEL PLM embeddings via the existing Guelin-fit PCA (do NOT refit PCA — leakage risk) to produce 32 PLM
+    PC features per BASEL phage
+  - Rebuild extended slot CSVs in .scratch/basel/feature_slots/ with real features
+  - Verify non-zero counts per BASEL phage (should match Guelin distribution patterns)
+  - Re-run SX03 arms B and C with proper features; compare to SX03 zero-filled baseline to quantify the impact of proper
+    BASEL feature computation
+  - Record results and corrected interpretation in track_SPANDEX.md
+- [ ] **SX06** Continuous depolymerase features (generalization-friendly). Model: `claude-opus-4-6`. CI image profile:
+      `base`. Depends on tasks: `SX05`.
+  - MOTIVATION: Current depo×capsule cross-terms use binary cluster membership (in_cluster_N × capsule_score) built from
+    Guelin depolymerases. BASEL depolymerases that narrowly miss the MMseqs2 clustering threshold contribute zero signal
+    even when they share substrate specificity. Cluster features are effectively memorization of training phage
+    sequences — they fundamentally cannot generalize to unseen depolymerases. Same problem affects k-fold CV within our
+    panel.
+  - QUICK WIN: Replace in_cluster_N binary features with MMseqs2 bitscore against each Guelin cluster representative —
+    continuous similarity instead of threshold-based membership. Minutes to implement using existing reference bank.
+  - ARCHITECTURAL WIN: Run ESM-2 embedding per depolymerase protein (not mean-pooled across all RBPs like
+    phage_rbp_struct). PCA to 16-32 dims. Cross-term with host capsule features as continuous product.
+  - Evaluate both approaches via k-fold CV (within-panel generalization) and Arm C (unseen-phage generalization).
+    Compare nDCG, mAP, AUC against SX05 baseline with zero-filled clusters.
+  - If continuous features improve generalization to unseen phages by >2pp AUC, adopt as default feature representation
+  - Record results and cluster-vs-continuous analysis in track_SPANDEX.md
+- [ ] **SX07** MLC=1 exclusion sensitivity analysis. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on
+      tasks: `SX01`.
+  - MOTIVATION: Paper flags lawn clearing at high phage concentration as potentially non-productive (lysis from without
+    or abortive infection). This maps to MLC=1 in our scoring — lysis only at undiluted (MOI~10), zero at any lower
+    dilution (no evidence of productive amplification). MLC=1 is 7.8% of all pairs and 46% of positives. Training on
+    MLC=1 pairs may be training on non-productive lysis signal that is clinically irrelevant and potentially misleading.
+  - PRE-FLIGHT: Characterize raw score patterns for MLC=1 pairs across replicates — are they reproducible or borderline?
+    If >30% show inter-replicate disagreement, they are a noisy signal class regardless of LFW/Abi interpretation.
+  - Build three training cohorts from clean-label data (already excluding ambiguous n-scores from GT09): (a) all
+    positives (SX01 baseline); (b) exclude MLC=1 positives (treat as unobserved, not negative); (c) keep MLC=1 but
+    downweight to 0.5x in training
+  - Evaluate all three on SPANDEX metric suite (nDCG, mAP, AUC, Brier) with 10-fold CV
+  - Compare on both standard evaluation and on held-out MLC≥2 pairs only (where productive infection is clearer)
+  - Record results and MLC label quality findings in track_SPANDEX.md

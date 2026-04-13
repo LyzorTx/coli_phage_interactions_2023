@@ -34,20 +34,29 @@ themes:
 
       - id: mlc-dilution-potency
         statement: >
-          The interaction_matrix.csv MLC scores (0-4) encode dilution potency: 0=no lysis,
-          1=lysis at 1:1 only (~5x10^8 pfu/ml), 2=lysis at 1:10, 3=lysis at 1:100,
-          4=lysis at 1:10,000 with visible plaques. Higher MLC indicates more robust
-          infection and better therapeutic candidacy.
-        sources: [2026-04-12 SPANDEX design, Gaborieau 2024]
+          The interaction_matrix.csv MLC scores (0-4) encode dilution potency from 4
+          tested dilutions (log_dilution 0, -1, -2, -4): 0=no lysis, 1=lysis only at
+          undiluted (5x10^8 pfu/ml, MOI~10), 2=lysis at 0 and -1, 3=lysis at 0,-1,-2,
+          4=lysis at all four dilutions including 10,000x diluted (5x10^4 pfu/ml).
+          Higher MLC generally indicates more robust productive infection, but MLC=1
+          is ambiguous — the paper explicitly flags lawn clearing at high phage
+          concentration as potentially non-productive (lysis from without, abortive
+          infection).
+        sources: [2026-04-12 SPANDEX design, Gaborieau 2024 Methods]
         status: active
         confidence: validated
         context: >
-          Derived from raw_interactions.csv per-dilution per-replicate scores via
-          DILUTION_WEIGHT_MAP in build_track_a_foundation.py. The raw data has 9
-          observations per pair (3 replicates x 3 concentrations). Current pipeline
-          binarizes to any_lysis (MLC > 0), discarding potency information. Distribution:
-          79.3% MLC=0, 7.8% MLC=1, 6.0% MLC=2, 3.6% MLC=3, 3.3% MLC=4.
-        relates_to: [label-policy-binary, raw-interactions-authority]
+          Paper quote (Methods): "Clearing of the bacterial lawn at high phage
+          concentration could result from productive lysis... or from another mechanism
+          such as lysis from without, or abortive infection." This applies to MLC=1
+          (lysis only at MOI~10 with no amplification to lower dilutions). MLC=3 is the
+          confirmed-productive gold standard (individualized plaques at low concentration
+          prove new virion production). MLC=4 (lysis at all four dilutions, including
+          10,000x diluted) is also clearly productive — requires amplification from few
+          starting phages. Distribution: 79.3% MLC=0, 7.8% MLC=1 (suspect), 6.0% MLC=2,
+          3.6% MLC=3 (clean), 3.3% MLC=4 (clean). Clinical/therapeutic utility depends
+          on productive replication, so MLC=1 positives may be noise in the training signal.
+        relates_to: [label-policy-binary, raw-interactions-authority, ambiguous-label-noise]
 
       - id: basel-binary-only
         statement: >

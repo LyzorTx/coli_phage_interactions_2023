@@ -1,6 +1,6 @@
 # Project Knowledge Model
 
-<!-- Last consolidated: 2026-04-12T23:00:00+02:00 -->
+<!-- Last consolidated: 2026-04-13T01:40:00+02:00 -->
 <!-- Source: lyzortx/research_notes/lab_notebooks -->
 
 **56 knowledge units** across 7 themes (43 active, 13 dead ends)
@@ -16,14 +16,21 @@ Labeling policy, data quality, split contracts, and training corpus.
   also: raw-interactions-authority]
 - **`raw-interactions-authority`**: raw_interactions.csv is the authoritative training corpus; all derived training
   cohorts and evaluation splits trace back to this file. [validated; source: ST0.2, AR01, DEPLOY01]
-- **`mlc-dilution-potency`**: The interaction_matrix.csv MLC scores (0-4) encode dilution potency: 0=no lysis, 1=lysis
-  at 1:1 only (~5x10^8 pfu/ml), 2=lysis at 1:10, 3=lysis at 1:100, 4=lysis at 1:10,000 with visible plaques. Higher MLC
-  indicates more robust infection and better therapeutic candidacy. [validated; source: 2026-04-12 SPANDEX design,
-  Gaborieau 2024; see also: label-policy-binary, raw-interactions-authority]
-  - *Derived from raw_interactions.csv per-dilution per-replicate scores via DILUTION_WEIGHT_MAP in
-    build_track_a_foundation.py. The raw data has 9 observations per pair (3 replicates x 3 concentrations). Current
-    pipeline binarizes to any_lysis (MLC > 0), discarding potency information. Distribution: 79.3% MLC=0, 7.8% MLC=1,
-    6.0% MLC=2, 3.6% MLC=3, 3.3% MLC=4.*
+- **`mlc-dilution-potency`**: The interaction_matrix.csv MLC scores (0-4) encode dilution potency from 4 tested
+  dilutions (log_dilution 0, -1, -2, -4): 0=no lysis, 1=lysis only at undiluted (5x10^8 pfu/ml, MOI~10), 2=lysis at 0
+  and -1, 3=lysis at 0,-1,-2, 4=lysis at all four dilutions including 10,000x diluted (5x10^4 pfu/ml). Higher MLC
+  generally indicates more robust productive infection, but MLC=1 is ambiguous — the paper explicitly flags lawn
+  clearing at high phage concentration as potentially non-productive (lysis from without, abortive infection).
+  [validated; source: 2026-04-12 SPANDEX design, Gaborieau 2024 Methods; see also: label-policy-binary,
+  raw-interactions-authority, ambiguous-label-noise]
+  - *Paper quote (Methods): "Clearing of the bacterial lawn at high phage concentration could result from productive
+    lysis... or from another mechanism such as lysis from without, or abortive infection." This applies to MLC=1 (lysis
+    only at MOI~10 with no amplification to lower dilutions). MLC=3 is the confirmed-productive gold standard
+    (individualized plaques at low concentration prove new virion production). MLC=4 (lysis at all four dilutions,
+    including 10,000x diluted) is also clearly productive — requires amplification from few starting phages.
+    Distribution: 79.3% MLC=0, 7.8% MLC=1 (suspect), 6.0% MLC=2, 3.6% MLC=3 (clean), 3.3% MLC=4 (clean).
+    Clinical/therapeutic utility depends on productive replication, so MLC=1 positives may be noise in the training
+    signal.*
 - **`basel-binary-only`**: BASEL × ECOR interaction data (52 phages × 25 ECOR bacteria from GenoPHI) is confirmed binary
   only — no graded upstream data exists. BASEL used a single high-titer spot test (>10^9 pfu/ml), not a dilution series.
   BASEL EOP data on Zenodo covers K-12 defense experiments only, not the ECOR host range panel. [validated; source:
