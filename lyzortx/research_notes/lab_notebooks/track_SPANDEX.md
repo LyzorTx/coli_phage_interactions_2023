@@ -568,3 +568,79 @@ specification above if ever needed.
 
 Proceed to SX10 — this was the last novel change; the SPANDEX final configuration is **SX05 (MLC 0-3 labels) +
 SX06 (BASEL TL17 projection) + skip SX07/SX08/SX09**.
+
+### 2026-04-13 20:30 CEST: SX10 — final SPANDEX baseline consolidation
+
+#### Executive summary
+
+Closed SPANDEX with the definitive baseline: **GT03 all_gates_rfe + AX02 per-phage blending + SX05 corrected MLC
+labels + SX06 real TL17 BASEL projection**. SX07 and SX09 skipped on `plm-rbp-redundant` grounds. SX08 (continuous
+depolymerase bitscore) ran but returned a validated null. The SPANDEX-final model's 10-fold CV on our panel
+reaches **nDCG 0.7958 [0.7877, 0.8124], mAP 0.7111, AUC 0.8699, Brier 0.1248** and generalizes to unseen BASEL
+phages with **nDCG 0.7619 [0.7219, 0.8207], mAP 0.5186 [0.4591, 0.5780], AUC 0.7607 [0.6886, 0.8307]**. The
+most impactful change was SX06's real TL17 projection for BASEL, which lifted Arm C nDCG +11.4 pp, mAP +11.2 pp,
+and AUC +4.0 pp with disjoint CIs on nDCG and mAP — reclaiming most of the zero-fill gap. SX05 accounted for the
++1.73 pp within-panel nDCG lift via the MLC 0→3 collapse in relevance weights. Training (binary any_lysis)
+discrimination (mAP / AUC / Brier) is unchanged — the 0.87 AUC within-panel ceiling from Track GIANTS holds.
+
+#### Final configuration (bakes into main)
+
+| Ticket | Change | Status |
+|--------|--------|--------|
+| SX05   | `DILUTION_WEIGHT_MAP = {0:1, -1:2, -2:3}`; `interaction_matrix.csv` capped so MLC ∈ {0,1,2,3} | **applied** |
+| SX06   | Real TL17 family projection for 52 BASEL phages via `project_basel_tl17_features.py` | **applied** |
+| SX07   | BASEL PLM embeddings (ProstT5 + SaProt)                               | skipped (`plm-rbp-redundant`) |
+| SX08   | Continuous depolymerase bitscore vs binary in-cluster membership      | skipped (validated null) |
+| SX09   | Per-functional-class PLM blocks                                       | skipped (SX07 dependency) |
+
+Depolymerase × capsule features retain binary `in_cluster_N` membership. Training labels stay binary `any_lysis`;
+MLC 0-3 is used only as graded relevance for nDCG evaluation.
+
+#### SX01 baseline vs SPANDEX final
+
+10-fold bacteria-stratified CV on our 369-bacteria × 96-phage panel. SPANDEX final column is taken from
+`lyzortx/generated_outputs/sx05_sx01_eval/bootstrap_results.json` (post-SX05 label fix; SX06 is a phage-side slot
+patch that only affects evaluations that include BASEL phages).
+
+| Metric | SX01 baseline | SPANDEX final | Δ |
+|--------|---------------|---------------|-----|
+| nDCG   | 0.7785 [0.7705, 0.7948] | **0.7958 [0.7877, 0.8124]** | **+1.73 pp** |
+| mAP    | 0.7111 [0.6925, 0.7290] | 0.7111 [0.6925, 0.7290] | 0.00 |
+| AUC    | 0.8699 [0.8570, 0.8819] | 0.8699 [0.8570, 0.8819] | 0.00 |
+| Brier  | 0.1248 [0.1187, 0.1309] | 0.1248 [0.1187, 0.1309] | 0.00 |
+
+Cross-panel Arm C generalization (train Guelin → predict BASEL × ECOR) from
+`lyzortx/generated_outputs/sx06_sx03_eval/bootstrap_results.json`:
+
+| Metric | SX03 baseline (zero-filled BASEL) | SPANDEX final (real TL17 BASEL) | Δ |
+|--------|-----------------------------------|---------------------------------|-----|
+| nDCG   | 0.6480 [0.6031, 0.7099] | **0.7619 [0.7219, 0.8207]** | **+11.39 pp**, CIs disjoint |
+| mAP    | 0.4072 [0.3380, 0.4676] | **0.5186 [0.4591, 0.5780]** | **+11.15 pp**, CIs disjoint |
+| AUC    | 0.7206 [0.6312, 0.8060] | **0.7607 [0.6886, 0.8307]** | **+4.02 pp** |
+| Brier  | 0.1958 [0.1510, 0.2360] | 0.1844 [0.1426, 0.2213] | −1.14 pp |
+
+Within-panel AUC 0.87 → cross-panel AUC 0.76 leaves a **10.9 pp AUC generalization gap**. This gap is the final
+SPANDEX-era unresolved item: per `plm-rbp-redundant`, PLM embeddings can't close it; per `panel-size-ceiling`, the
+ceiling is panel-bound. Closing further requires either (a) expanding the Guelin panel or (b) adding wet-lab
+validation on the cross-panel predictions to anchor confidence — neither in SPANDEX's scope.
+
+#### Track-closing assessment
+
+- **Evaluation methodology** (top-3 retired; nDCG + mAP + k-fold CV adopted) fully landed (SX01).
+- **Label quality** (MLC 0→3 cap, paper-protocol aligned) fully landed (SX05) with modest measurable lift.
+- **Data integration** (BASEL features computed, not zero-filled) fully landed (SX06) with large Arm C lift.
+- **Ordinal regression** (SX04) remains a validated dead end.
+- **Rich phage-side features beyond TL17** (PLM, per-class PLM, continuous depolymerase bitscore) all validated
+  as neutral on the current panel.
+- **Remaining open question**: can panel expansion (more Guelin-panel phages or BASEL-style external panels)
+  close the 10.9 pp cross-panel AUC gap? Track beyond SPANDEX.
+
+#### Where the numbers live
+
+- SX01 10-fold CV on SX05 labels: `lyzortx/generated_outputs/sx05_sx01_eval/bootstrap_results.json`
+- SX03 three-arm with SX06 features: `lyzortx/generated_outputs/sx06_sx03_eval/bootstrap_results.json`
+- SX03 three-arm null bitscore check: `lyzortx/generated_outputs/sx08_sx03_eval/bootstrap_results.json`
+- Pre-SPANDEX baselines (MLC 0-4, zero-filled BASEL): `lyzortx/generated_outputs/sx01_eval/` and
+  `lyzortx/generated_outputs/sx03_eval/`
+
+These artifacts are the canonical SPANDEX evaluation outputs and the reference point for the next track.
