@@ -518,3 +518,53 @@ ProstT5 (3B) + SaProt (650M) inference on CPU and restoration of code deleted in
 
 Decision: **skip SX07**. Move directly to SX08 (continuous depolymerase bitscore). If SX08+SX10 still leave a
 material Arm C gap, revisit SX07 with a scoped BASEL-only evaluation.
+
+### 2026-04-13 19:45 CEST: SX08 — continuous depolymerase bitscore (validated null)
+
+#### Executive summary
+
+Replaced the binary `pair_depo_capsule__in_cluster_N` cluster-membership features with continuous
+`pair_depo_capsule__bitscore_cluster_N` MMseqs2 bitscores against each DepoScope cluster representative, on the
+hypothesis that phages whose depolymerases narrowly miss the clustering threshold were losing signal. Ran a single
+`mmseqs easy-search` of combined Guelin + BASEL depolymerase proteomes against the 41 cluster reps (1017
+(phage, rep) bitscores, 130 phages covered). Re-ran SX03 against the bitscore feature set. **Result: bit-identical
+Arm C metrics (nDCG 0.7619, mAP 0.5186, AUC 0.7607) versus the binary SX06 baseline, and −0.19 pp / −0.17 pp /
++0.03 pp on Arm A (essentially neutral).** Plan's >2 pp Arm C AUC adoption threshold not met. Validated null.
+Kept binary cluster membership as the SPANDEX default; code changes reverted per dead-code policy, script
+archived under `.scratch/sx08_dead_end_code/` for future reference.
+
+#### SX03 re-evaluation deltas
+
+Command: `python -m lyzortx.pipeline.autoresearch.sx03_eval --device-type cpu` against a design matrix where
+`pair_depo_capsule__in_cluster_N` was replaced by `pair_depo_capsule__bitscore_cluster_N`.
+
+| Arm                                    | SX06 baseline (binary in_cluster) | SX08 (continuous bitscore) | Δ AUC |
+|----------------------------------------|-----------------------------------|----------------------------|-------|
+| A — Our clean data only (10-fold CV)   | nDCG 0.7958, mAP 0.7111, AUC 0.8699 | nDCG 0.7939, mAP 0.7094, AUC 0.8702 | +0.03 pp |
+| B — Our clean + BASEL training         | nDCG 0.7958, mAP 0.7119, AUC 0.8699 | nDCG 0.7958, mAP 0.7119, AUC 0.8699 | 0.00 |
+| C — Train on our data, predict BASEL   | nDCG 0.7619, mAP 0.5186, AUC 0.7607 | nDCG 0.7619, mAP 0.5186, AUC 0.7607 | 0.00 |
+
+Per-prediction AUC on Arm C: 0.760746 vs 0.760746 (bit-identical to 6 decimals). Individual predictions do differ
+row-by-row (different md5 on `all_predictions.csv`), but the reshuffling is small enough that rank order on the
+25 BASEL bacteria is preserved after per-bacterium averaging — the bitscore detail lives below the discrimination
+floor of the current panel.
+
+#### Why the change was neutral
+
+The binary `in_cluster_N` flag already captures the dominant signal: a phage either has a depolymerase that looks
+like the cluster rep (bitscore well above threshold → membership=1) or it doesn't. The border phages whose
+bitscore is just below the MMseqs2 clustering threshold are rare in this dataset — and most fall on the
+"lysis=0" side of the label anyway, so they contribute little discriminative mass to the positive-bucket ranking.
+BASEL's Arm C generalization bottleneck is not the depolymerase encoding granularity; it is the 25-bacteria × 52-
+phage panel variance floor plus the structural difference between Guelin (mostly Myoviridae) and BASEL (broader
+family mix).
+
+#### Decision
+
+Keep the binary cluster-membership features as the SPANDEX default. SX08 code is reverted per dead-code policy;
+this notebook entry is the lasting record. Re-running the experiment means rebuilding the MMseqs2 easy-search
+precompute and a bitscore fallback in `derive_pairwise_depo_capsule_features.py` from scratch — cheap given the
+specification above if ever needed.
+
+Proceed to SX10 — this was the last novel change; the SPANDEX final configuration is **SX05 (MLC 0-3 labels) +
+SX06 (BASEL TL17 projection) + skip SX07/SX08/SX09**.
