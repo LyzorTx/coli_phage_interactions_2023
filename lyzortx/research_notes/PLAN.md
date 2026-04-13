@@ -1084,7 +1084,7 @@ graph LR
   - Compare to binary classification baseline from SX01 — does explicit potency prediction improve nDCG?
   - If improvement >2pp nDCG, adopt ordinal prediction as default for future tracks
   - Record results in track_SPANDEX.md
-- [ ] **SX05** Fix MLC mapping — align DILUTION_WEIGHT_MAP with paper protocol. Model: `claude-opus-4-6`. CI image
+- [x] **SX05** Fix MLC mapping — align DILUTION_WEIGHT_MAP with paper protocol. Model: `claude-opus-4-6`. CI image
       profile: `base`. Depends on tasks: `SX01`.
   - MOTIVATION: Our pipeline's DILUTION_WEIGHT_MAP = {0: 1, -1: 2, -2: 3, -4: 4} repurposes the unreplicated 5x10^4
     pfu/ml observation (log_dilution=-4) as MLC=4, contradicting the paper's own protocol. Paper Methods (Gaborieau
