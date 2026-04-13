@@ -1168,7 +1168,7 @@ graph LR
   - Evaluate via k-fold CV and SX06 Arm C. Compare against existing phage_rbp_struct (aggregated mean-pool) and against
     SX08 (bitscore) results.
   - Record results and per-class-vs-aggregated analysis in track_SPANDEX.md
-- [ ] **SX10** Final SPANDEX baseline consolidation. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on
+- [x] **SX10** Final SPANDEX baseline consolidation. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on
       tasks: `SX05`, `SX06`, `SX07`, `SX08`, `SX09`.
   - PURPOSE: Prevent "what is our current best model?" ambiguity at track close. Consolidate all winning changes from
     SX05-SX09 into a single definitive evaluation and declare the final SPANDEX baseline.
