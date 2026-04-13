@@ -82,7 +82,7 @@ def train_ordinal_fold(
     seed: int,
     device_type: str,
 ) -> list[dict[str, object]]:
-    """Train LightGBM regressor on MLC 0-4, predict on holdout."""
+    """Train LightGBM regressor on MLC 0-3, predict on holdout."""
     # Build entity feature tables.
     host_slots = ["host_surface", "host_typing", "host_stats", "host_defense"]
     phage_slots = ["phage_projection", "phage_stats"]
@@ -138,7 +138,7 @@ def train_ordinal_fold(
         len(holdout_design),
     )
 
-    # Train LightGBM regressor on MLC 0-4.
+    # Train LightGBM regressor on MLC 0-3.
     estimator = LGBMRegressor(
         **LGBM_REGRESSION_PARAMS,
         random_state=seed,

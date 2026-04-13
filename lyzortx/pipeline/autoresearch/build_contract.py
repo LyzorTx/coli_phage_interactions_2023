@@ -21,7 +21,11 @@ from lyzortx.pipeline.deployment_paired_features.download_picard_assemblies impo
 from lyzortx.pipeline.steel_thread_v0.io.load_inputs import iter_raw_interactions
 from lyzortx.pipeline.steel_thread_v0.io.write_outputs import ensure_directory, write_csv, write_json
 from lyzortx.pipeline.steel_thread_v0.steps.st02_build_pair_table import BORDERLINE_NOISE_WEIGHT
-from lyzortx.pipeline.track_a.steps.build_track_a_foundation import LabelPolicyV1, compute_label_v1
+from lyzortx.pipeline.track_a.steps.build_track_a_foundation import (
+    EXCLUDED_LOG_DILUTIONS,
+    LabelPolicyV1,
+    compute_label_v1,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -258,7 +262,13 @@ def build_locked_comparator_benchmark(benchmark: Mapping[str, object]) -> Dict[s
 def aggregate_raw_pairs(
     raw_interactions_path: Path,
 ) -> Tuple[List[Dict[str, str]], Dict[Tuple[str, str], List[Dict[str, str]]]]:
-    raw_rows = list(iter_raw_interactions(raw_interactions_path))
+    # SX05: drop log_dilution rows that the paper excludes from MLC (currently the unreplicated
+    # 5 x 10^4 pfu/ml observation). See EXCLUDED_LOG_DILUTIONS rationale in build_track_a_foundation.py.
+    raw_rows = [
+        row
+        for row in iter_raw_interactions(raw_interactions_path)
+        if int(row["log_dilution"]) not in EXCLUDED_LOG_DILUTIONS
+    ]
     if not raw_rows:
         raise ValueError(f"No rows found in {raw_interactions_path}")
     by_pair: Dict[Tuple[str, str], List[Dict[str, str]]] = defaultdict(list)

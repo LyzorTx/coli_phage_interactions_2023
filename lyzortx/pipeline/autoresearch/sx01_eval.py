@@ -2,7 +2,8 @@
 """SX01: Graded evaluation framework + clean-label baseline.
 
 Implements the SPANDEX evaluation suite:
-  - nDCG with graded MLC 0-4 relevance (primary ranking metric)
+  - nDCG with graded MLC 0-3 relevance (primary ranking metric; SX05 collapsed the paper's
+    morphological MLC=4 into MLC=3 because our binary raw data cannot reproduce the split)
   - mAP with binary relevance (secondary ranking metric)
   - AUC and Brier (secondary discrimination/calibration metrics)
   - 10-fold bacteria-stratified CV with bootstrap CIs
@@ -61,7 +62,7 @@ BOOTSTRAP_RANDOM_STATE = 42
 
 
 def load_mlc_scores() -> pd.DataFrame:
-    """Load MLC 0-4 scores from interaction matrix, return long-form DataFrame."""
+    """Load MLC 0-3 scores from interaction matrix, return long-form DataFrame."""
     matrix = pd.read_csv(INTERACTION_MATRIX_PATH, sep=";", index_col=0)
     rows = []
     for bacteria in matrix.index:
@@ -101,7 +102,7 @@ def run_preflight(output_dir: Path) -> dict[str, object]:
 
     positives = merged[merged["mlc_score"] >= 1]
     mean_by_grade = {}
-    for grade in [0, 1, 2, 3, 4]:
+    for grade in [0, 1, 2, 3]:
         subset = merged[merged["mlc_score"] == grade]
         if len(subset) > 0:
             mean_by_grade[str(grade)] = round(float(subset["predicted_probability"].mean()), 4)
@@ -109,13 +110,15 @@ def run_preflight(output_dir: Path) -> dict[str, object]:
     rho, pval = spearmanr(positives["mlc_score"], positives["predicted_probability"])
     rho = float(rho)
 
+    present_grades = sorted(int(g) for g in mean_by_grade)
+    monotonic = all(mean_by_grade[str(a)] <= mean_by_grade[str(b)] for a, b in zip(present_grades, present_grades[1:]))
     result = {
         "status": "pass" if rho >= 0.1 else "fail",
         "spearman_rho_positives": round(rho, 4),
         "spearman_pvalue": float(pval),
         "mean_pred_by_mlc_grade": mean_by_grade,
         "n_positives": len(positives),
-        "monotonic": all(mean_by_grade.get(str(i), 0) <= mean_by_grade.get(str(i + 1), 0) for i in range(1, 4)),
+        "monotonic": monotonic,
     }
 
     LOGGER.info("Pre-flight: Spearman rho=%.4f (threshold 0.1), status=%s", rho, result["status"])

@@ -1,7 +1,7 @@
 """SPANDEX evaluation metrics: nDCG (graded) and mAP (binary) per bacterium.
 
 Replaces top-3 hit rate with ranking metrics that:
-- Use graded MLC 0-4 relevance for nDCG
+- Use graded MLC 0-3 relevance for nDCG
 - Support partial ground truth (score only observed pairs per bacterium)
 - Handle mixed-source data (different relevance granularity)
 """
@@ -34,7 +34,7 @@ def compute_per_bacterium_ndcg(
     """Compute mean nDCG across bacteria using graded relevance.
 
     For each bacterium, ranks phages by predicted probability and scores the
-    ranking against graded MLC relevance (0-4). Pairs with None relevance
+    ranking against graded MLC relevance (0-3 after SX05). Pairs with None relevance
     are excluded (partial ground truth support).
 
     Returns None if no bacteria have at least one positive.
@@ -117,7 +117,7 @@ def evaluate_holdout_rows(
 ) -> dict[str, Optional[float]]:
     """Compute all SPANDEX metrics on a set of holdout rows.
 
-    Each row must have: bacteria, predicted_probability, mlc_score (graded 0-4),
+    Each row must have: bacteria, predicted_probability, mlc_score (graded 0-3),
     label_binary (0 or 1). Either can be None for unobserved pairs.
     """
     ndcg = compute_per_bacterium_ndcg(rows, relevance_key="mlc_score", probability_key="predicted_probability")

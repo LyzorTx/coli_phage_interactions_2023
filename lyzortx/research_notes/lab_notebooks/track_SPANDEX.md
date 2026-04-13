@@ -315,15 +315,17 @@ The set-aware architecture (Set Transformer, two-tower with cross-attention) is 
 direction in project.md. For SPANDEX, we stay with LightGBM but do the minimal practical mean-pooling (SX06): per-
 functional-class embedding blocks with max/regional pooling within protein.
 
-### 2026-04-13 15:55 CEST: MLC=4 pipeline correction — align with paper protocol (design note)
+### 2026-04-13 15:55 CEST: SX05 — MLC=4 pipeline correction (align with paper protocol)
 
 #### Executive summary
 
 Audit of our MLC derivation against the paper's Methods found a direct contradiction: our pipeline's
-`DILUTION_WEIGHT_MAP` assigns MLC=4 to pairs with lysis at `log_dilution=-4` (5×10⁴ pfu/ml), but the paper explicitly
-excludes that dilution from MLC because it was unreplicated. Our MLC=4 is therefore a label class derived from noise
-the paper itself discarded. SX05 (newly elevated to the first unimplemented SPANDEX ticket) drops `log_dilution=-4`
-from MLC computation, reducing our range to 0–3 and aligning with paper protocol.
+`DILUTION_WEIGHT_MAP` assigned MLC=4 to pairs with lysis at `log_dilution=-4` (5×10⁴ pfu/ml), but the paper explicitly
+excludes that dilution from MLC because it was unreplicated. SX05 dropped `log_dilution=-4` from `DILUTION_WEIGHT_MAP`,
+filtered those rows out of track_a and autoresearch MLC computation, and regenerated `interaction_matrix.csv` by
+capping the 1288 MLC=4 cells at MLC=3. Re-running the 10-fold SX01 evaluation on the corrected labels gave nDCG
+0.7958 [0.7877, 0.8124] vs the 0-4 baseline 0.7785 [0.7705, 0.7948] — a +1.73pp point-estimate lift; mAP, AUC, and
+Brier were bit-identical (training labels are binary `any_lysis`, unchanged).
 
 #### What the paper actually says
 
@@ -357,19 +359,58 @@ dilution) as MLC=4, we invented a *different* MLC=4 that has no defensible biolo
 
 #### The fix (SX05)
 
-Change `DILUTION_WEIGHT_MAP` in `lyzortx/pipeline/track_a/steps/build_track_a_foundation.py` from
-`{0: 1, -1: 2, -2: 3, -4: 4}` to `{0: 1, -1: 2, -2: 3}`. Ignore `log_dilution=-4` rows at scoring time.
+- `DILUTION_WEIGHT_MAP` in `lyzortx/pipeline/track_a/steps/build_track_a_foundation.py` reduced from
+  `{0: 1, -1: 2, -2: 3, -4: 4}` to `{0: 1, -1: 2, -2: 3}`.
+- `DILUTION_POTENCY_LABEL_MAP` kept consistent (drop `-4: "very_high"`).
+- `EXCLUDED_LOG_DILUTIONS = frozenset({-4})` added; `filter_excluded_dilutions()` drops those rows at raw ingestion
+  in track_a; `aggregate_raw_pairs` in `build_contract.py` filters the same set before label computation.
+- `find_best_dilution_any_lysis`, `potency_rank_from_dilution`, and `potency_label_from_dilution` defensively skip
+  `EXCLUDED_LOG_DILUTIONS` (belt-and-suspenders).
+- `LabelPolicyV1/V2.expected_observations_per_pair` default changed from 9 → 8 (3 replicates at 5×10⁸ + 2 at 5×10⁷
+  - 3 at 5×10⁶; 5×10⁴ dropped).
+- `lyzortx/pipeline/autoresearch/regenerate_interaction_matrix.py` now regenerates
+  `data/interactions/interaction_matrix.csv` by loading the committed matrix, capping every MLC=4 cell at MLC=3, and
+  preserving everything else (including out-of-raw bacteria and blank missing cells). The paper's binary raw data
+  cannot reproduce the morphological MLC=3 vs MLC=4 split, so capping is the only defensible collapse.
 
-Pair-level effects:
+Matrix before → after:
 
-| Raw pattern at {0, -1, -2, -4} | Current MLC | Fixed MLC |
-|-------------------------------|-------------|-----------|
+| MLC | before | after | delta |
+|-----|--------|-------|-------|
+| blank (missing) | 157 | 157 | 0 |
+| 0 | 30459 | 30459 | 0 |
+| 1 | 3014 | 3014 | 0 |
+| 2 | 2306 | 2306 | 0 |
+| 3 | 1368 | 2656 | +1288 |
+| 4 | 1288 | 0 | −1288 |
+| total | 38592 | 38592 | 0 |
+
+Pair-level semantics (for pairs now recomputed from raw in track_a / build_contract):
+
+| Raw pattern at {0, −1, −2, −4} | Old MLC | New MLC |
+|-------------------------------|---------|---------|
 | {1, 1, 1, 0} | 3 | 3 (unchanged) |
 | {1, 1, 1, 1} | 4 | 3 (−4 row ignored; −2 observation still valid) |
 | {1, 1, 0, 1} | 4 | 2 (no lysis at −2) |
-| {0, 0, 0, 1} | 4 | 0 (edge case — "lysis only at 5×10⁴" is noise) |
+| {0, 0, 0, 1} | 4 | 0 ("lysis only at 5×10⁴" is unreplicated noise) |
 
-Affects ~3.3% of all pairs (the current MLC=4 population).
+#### SX01 10-fold CV effect (corrected labels)
+
+Command: `python -m lyzortx.pipeline.autoresearch.sx01_eval --device-type cpu`.
+
+| Metric | SX01 baseline (MLC 0−4) | SX05 (MLC 0−3) | Δ point estimate |
+|--------|-------------------------|----------------|------------------|
+| nDCG | 0.7785 [0.7705, 0.7948] | **0.7958 [0.7877, 0.8124]** | **+1.73 pp** |
+| mAP | 0.7111 [0.6925, 0.7290] | 0.7111 [0.6925, 0.7290] | 0.00 |
+| AUC | 0.8699 [0.8570, 0.8819] | 0.8699 [0.8570, 0.8819] | 0.00 |
+| Brier | 0.1248 [0.1187, 0.1309] | 0.1248 [0.1187, 0.1309] | 0.00 |
+
+mAP/AUC/Brier are bit-identical because training labels are binary `any_lysis`, which is unaffected by the MLC value
+change. The nDCG improvement comes entirely from collapsing MLC=4 into MLC=3 in the relevance weights:
+exponential-gain nDCG treated a misranked MLC=4 item more harshly than a misranked MLC=3 item, and that penalty
+disappears once the morphological split is collapsed. Preflight Spearman ρ(predicted P(lysis), MLC) on positives
+slipped from 0.24 → 0.23 and mean P(lysis) per grade stayed monotonic across 0,1,2,3 (0.27, 0.61, 0.67, 0.77), so
+the graded structure is preserved even after collapse.
 
 #### Why this is an executive decision, not a sensitivity study
 
