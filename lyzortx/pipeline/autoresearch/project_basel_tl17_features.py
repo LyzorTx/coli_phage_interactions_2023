@@ -44,7 +44,6 @@ DEFAULT_REFERENCE_FASTA_PATH = Path(
 DEFAULT_SLOT_FEATURES_PATH = Path(".scratch/basel/feature_slots/phage_projection/features.csv")
 DEFAULT_SCRATCH_ROOT = Path(".scratch/basel/tl17_projection")
 
-SLOT_FEATURE_PREFIX = f"phage_projection__{FAMILY_COLUMN_PREFIX}"
 SLOT_HIT_COUNT_COLUMN = f"phage_projection__{SUMMARY_HIT_COUNT_COLUMN}"
 
 
