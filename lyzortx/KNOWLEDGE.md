@@ -3,7 +3,7 @@
 <!-- Last consolidated: 2026-04-13T01:40:00+02:00 -->
 <!-- Source: lyzortx/research_notes/lab_notebooks -->
 
-**56 knowledge units** across 7 themes (43 active, 13 dead ends)
+**57 knowledge units** across 7 themes (44 active, 13 dead ends)
 
 ## Data & Labels
 
@@ -151,6 +151,18 @@ Architecture choices, calibration, and performance bounds.
 - **`tl18-flawed-baseline`**: TL18 model (0.823 AUC) is not a valid baseline: DefenseFinder version drift inflated 17.3%
   of feature importance, and 5 soft-leaky pairwise features contributed ~5.5%. [validated; source: TL18 audit; see also:
   autoresearch-baseline]
+- **`spandex-final-baseline`**: SPANDEX final baseline (Track SPANDEX closing configuration, 2026-04-13): GT03
+  all_gates_rfe + AX02 per-phage blending, trained on SX05-corrected MLC 0-3 labels, with SX06 real TL17 family
+  projection for BASEL phages. 10-fold CV on our 369×96 panel: nDCG 0.7958 [0.7877, 0.8124], mAP 0.7111 [0.6925,
+  0.7290], AUC 0.8699 [0.8570, 0.8819], Brier 0.1248 [0.1187, 0.1309]. Cross-panel Arm C (train Guelin → predict BASEL ×
+  ECOR): nDCG 0.7619 [0.7219, 0.8207], mAP 0.5186 [0.4591, 0.5780], AUC 0.7607 [0.6886, 0.8307], Brier 0.1844 [0.1426,
+  0.2213]. SX07 and SX09 skipped (plm-rbp-redundant); SX08 continuous depolymerase bitscore validated as null
+  (bit-identical Arm C metrics). [validated; source: SX05, SX06, SX08, SX10; see also: autoresearch-baseline,
+  mlc-dilution-potency, new-phage-generalization, plm-rbp-redundant, panel-size-ceiling]
+  - *The 10.9 pp within-panel AUC (0.87) vs cross-panel AUC (0.76) gap is the main SPANDEX-era unresolved item. Closing
+    it requires panel expansion rather than richer phage-side features. Use this record as the reference point for
+    future tracks; the canonical artifacts live at lyzortx/generated_outputs/sx05_sx01_eval/ (within-panel) and
+    lyzortx/generated_outputs/sx06_sx03_eval/ (cross-panel Arm C).*
 - **`autoresearch-baseline`**: AUTORESEARCH all-pairs model (0.810 AUC, 90.8% top-3 on ST03 holdout) is the canonical
   clean baseline: derived from raw FASTA, no leakage, no feature mismatch, no per-phage blending. Track GIANTS improved
   this to 0.823 AUC with depolymerase × capsule features and RFE. [validated; source: 2026-04-08 AUTORESEARCH eval,
