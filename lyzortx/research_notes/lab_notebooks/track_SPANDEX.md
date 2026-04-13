@@ -251,3 +251,66 @@ this project — they replace the retired top-3 hit rate.
 - `lyzortx/generated_outputs/sx01_eval/kfold_predictions.csv`
 - `lyzortx/generated_outputs/sx01_eval/fold_metrics.csv`
 - `lyzortx/generated_outputs/sx01_eval/bootstrap_results.json`
+
+### 2026-04-13 14:39 CEST: Mean-pooling analysis for PLM features (design note)
+
+#### Executive summary
+
+The current `phage_rbp_struct` pipeline double-aggregates PLM embeddings: first mean-pooling within each protein
+(losing positional specificity for binding motifs), then mean-pooling across all RBPs of a phage (blurring
+functional identity — depolymerase signal mixed with tail fiber signal). This informs SX06: prefer max-pooling or
+regional pooling within a protein, keep per-functional-class embeddings separate across proteins, only mean-pool
+within a class when a phage has multiple proteins of that class.
+
+#### Current aggregation cascade
+
+```
+┌─────────────────────────────────────┐
+│  Phage X has 3 RBPs:                │
+│    - Tail fiber  (500 AA)           │
+│    - Tail spike/depolymerase (400 AA)│
+│    - Baseplate protein (300 AA)     │
+└─────────────────────────────────────┘
+              │
+              ▼  (ESM-2/ProstT5+SaProt)
+┌─────────────────────────────────────┐
+│  Per-AA embeddings:                  │
+│    Tail fiber:   500 × 1280 matrix   │
+│    Depolymerase: 400 × 1280 matrix   │
+│    Baseplate:    300 × 1280 matrix   │
+└─────────────────────────────────────┘
+              │
+              ▼  MEAN POOL within protein
+┌─────────────────────────────────────┐
+│    Tail fiber:   1 × 1280 vector     │
+│    Depolymerase: 1 × 1280 vector     │
+│    Baseplate:    1 × 1280 vector     │
+└─────────────────────────────────────┘
+              │
+              ▼  MEAN POOL across proteins ← the costly step
+┌─────────────────────────────────────┐
+│  Phage X: 1 × 1280 vector            │
+│  (blurry average of 3 distinct       │
+│   functional proteins)               │
+└─────────────────────────────────────┘
+              │
+              ▼  PCA
+┌─────────────────────────────────────┐
+│  32 features: phage_rbp_struct__*   │
+└─────────────────────────────────────┘
+```
+
+#### Where signal is lost
+
+- **Within-protein mean pool**: binding specificity lives in short motifs (~20 residues in RBP tip domains). Mean pool
+  dilutes this 25× with scaffold/linker. Moriniere 2026 achieves AUROC 0.99 for receptor class using position-preserving
+  5-mers — evidence that positional signal matters.
+- **Across-protein mean pool**: tail fiber + depolymerase + baseplate protein do different jobs. Averaging produces a
+  vector that's nearly useless for distinguishing "has strong capsule-hydrolysis depolymerase" from "has 3 similar tail
+  fibers."
+
+#### Scope decision
+
+The set-aware architecture (Set Transformer, two-tower with cross-attention) is the honest fix — noted as a future
+direction in project.md. For SPANDEX, we stay with LightGBM but do the minimal practical mean-pooling (SX06): per-
+functional-class embedding blocks with max/regional pooling within protein.

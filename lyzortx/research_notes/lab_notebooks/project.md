@@ -1663,3 +1663,19 @@ GIANTS proved that the feature-engineering approach has diminishing returns with
 The next gains come from: (a) measuring more carefully (graded metrics, k-fold CV), (b) cleaning the training signal
 (excluding ambiguous labels), and (c) expanding the phage panel (BASEL). These are evaluation and data changes, not
 feature changes — a different track with a different philosophy.
+
+#### Future: Two-tower / set-aware phage encoder track
+
+LightGBM requires fixed-width feature vectors, forcing mean-pooling across variable-length sequences (residues within a
+protein, proteins within a phage). This dilutes position-specific binding signal (RBP tip motifs) and functional
+identity (depolymerase vs tail fiber). The cluster-membership depolymerase features have the same generalization
+flaw — they're essentially memorization of training phage sequences. A set-aware architecture (Set Transformer, Deep
+Sets, two-tower with cross-attention over phage proteins) would handle variable-length phage inputs natively, with
+learned pooling conditioned on the host features. PHIStruct (Kuchi et al. 2024) validates this direction for
+phage-host prediction.
+
+Revisit when SPANDEX completes and a ceiling is confirmed that's attributable to pooling/cluster-membership artifacts
+(e.g., SX05 closes the zero-filled BASEL gap but generalization AUC still lags within-panel by >5pp, or SX06 shows
+that continuous-but-pooled depo features don't rescue k-fold performance). At that point, scope a dedicated track for
+a two-tower neural encoder feeding learned phage embeddings into LightGBM (hybrid) or a full end-to-end neural
+predictor.

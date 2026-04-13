@@ -1778,19 +1778,26 @@ tracks:
         (in_cluster_N × capsule_score) built from Guelin depolymerases. BASEL depolymerases
         that narrowly miss the MMseqs2 clustering threshold contribute zero signal even
         when they share substrate specificity. Cluster features are effectively memorization
-        of training phage sequences — they fundamentally cannot generalize to unseen
-        depolymerases. Same problem affects k-fold CV within our panel.'
-      - 'QUICK WIN: Replace in_cluster_N binary features with MMseqs2 bitscore against each
-        Guelin cluster representative — continuous similarity instead of threshold-based
+        of training phage sequences — they cannot generalize to unseen depolymerases.
+        Same problem affects k-fold CV within our panel. Scope discipline: keep LightGBM
+        for this track; set-aware architectures (two-tower, Set Transformer) are noted as
+        a future direction in project.md — do NOT pursue them here.'
+      - 'QUICK WIN: Replace in_cluster_N binary features with MMseqs2 bitscore against
+        each Guelin cluster representative — continuous similarity instead of threshold-based
         membership. Minutes to implement using existing reference bank.'
-      - 'ARCHITECTURAL WIN: Run ESM-2 embedding per depolymerase protein (not mean-pooled
-        across all RBPs like phage_rbp_struct). PCA to 16-32 dims. Cross-term with host
-        capsule features as continuous product.'
-      - Evaluate both approaches via k-fold CV (within-panel generalization) and Arm C
-        (unseen-phage generalization). Compare nDCG, mAP, AUC against SX05 baseline with
-        zero-filled clusters.
+      - 'MINIMAL MEAN-POOLING APPROACH: Compute ESM-2 embeddings per depolymerase protein
+        (not mean-pooled across all RBPs). Within each protein, prefer max-pooling or
+        regional pooling (N-terminal + C-terminal halves separately) over mean-pooling —
+        max-pooling preserves the strongest motif-level signal. Only mean-pool across
+        proteins of the same functional class when a phage has multiple depolymerases.
+        Keep phage_depo_plm_* features separate from the existing phage_rbp_struct block
+        (which stays as aggregated mean-pool for comparison). PCA each new feature block
+        separately to 16-32 dims.'
+      - Evaluate both approaches (MMseqs2 bitscore and per-depo PLM) via k-fold CV
+        (within-panel generalization) and SX05 Arm C (unseen-phage generalization).
+        Compare nDCG, mAP, AUC against SX05 baseline.
       - If continuous features improve generalization to unseen phages by >2pp AUC, adopt
-        as default feature representation
+        as default feature representation for Gate 1 cross-terms
       - Record results and cluster-vs-continuous analysis in track_SPANDEX.md
     - id: SX07
       title: MLC=1 exclusion sensitivity analysis
