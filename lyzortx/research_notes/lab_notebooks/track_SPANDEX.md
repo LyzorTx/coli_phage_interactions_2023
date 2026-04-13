@@ -450,3 +450,71 @@ SPANDEX tickets shifted:
 
 Implement SX05. Paper quote + raw-CSV verification + the executive rationale are recorded in the `mlc-dilution-potency`
 knowledge unit.
+
+### 2026-04-13 19:00 CEST: SX06 — BASEL TL17 phage_projection features (gap largely closed)
+
+#### Executive summary
+
+SX02 zero-filled the `phage_projection` slot (33 TL17 RBP family columns) for all 52 BASEL phages, which collapsed
+Arm C generalization: every BASEL feature vector sat on the origin, indistinguishable from zero-filled Guelin rows.
+SX06 reused the live TL17 deployable runtime (`lyzortx/pipeline/track_l/steps/deployable_tl17_runtime.py`) —
+`project_phage_feature_rows_batched` on the BASEL FASTAs in `.scratch/basel/genomes/` — and overwrote the zero rows
+in `.scratch/basel/feature_slots/phage_projection/features.csv` with real per-family MMseqs2 identities. 39/52 BASEL
+phages (75%) now have at least one non-zero TL17 family hit — comparable to 84/96 (87%) in Guelin. Re-running SX03
+lifted Arm C nDCG from 0.648 to **0.762 (+11.4 pp)**, mAP from 0.407 to **0.519 (+11.2 pp)**, and AUC from 0.721
+to **0.761 (+4.0 pp)**. Arm A (our-data-only) and Arm B (pooled) unchanged — the fix is isolated to the
+generalization-to-unseen-phages path exactly where the SX02 gap lived.
+
+#### What changed
+
+- New script `lyzortx/pipeline/autoresearch/project_basel_tl17_features.py`:
+  - loads `tl17_rbp_runtime.joblib` + `tl17_rbp_reference_bank.faa`
+  - calls `project_phage_feature_rows_batched` on the 52 BASEL FASTAs
+  - merges projected rows into the existing `phage_projection` slot CSV without touching Guelin rows
+- Slot artefact lives at `.scratch/basel/feature_slots/phage_projection/features.csv` (gitignored; regenerable by
+  re-running the script).
+- No change to production pipelines; SX03 picks up the corrected slot via `patch_context_with_extended_slots`.
+
+#### BASEL coverage vs Guelin (TL17 family hits)
+
+|              | Panel size | Non-zero phages | Mean families hit | Median |
+|--------------|------------|-----------------|-------------------|--------|
+| Guelin       | 96         | 84 (87%)        | 2.94              | 2      |
+| BASEL (new)  | 52         | 39 (75%)        | 2.62              | 1      |
+| BASEL (old)  | 52         | 0               | 0                 | 0      |
+
+13 BASEL phages legitimately miss every TL17 family — their RBP proteomes don't align to the Guelin reference
+bank at 70% query coverage. That is expected biology, not a bug; we don't invent features for them.
+
+#### SX03 re-evaluation deltas
+
+Command: `python -m lyzortx.pipeline.autoresearch.sx03_eval --device-type cpu`.
+
+| Arm                                    | Metric | SX03 baseline (zero-fill) | SX06 (real TL17) | Δ |
+|----------------------------------------|--------|---------------------------|------------------|---------|
+| A — Our clean data only                | nDCG   | 0.7785 [0.7705, 0.7948]   | 0.7958 [0.7877, 0.8124] | +1.73 pp (from SX05 MLC fix) |
+| A                                      | mAP    | 0.7111                    | 0.7111           | 0.00    |
+| A                                      | AUC    | 0.8699                    | 0.8699           | 0.00    |
+| B — Our clean + BASEL training         | nDCG   | 0.7818 [0.7741, 0.7979]   | 0.7958 [0.7877, 0.8130] | +1.40 pp |
+| B                                      | mAP    | 0.7131                    | 0.7119           | −0.12 pp |
+| B                                      | AUC    | 0.8702                    | 0.8699           | −0.03 pp |
+| C — Train on our data, predict BASEL   | nDCG   | 0.6480 [0.6031, 0.7099]   | **0.7619 [0.7219, 0.8207]** | **+11.39 pp** |
+| C                                      | mAP    | 0.4072                    | **0.5186**       | **+11.15 pp** |
+| C                                      | AUC    | 0.7206                    | **0.7607**       | **+4.02 pp** |
+| C                                      | Brier  | 0.1958                    | 0.1844           | −1.14 pp |
+
+Arm A/B stay flat — the SX05 nDCG shift already landed and BASEL training pairs still neutral on our-panel
+scoring (`external-data-neutral` knowledge holds). Arm C is where the SX02 gap lived, and SX06 reclaims most of
+it: generalization-to-unseen-phages is now nDCG 0.76 and AUC 0.76, versus within-panel (Arm A) at AUC 0.87. Gap
+closed to ~10.9 pp AUC — a big step, but SX07's "within 3 pp" conditional skip is **not** met.
+
+#### SX07 decision
+
+`plm-rbp-redundant` shows PLM embeddings (ProstT5 + SaProt → PCA 32) contributed zero lift on the Guelin ST03
+holdout while cannibalizing 33.9% of feature importance from existing family features. SX06's massive Arm C lift
+came from giving BASEL phages their TL17 family alignment signal — the same family signal PLM would partially
+duplicate. Expected value of SX07 on BASEL Arm C: small, given the Guelin-panel dead-end, against hours of
+ProstT5 (3B) + SaProt (650M) inference on CPU and restoration of code deleted in PR #393.
+
+Decision: **skip SX07**. Move directly to SX08 (continuous depolymerase bitscore). If SX08+SX10 still leave a
+material Arm C gap, revisit SX07 with a scoped BASEL-only evaluation.
