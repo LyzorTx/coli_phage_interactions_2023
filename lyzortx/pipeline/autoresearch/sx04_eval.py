@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """SX04: Ordinal lysis potency prediction.
 
-LightGBM regression predicting MLC score (0-4) directly instead of binary
-classification. Compares nDCG against the binary baseline from SX01.
+LightGBM regression predicting MLC score (0-3 after SX05) directly instead of
+binary classification. Compares nDCG against the binary baseline from SX01.
 
 The SX01 pre-flight confirmed Spearman rho=0.24 between predicted P(lysis)
 and MLC grade among positives — the feature space separates potency levels.
@@ -117,7 +117,7 @@ def train_ordinal_fold(
     feature_columns = [col for col in train_design.columns if col.startswith(prefixes)]
     categorical_columns = [col for col in (host_categorical + phage_categorical) if col in feature_columns]
 
-    # Build MLC target (ordinal 0-4) for training pairs.
+    # Build MLC target (ordinal 0-3 after SX05) for training pairs.
     train_mlc = []
     for _, row in train_design.iterrows():
         key = (str(row["bacteria"]), str(row["phage"]))
