@@ -3,7 +3,7 @@
 <!-- Last consolidated: 2026-04-13T01:40:00+02:00 -->
 <!-- Source: lyzortx/research_notes/lab_notebooks -->
 
-**57 knowledge units** across 7 themes (44 active, 13 dead ends)
+**58 knowledge units** across 7 themes (44 active, 14 dead ends)
 
 ## Data & Labels
 
@@ -369,6 +369,16 @@ Compressed lessons from approaches that didn't work.
     predictor assigns 39 OMP, 33 LPS, 22 NGR, 2 unknown. Despite 5x more OMP-assigned phages, the cross-terms still
     collapse because the host-side OMP scores have CV 0.01-0.17. More accurate receptor predictions (full GenoPHI
     classifier) would not help because the host side — not the phage side — is the bottleneck.*
+- **`label-vision-reading-spot-checked-dead`**: Using a vision model to re-read the ambiguous 'n' plaque-image scores
+  (the plate crops backing the ~10% of training rows labeled negative but with uninterpretable raw scores) was evaluated
+  via manual spot checks before 2026-04 and did not look promising enough to justify a full re-read pipeline. Do not
+  propose vision-based 'n' resolution as a feature / label fix; the label noise floor is accepted as-is for now.
+  [validated; source: 2026-04 spot checks before SPANDEX wave-2 plan; see also: ambiguous-label-noise,
+  panel-size-ceiling]
+  - *The underlying ambiguity persists — ~3,462 pairs have score='n' with no interpretable positives and are labeled 0.
+    GT09 showed excluding these pairs alone improves top-3 by +3.1 pp (ambiguous-label-noise). But a vision-driven label
+    correction loop isn't a viable shortcut given the plate image quality. Future tracks should either expand the
+    wet-lab panel or accept the label noise as a fixed ceiling.*
 - **`plm-rbp-redundant`**: ProstT5+SaProt PLM embeddings of RBP sequences (1280-dim, PCA to 32) achieve 33.9% LightGBM
   feature importance but zero predictive lift on ST03 holdout; they cannibalize existing phage family features without
   adding new discriminative signal. [validated; source: 2026-04-10 AX08 holdout; see also:
