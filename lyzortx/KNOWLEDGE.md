@@ -18,14 +18,15 @@ Labeling policy, data quality, split contracts, and training corpus.
   cohorts and evaluation splits trace back to this file. [validated; source: ST0.2, AR01, DEPLOY01]
 - **`mlc-dilution-potency`**: MLC (minimum lytic concentration) is a derived score, not a raw feature —
   raw_interactions.csv contains only binary scores (0/1/n) at four tested log_dilutions (0, -1, -2, -4). The paper
-  defines MLC 0-4 over three replicated concentrations (5x10^8, 5x10^7, 5x10^6 pfu/ml) and explicitly excludes the
+  defines MLC over three replicated concentrations (5x10^8, 5x10^7, 5x10^6 pfu/ml) and explicitly excludes the
   unreplicated 5x10^4 (log_dilution=-4) data. Paper's MLC=3 vs MLC=4 is a morphological distinction at 5x10^6
-  (individual plaques vs entire lawn lysis) that our binary spot data physically cannot capture. SX05 aligns our
-  pipeline with the paper: drop log_dilution=-4 from MLC computation, reducing our MLC range to 0-3. MLC=1 is a standard
-  low-potency interaction — not a problem despite the paper's LFW/Abi caveat on lawn clearing at high phage
-  concentration. [validated; source: Gaborieau 2024 Methods "Evaluating phage-bacteria interaction outcomes by plaque
-  assay experiments", Gaborieau 2024 Fig 2b legend, 2026-04-13 raw CSV verification; see also: label-policy-binary,
-  raw-interactions-authority, ambiguous-label-noise, top3-metric-retired]
+  (individual plaques vs entire lawn lysis) that our binary spot data cannot reproduce. SX05 applied the fix:
+  DILUTION_WEIGHT_MAP = {0: 1, -1: 2, -2: 3} with EXCLUDED_LOG_DILUTIONS = {-4}; interaction_matrix.csv was regenerated
+  by capping MLC=4 cells to MLC=3 (1288 pairs collapsed, MLC=0/1/2 counts preserved). Our MLC range is now {0, 1, 2, 3}.
+  MLC=1 is a standard low-potency interaction — not a problem despite the paper's LFW/Abi caveat on lawn clearing at
+  high phage concentration. [validated; source: Gaborieau 2024 Methods "Evaluating phage-bacteria interaction outcomes
+  by plaque assay experiments", Gaborieau 2024 Fig 2b legend, 2026-04-13 raw CSV verification; see also:
+  label-policy-binary, raw-interactions-authority, ambiguous-label-noise, top3-metric-retired]
   - *EXACT PAPER QUOTES (Methods, "Evaluating phage-bacteria interaction outcomes by plaque assay experiments" section):
     - MLC definition: "We encoded each phage-bacteria interaction using the MLC   score, which corresponds to the lowest
     concentration of the phage at which   a lytic interaction is observed." - What counts as lytic: "We considered an
@@ -44,13 +45,15 @@ Labeling policy, data quality, split contracts, and training corpus.
     plaque) and 4 (entire lysis of the bacterial lawn)." RAW DATA SHAPE (raw_interactions.csv, verified 2026-04-13):
     columns are bacteria, phage, image, replicate, plate, log_dilution, X, Y, score. Only binary scores {0, 1, n} and
     only four log_dilutions {0, -1, -2, -4} — no -3 (5x10^5 was never tested). No plaque-morphology column, so the
-    paper's MLC=3 vs MLC=4 morphological split cannot be reconstructed. EXECUTIVE DECISION (SX05): Drop log_dilution=-4
-    from DILUTION_WEIGHT_MAP, reducing our MLC range to {0, 1, 2, 3}. Pairs whose only positive observation was at -4
-    become MLC=0; pairs previously MLC=4 (which by definition also had lysis at -2) become MLC=3. This aligns with the
-    paper's own protocol and eliminates the ~3.3% of pairs whose MLC=4 was derived from unreplicated data. MLC=1 stays
-    as-is (NOT suspect — standard low-potency interaction; the paper's LFW/Abi caveat is a biological note, not an
-    exclusion criterion). USE: MLC 0-3 provides graded relevance weights for nDCG evaluation (SX01). Training labels
-    remain binary (any_lysis) per label-policy-binary.*
+    paper's MLC=3 vs MLC=4 morphological split cannot be reconstructed. SX05 IMPLEMENTATION (2026-04-13):
+    DILUTION_WEIGHT_MAP reduced to {0: 1, -1: 2, -2: 3}; EXCLUDED_LOG_DILUTIONS = {-4} added to
+    build_track_a_foundation.py and applied at raw-row ingestion in both track_a and build_contract (autoresearch). The
+    paper's matrix values at MLC=4 cannot be reconstructed from binary raw data, so regenerate_interaction_matrix.py
+    caps MLC=4 cells at MLC=3 in data/interactions/interaction_matrix.csv (1288 pairs collapsed; MLC=0/1/2 counts
+    preserved exactly; total pair count 38592 unchanged). MLC=1 stays as-is (NOT suspect — standard low-potency
+    interaction; the paper's LFW/Abi caveat is a biological note, not an exclusion criterion). USE: MLC 0-3 provides
+    graded relevance weights for nDCG evaluation (SX01). Training labels remain binary (any_lysis) per
+    label-policy-binary.*
 - **`basel-binary-only`**: BASEL × ECOR interaction data (52 phages × 25 ECOR bacteria from GenoPHI) is confirmed binary
   only — no graded upstream data exists. BASEL used a single high-titer spot test (>10^9 pfu/ml), not a dilution series.
   BASEL EOP data on Zenodo covers K-12 defense experiments only, not the ECOR host range panel. [validated; source:
@@ -59,8 +62,8 @@ Labeling policy, data quality, split contracts, and training corpus.
   - *BASEL spot test at >10^9 pfu/ml is ~2x higher than our maximum concentration (~5x10^8). BASEL positive maps to MLC
     >= 1 (lysis at high titer confirmed). BASEL negative maps to high-confidence MLC=0 (failed at even higher titer than
     our max). 1,240 observed pairs (302 positive, 24.4%), 160 missing. The matrix is already sparse — not all 52 phages
-tested on all 25 bacteria.*
-  
+    tested on all 25 bacteria.*
+
 ## Features & Feature Engineering
 
 What works, what doesn't, leakage risks, and encoding decisions.
@@ -226,11 +229,12 @@ Holdout protocol, benchmark methodology, and error analysis.
     distribution; holdout bacteria are cv_group-disjoint. Holdout is the only honest top-3 test.*
 - **`top3-metric-retired`**: Top-3 hit rate is retired as an evaluation metric starting with Track SPANDEX. It collapses
   the entire ranking into a binary signal, discards potency information, and cannot handle sparse ground truth from
-  multi-source panels. Replaced by nDCG (graded relevance using MLC 0-4) and mAP (binary retrieval quality). [validated;
-  source: 2026-04-12 SPANDEX design; see also: mlc-dilution-potency, st03-canonical-benchmark, bootstrap-strain-level]
-  - *Top-3 assigns identical scores to a model ranking a true positive 4th vs 148th. With mixed-source data (our MLC 0-4
-    - BASEL binary), nDCG naturally handles graded relevance while mAP handles partial ground truth (score only observed
-    pairs per bacterium). AUC and Brier retained as secondary metrics.*
+  multi-source panels. Replaced by nDCG (graded relevance using MLC 0-3 post-SX05) and mAP (binary retrieval quality).
+  [validated; source: 2026-04-12 SPANDEX design; see also: mlc-dilution-potency, st03-canonical-benchmark,
+  bootstrap-strain-level]
+  - *Top-3 assigns identical scores to a model ranking a true positive 4th vs 148th. With mixed-source data (our MLC 0-3
+    post-SX05 + BASEL binary), nDCG naturally handles graded relevance while mAP handles partial ground truth (score
+    only observed pairs per bacterium). AUC and Brier retained as secondary metrics.*
 - **`kfold-cv-replaces-fixed-holdout`**: 10-fold bacteria-stratified cross-validation replaces the single fixed ST03
   holdout (65 bacteria) as the primary evaluation protocol in Track SPANDEX. Every bacterium is evaluated exactly once;
   performance estimates are robust to holdout composition. [preliminary; source: 2026-04-12 SPANDEX design; see also:
@@ -273,10 +277,10 @@ Compressed lessons from approaches that didn't work.
   - *TK02 was invalidated (zero joined rows). SX03 is the first proper BASEL test with full feature computation
     (Pharokka + DepoScope on 52 genomes): Arm B (our data + BASEL training) gave nDCG +0.3pp with overlapping CIs vs
     baseline — confirmed neutral. 1,240 BASEL pairs (3.8% of training) is too small to move the needle.*
-- **`ordinal-regression-not-better`**: LightGBM regression predicting MLC 0-4 potency does not improve over binary
-  classification: nDCG +0.4pp (CIs overlap) but mAP -3.1pp and AUC -3.9pp. Binary classification already separates
-  potency grades (Spearman 0.24 among positives). [validated; source: SX04; see also: mlc-dilution-potency,
-  top3-metric-retired]
+- **`ordinal-regression-not-better`**: LightGBM regression predicting MLC (0-4 at the time of SX04; 0-3 after SX05's
+  morphology-based MLC=4 collapse) does not improve over binary classification: nDCG +0.4pp (CIs overlap) but mAP -3.1pp
+  and AUC -3.9pp. Binary classification already separates potency grades (Spearman 0.24 among positives). [validated;
+  source: SX04; see also: mlc-dilution-potency, top3-metric-retired]
   - *79% zero-inflation (MLC=0) dilutes regression capacity for lysis/no-lysis discrimination. The binary model
     implicitly captures potency information — MLC=4 pairs get P(lysis)=0.82 vs MLC=1 at P(lysis)=0.61. No explicit
     zero-inflation handling (Tweedie, hurdle model) was tested; vanilla regression was sufficient to reject the approach

@@ -59,18 +59,25 @@ CV_REQUIRED_COLUMNS: Tuple[str, ...] = (
 
 ALLOWED_RAW_SCORES: Set[str] = {"0", "1", "n"}
 
+# Per Gaborieau 2024 Methods ("Evaluating phage-bacteria interaction outcomes by plaque assay experiments"):
+# "The outcome of interaction at 5 x 10^4 pfu/ml was not taken into account in the calculation of the MLC score
+# because it was not verified by a replicate." SX05 aligns our pipeline with that protocol by dropping
+# log_dilution=-4 (5 x 10^4 pfu/ml) from the MLC weight map and filtering those rows out of every downstream
+# scoring path. The paper's MLC=4 is a morphological distinction ("entire lysis of the bacterial lawn at
+# 5 x 10^6") that our binary 0/1/n raw data physically cannot capture, so the fix also collapses our MLC range
+# from {0, 1, 2, 3, 4} to {0, 1, 2, 3}.
+EXCLUDED_LOG_DILUTIONS: frozenset[int] = frozenset({-4})
+
 DILUTION_WEIGHT_MAP: Dict[int, int] = {
     0: 1,
     -1: 2,
     -2: 3,
-    -4: 4,
 }
 
 DILUTION_POTENCY_LABEL_MAP: Dict[int, str] = {
     0: "low",
     -1: "moderate",
     -2: "high",
-    -4: "very_high",
 }
 
 IMAGE_EXTENSIONS: Tuple[str, ...] = (
@@ -84,14 +91,16 @@ IMAGE_EXTENSIONS: Tuple[str, ...] = (
 
 @dataclass(frozen=True)
 class LabelPolicyV1:
-    expected_observations_per_pair: int = 9
+    # 8 = R1/R2/R3 at log_dilution=0 + R2/R3 at -1 + R1/R2/R3 at -2
+    # (SX05 drops log_dilution=-4, the unreplicated 5 x 10^4 pfu/ml observation.)
+    expected_observations_per_pair: int = 8
     min_interpretable_obs_for_hard_negative: int = 5
     high_uninterpretable_fraction_threshold: float = 0.25
 
 
 @dataclass(frozen=True)
 class LabelPolicyV2:
-    expected_observations_per_pair: int = 9
+    expected_observations_per_pair: int = 8
     min_positive_obs: int = 2
     min_positive_fraction_interpretable: float = 0.4
     min_negative_obs: int = 7
@@ -152,8 +161,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--expected-observations-per-pair",
         type=int,
-        default=9,
-        help="Expected observation count per bacteria-phage pair.",
+        default=8,
+        help=(
+            "Expected observation count per bacteria-phage pair after excluding "
+            "EXCLUDED_LOG_DILUTIONS (SX05 drops the unreplicated 5 x 10^4 row, leaving 8 per pair)."
+        ),
     )
     parser.add_argument(
         "--v1-min-interpretable-neg",
@@ -198,6 +210,19 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="V2 high-uninterpretable fraction threshold.",
     )
     return parser.parse_args(argv)
+
+
+def filter_excluded_dilutions(raw_rows: Sequence[Dict[str, str]]) -> List[Dict[str, str]]:
+    """Drop raw rows whose log_dilution is in EXCLUDED_LOG_DILUTIONS (SX05)."""
+    kept: List[Dict[str, str]] = []
+    for row in raw_rows:
+        dilution = parse_int_or_none(row["log_dilution"])
+        if dilution is None:
+            raise ValueError(f"Invalid log_dilution value: {row['log_dilution']!r}")
+        if dilution in EXCLUDED_LOG_DILUTIONS:
+            continue
+        kept.append(row)
+    return kept
 
 
 def read_delimited_rows(path: Path, delimiter: str = ";") -> Tuple[List[Dict[str, str]], List[str]]:
@@ -368,19 +393,21 @@ def build_alias_candidates(
 
 
 def potency_label_from_dilution(dilution: Optional[int]) -> str:
-    if dilution is None:
+    if dilution is None or dilution in EXCLUDED_LOG_DILUTIONS:
         return "none"
     return DILUTION_POTENCY_LABEL_MAP.get(dilution, f"dilution_{dilution}")
 
 
 def potency_rank_from_dilution(dilution: Optional[int]) -> int:
-    if dilution is None:
+    if dilution is None or dilution in EXCLUDED_LOG_DILUTIONS:
         return 0
     return DILUTION_WEIGHT_MAP.get(dilution, 0)
 
 
 def find_best_dilution_any_lysis(dilution_counts: Mapping[int, Counter[str]]) -> Optional[int]:
-    positive_dilutions = [d for d, counts in dilution_counts.items() if counts["1"] > 0]
+    positive_dilutions = [
+        d for d, counts in dilution_counts.items() if counts["1"] > 0 and d not in EXCLUDED_LOG_DILUTIONS
+    ]
     if not positive_dilutions:
         return None
     return min(positive_dilutions)
@@ -678,7 +705,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     for path in (id_map_dir, integrity_dir, cohort_dir, labels_dir, qc_dir):
         ensure_directory(path)
 
-    raw_rows, raw_header = read_delimited_rows(args.raw_interactions_path, delimiter=";")
+    raw_rows_all, raw_header = read_delimited_rows(args.raw_interactions_path, delimiter=";")
+    raw_rows = filter_excluded_dilutions(raw_rows_all)
     matrix_rows, matrix_header = read_delimited_rows(args.interaction_matrix_path, delimiter=";")
     host_rows, host_header = read_delimited_rows(args.host_metadata_path, delimiter=";")
     phage_rows, phage_header = read_delimited_rows(args.phage_metadata_path, delimiter=";")

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """SX04: Ordinal lysis potency prediction.
 
-LightGBM regression predicting MLC score (0-4) directly instead of binary
-classification. Compares nDCG against the binary baseline from SX01.
+LightGBM regression predicting MLC score (0-3 after SX05) directly instead of
+binary classification. Compares nDCG against the binary baseline from SX01.
 
 The SX01 pre-flight confirmed Spearman rho=0.24 between predicted P(lysis)
 and MLC grade among positives — the feature space separates potency levels.
@@ -82,7 +82,7 @@ def train_ordinal_fold(
     seed: int,
     device_type: str,
 ) -> list[dict[str, object]]:
-    """Train LightGBM regressor on MLC 0-4, predict on holdout."""
+    """Train LightGBM regressor on MLC 0-3, predict on holdout."""
     # Build entity feature tables.
     host_slots = ["host_surface", "host_typing", "host_stats", "host_defense"]
     phage_slots = ["phage_projection", "phage_stats"]
@@ -117,7 +117,7 @@ def train_ordinal_fold(
     feature_columns = [col for col in train_design.columns if col.startswith(prefixes)]
     categorical_columns = [col for col in (host_categorical + phage_categorical) if col in feature_columns]
 
-    # Build MLC target (ordinal 0-4) for training pairs.
+    # Build MLC target (ordinal 0-3 after SX05) for training pairs.
     train_mlc = []
     for _, row in train_design.iterrows():
         key = (str(row["bacteria"]), str(row["phage"]))
@@ -138,7 +138,7 @@ def train_ordinal_fold(
         len(holdout_design),
     )
 
-    # Train LightGBM regressor on MLC 0-4.
+    # Train LightGBM regressor on MLC 0-3.
     estimator = LGBMRegressor(
         **LGBM_REGRESSION_PARAMS,
         random_state=seed,
