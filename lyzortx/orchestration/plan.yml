@@ -1826,29 +1826,36 @@ tracks:
         (aggregated mean-pool) and against SX07 (bitscore) results.
       - Record results and per-class-vs-aggregated analysis in track_SPANDEX.md
     - id: SX09
-      title: MLC=1 exclusion sensitivity analysis
+      title: MLC label quality sensitivity (MLC=1 LFW + MLC=4 unreplicated)
       model: claude-opus-4-6
       ci_image_profile: base
       status: pending
       depends_on_tasks:
       - SX01
       acceptance_criteria:
-      - 'MOTIVATION: Paper flags lawn clearing at high phage concentration as potentially
-        non-productive (lysis from without or abortive infection). Maps to MLC=1 in our
-        scoring — lysis only at MOI~10, zero at lower dilutions (no evidence of productive
-        amplification). MLC=1 is 7.8% of all pairs and 46% of positives. Training on
-        MLC=1 pairs may be training on non-productive lysis signal that is clinically
-        irrelevant and potentially misleading.'
-      - 'PRE-FLIGHT: Characterize raw score patterns for MLC=1 pairs across replicates —
-        are they reproducible or borderline? If >30% show inter-replicate disagreement,
-        they are a noisy signal class regardless of LFW/Abi interpretation.'
-      - 'Build three training cohorts from clean-label data (already excluding n-scores
-        from GT09): (a) all positives (SX01 baseline); (b) exclude MLC=1 positives (treat
-        as unobserved, not negative); (c) keep MLC=1 but downweight to 0.5x in training'
-      - Evaluate all three on SPANDEX metric suite with 10-fold CV
-      - Compare on both standard evaluation and on held-out MLC≥2 pairs only (where
-        productive infection is clearer)
-      - Record results and MLC label quality findings in track_SPANDEX.md
+      - 'MOTIVATION: Two MLC label classes are suspect for different reasons.
+        MLC=1: paper flags lawn clearing at high phage concentration as potentially
+        non-productive (lysis from without or abortive infection). MLC=1 in our scoring
+        is lysis only at MOI~10 with no amplification to lower dilutions — the structural
+        signature LFW/Abi would produce. 7.8% of pairs, 46% of positives.
+        MLC=4: paper Methods explicitly EXCLUDED 5x10^4 pfu/ml observations from MLC
+        calculation because they were unreplicated. Our pipeline maps log_dilution=-4
+        (5x10^4) to MLC=4. Verified: MLC=3 vs MLC=4 in our data hinges on a single
+        unreplicated observation. 3.3% of pairs, 19.6% of positives.'
+      - 'PRE-FLIGHT: Quantify MLC=4 instability — how many MLC=4 pairs would flip to MLC=3
+        if we ignored the -4 dilution observation? What fraction of MLC=1 pairs show
+        inter-replicate disagreement at log_dilution=0? If MLC=4 is mostly a 1-observation
+        flip from MLC=3, the distinction is structurally noise.'
+      - 'Build five training cohorts from clean-label data (already excluding n-scores
+        from GT09): (a) all positives (SX01 baseline); (b) exclude MLC=1 positives;
+        (c) downweight MLC=1 to 0.5x; (d) collapse MLC=4 into MLC=3 (treat them as one
+        class, ignore the -4 dilution observation per paper protocol); (e) both b and d
+        combined'
+      - Evaluate all cohorts on SPANDEX metric suite with 10-fold CV (nDCG using the
+        relevance scale that results from each cohort, mAP, AUC, Brier)
+      - Compare on standard eval and on held-out MLC>=2 pairs only (cleaner positives)
+      - Record results, MLC label quality findings, and recommended exclusion policy in
+        track_SPANDEX.md. The recommended policy feeds into SX10 consolidation.
     - id: SX10
       title: Final SPANDEX baseline consolidation
       model: claude-opus-4-6

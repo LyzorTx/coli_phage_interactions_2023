@@ -16,21 +16,21 @@ Labeling policy, data quality, split contracts, and training corpus.
   also: raw-interactions-authority]
 - **`raw-interactions-authority`**: raw_interactions.csv is the authoritative training corpus; all derived training
   cohorts and evaluation splits trace back to this file. [validated; source: ST0.2, AR01, DEPLOY01]
-- **`mlc-dilution-potency`**: The interaction_matrix.csv MLC scores (0-4) encode dilution potency from 4 tested
-  dilutions (log_dilution 0, -1, -2, -4): 0=no lysis, 1=lysis only at undiluted (5x10^8 pfu/ml, MOI~10), 2=lysis at 0
-  and -1, 3=lysis at 0,-1,-2, 4=lysis at all four dilutions including 10,000x diluted (5x10^4 pfu/ml). Higher MLC
-  generally indicates more robust productive infection, but MLC=1 is ambiguous — the paper explicitly flags lawn
-  clearing at high phage concentration as potentially non-productive (lysis from without, abortive infection).
-  [validated; source: 2026-04-12 SPANDEX design, Gaborieau 2024 Methods; see also: label-policy-binary,
-  raw-interactions-authority, ambiguous-label-noise]
-  - *Paper quote (Methods): "Clearing of the bacterial lawn at high phage concentration could result from productive
-    lysis... or from another mechanism such as lysis from without, or abortive infection." This applies to MLC=1 (lysis
-    only at MOI~10 with no amplification to lower dilutions). MLC=3 is the confirmed-productive gold standard
-    (individualized plaques at low concentration prove new virion production). MLC=4 (lysis at all four dilutions,
-    including 10,000x diluted) is also clearly productive — requires amplification from few starting phages.
-    Distribution: 79.3% MLC=0, 7.8% MLC=1 (suspect), 6.0% MLC=2, 3.6% MLC=3 (clean), 3.3% MLC=4 (clean).
-    Clinical/therapeutic utility depends on productive replication, so MLC=1 positives may be noise in the training
-    signal.*
+- **`mlc-dilution-potency`**: Our pipeline's MLC scores (0-4) are derived from 4 raw dilutions (log_dilution 0, -1, -2,
+  -4) and disagree with the paper's MLC definition. Our MLC=4 is determined entirely by a single unreplicated
+  observation at 5x10^4 pfu/ml — a dilution the paper explicitly EXCLUDED from MLC because it was not replicated. MLC=3
+  vs MLC=4 in our data is one observation away from being MLC=3 — it is structurally noisy and should be treated as a
+  suspect label class. [validated; source: 2026-04-12 SPANDEX design, Gaborieau 2024 Methods, 2026-04-13 verification;
+  see also: label-policy-binary, raw-interactions-authority, ambiguous-label-noise]
+  - *Paper Methods quote on MLC=4: "The outcome of interaction at 5x10^4 pfu/ml was not taken into account in the
+    calculation of the MLC score because it was not verified by a replicate." Our pipeline's DILUTION_WEIGHT_MAP maps
+    log_dilution=-4 (5x10^4) to MLC=4, contradicting the paper. Verified: MLC=3 and MLC=4 sample pairs differ only in
+    the single -4 observation ('0' vs '1') — all higher-concentration observations are identical. Separately, paper
+    Methods also flag lawn clearing at HIGH phage concentration as potentially non-productive (LFW or abortive
+    infection); this applies most to MLC=1 pairs (lysis only at MOI~10 with no amplification to lower dilutions).
+    Distribution: 79.3% MLC=0, 7.8% MLC=1 (LFW/Abi suspect), 6.0% MLC=2, 3.6% MLC=3 (clean — replicated,
+    low-concentration productive), 3.3% MLC=4 (suspect — single unreplicated observation). Both MLC=1 and MLC=4 warrant
+    sensitivity analysis (SX09).*
 - **`basel-binary-only`**: BASEL × ECOR interaction data (52 phages × 25 ECOR bacteria from GenoPHI) is confirmed binary
   only — no graded upstream data exists. BASEL used a single high-titer spot test (>10^9 pfu/ml), not a dilution series.
   BASEL EOP data on Zenodo covers K-12 defense experiments only, not the ECOR host range panel. [validated; source:
