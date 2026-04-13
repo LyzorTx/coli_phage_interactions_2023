@@ -1679,3 +1679,43 @@ Revisit when SPANDEX completes and a ceiling is confirmed that's attributable to
 that continuous-but-pooled depo features don't rescue k-fold performance). At that point, scope a dedicated track for
 a two-tower neural encoder feeding learned phage embeddings into LightGBM (hybrid) or a full end-to-end neural
 predictor.
+
+### 2026-04-13 16:00 CEST: SPANDEX plan reshape — MLC=4 pipeline fix elevated to SX05
+
+#### Executive summary
+
+Re-reading the paper Methods revealed that our pipeline's `DILUTION_WEIGHT_MAP` assigns MLC=4 from a dilution the paper
+explicitly excluded (`log_dilution=-4`, 5×10⁴ pfu/ml, unreplicated). The MLC=4 pipeline fix was promoted to the first
+unimplemented SPANDEX ticket (SX05); the old SX09 empirical MLC sensitivity study was deleted as superseded. Later
+tickets shifted by one. Full technical rationale in track_SPANDEX.md (2026-04-13 15:55 CEST entry).
+
+#### Strategic points
+
+1. **MLC=1 is not suspect.** Earlier drafts had flagged MLC=1 for LFW/Abi concerns. Re-reading the paper Methods shows
+   the LFW caveat is a general biological note about lawn-clearing-without-plaques, not a label quality concern
+   specific to MLC=1. MLC=1 stays as a standard low-potency interaction.
+
+2. **MLC=4 is the real anomaly.** The paper's MLC=4 is a morphological distinction at 5×10⁶ (entire lawn lysis vs
+   countable plaques at the same concentration — biologically suspicious because at MOI ~0.1 you would expect plaques,
+   not full clearing). Our binary 0/1/n raw data cannot represent this morphological split, and our repurposed MLC=4
+   (derived from the unreplicated 5×10⁴ observation) is a different, noisier label.
+
+3. **Executive decision over sensitivity study.** The pipeline fix is principled (paper protocol), not empirical
+   (a comparative study of label cohorts). An empirical study would have been cosmetic — it cannot make the
+   morphological split detectable, and the label noise is structural.
+
+4. **Revised trigger references for the Two-tower future note above:** the "SX05" in that revisit trigger (written
+   before this reshape) refers to the TL17 BASEL projection — now SX06. The "SX06" refers to continuous depolymerase
+   bitscore — now SX08. Future `/replan` runs should resolve trigger conditions against the current plan.yml IDs.
+
+#### Ticket mapping
+
+| Old ID | New ID | Task |
+|--------|--------|------|
+| — | SX05 | MLC mapping fix (new — elevated this entry) |
+| SX05 | SX06 | BASEL TL17 phage_projection |
+| SX06 | SX07 | BASEL PLM embeddings (restoration hint pinned to PR 393 / SHA d9717ab) |
+| SX07 | SX08 | Continuous depolymerase bitscore |
+| SX08 | SX09 | Per-functional-class PLM blocks |
+| SX09 | — | Deleted (MLC sensitivity study superseded by SX05) |
+| SX10 | SX10 | Final consolidation (deps updated, MLC axis removed) |

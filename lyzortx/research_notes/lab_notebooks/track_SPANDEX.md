@@ -314,3 +314,98 @@ within a class when a phage has multiple proteins of that class.
 The set-aware architecture (Set Transformer, two-tower with cross-attention) is the honest fix — noted as a future
 direction in project.md. For SPANDEX, we stay with LightGBM but do the minimal practical mean-pooling (SX06): per-
 functional-class embedding blocks with max/regional pooling within protein.
+
+### 2026-04-13 15:55 CEST: MLC=4 pipeline correction — align with paper protocol (design note)
+
+#### Executive summary
+
+Audit of our MLC derivation against the paper's Methods found a direct contradiction: our pipeline's
+`DILUTION_WEIGHT_MAP` assigns MLC=4 to pairs with lysis at `log_dilution=-4` (5×10⁴ pfu/ml), but the paper explicitly
+excludes that dilution from MLC because it was unreplicated. Our MLC=4 is therefore a label class derived from noise
+the paper itself discarded. SX05 (newly elevated to the first unimplemented SPANDEX ticket) drops `log_dilution=-4`
+from MLC computation, reducing our range to 0–3 and aligning with paper protocol.
+
+#### What the paper actually says
+
+Gaborieau 2024 Methods, "Evaluating phage-bacteria interaction outcomes by plaque assay experiments":
+
+> "The MLC score is null in the case of non-lytic interaction and ranges from 1 (lytic interaction at the highest
+> phage titre) to 4 (uncountable number of lysis plaques at 5 × 10⁶ p.f.u. ml⁻¹)."
+
+> "The outcome of interaction at 5 × 10⁴ p.f.u. ml⁻¹ was not taken into account in the calculation of the MLC score
+> because it was not verified by a replicate."
+
+Fig 2b legend:
+
+> "interactions observed at the lowest phage concentration (5 × 10⁶ p.f.u. ml⁻¹) are distinguished between 3
+> (individualized lysis plaque) and 4 (entire lysis of the bacterial lawn)"
+
+So the paper's MLC=3 vs MLC=4 is a **morphological** distinction at 5×10⁶ (countable plaques vs entire lawn lysis),
+NOT a concentration distinction. MLC=4 is the biological anomaly — at MOI ~0.1, full lawn clearing cannot be cleanly
+explained by productive plaque-forming replication.
+
+#### What our raw data looks like
+
+`raw_interactions.csv` verified:
+- Columns: `bacteria, phage, image, replicate, plate, log_dilution, X, Y, score`
+- Scores: `{0, 1, n}` (binary only)
+- Log dilutions: `{0, -1, -2, -4}` (no `-3`; 5×10⁵ was never tested)
+- **No plaque morphology column** — we cannot reconstruct the paper's individualized-vs-entire-lawn distinction
+
+So our pipeline cannot represent the paper's MLC=4 anyway. By repurposing `log_dilution=-4` (the unreplicated
+dilution) as MLC=4, we invented a *different* MLC=4 that has no defensible biological or statistical meaning.
+
+#### The fix (SX05)
+
+Change `DILUTION_WEIGHT_MAP` in `lyzortx/pipeline/track_a/steps/build_track_a_foundation.py` from
+`{0: 1, -1: 2, -2: 3, -4: 4}` to `{0: 1, -1: 2, -2: 3}`. Ignore `log_dilution=-4` rows at scoring time.
+
+Pair-level effects:
+
+| Raw pattern at {0, -1, -2, -4} | Current MLC | Fixed MLC |
+|-------------------------------|-------------|-----------|
+| {1, 1, 1, 0} | 3 | 3 (unchanged) |
+| {1, 1, 1, 1} | 4 | 3 (−4 row ignored; −2 observation still valid) |
+| {1, 1, 0, 1} | 4 | 2 (no lysis at −2) |
+| {0, 0, 0, 1} | 4 | 0 (edge case — "lysis only at 5×10⁴" is noise) |
+
+Affects ~3.3% of all pairs (the current MLC=4 population).
+
+#### Why this is an executive decision, not a sensitivity study
+
+Earlier drafts had an empirical SX09 comparing cohorts (exclude MLC=1 / downweight / collapse MLC=4 / combined). That
+was unnecessary:
+
+1. **MLC=4 fix is principled, not empirical.** The paper excluded this dilution. We should too. No comparison needed.
+2. **MLC=1 is not a problem.** Re-reading the paper Methods confirms: MLC=1 is a standard low-potency lytic
+   interaction at highest titre. The paper's LFW/Abi caveat is a biological note about lawn-clearing-without-plaques
+   possibly being non-productive — not an exclusion criterion and not specific to MLC=1.
+3. **Our binary data cannot distinguish LFW from productive lysis** anyway (no morphology column).
+
+SX09 (old) deleted. SX05 (new) implements the fix.
+
+#### Downstream consequences
+
+- **MLC 0–3 remains valid graded relevance for nDCG.** Training labels are binary (`any_lysis`) per `label-policy-binary`
+  and are unaffected by the mapping change.
+- **SX01 baseline needs a re-run** on corrected labels to document the metric-level delta. Acceptance criterion in SX05.
+- **SX10 consolidation simplified.** MLC label cohort selection is no longer a configurable axis — the fix is baked in.
+
+#### Plan renumbering
+
+SPANDEX tickets shifted:
+
+| Old ID | New ID | Task |
+|--------|--------|------|
+| — | SX05 | MLC mapping fix (this note) |
+| SX05 | SX06 | BASEL TL17 phage_projection |
+| SX06 | SX07 | BASEL PLM embeddings |
+| SX07 | SX08 | Continuous depolymerase bitscore |
+| SX08 | SX09 | Per-functional-class PLM blocks |
+| SX09 | — | Deleted (MLC sensitivity study superseded by SX05) |
+| SX10 | SX10 | Final consolidation (deps updated) |
+
+#### Next step
+
+Implement SX05. Paper quote + raw-CSV verification + the executive rationale are recorded in the `mlc-dilution-potency`
+knowledge unit.

@@ -1112,9 +1112,13 @@ graph LR
   - CORRECTION: SX02 zero-filled phage_projection (33 features) for BASEL phages despite the TL17 reference bank
     existing. This compromised SX03 Arm B and Arm C. Verified: Guelin-vs-BASEL lysis correlation is only r=0.58 per
     bacterium, so BASEL contains real novel signal the model currently cannot access.
-  - Run MMseqs2 easy-search on BASEL protein FASTAs against
-    lyzortx/generated_outputs/track_l/tl17_phage_compatibility_preprocessor/tl17_rbp_reference_bank.faa to compute real
-    phage_projection features (33 TL17 RBP family columns)
+  - REUSE EXISTING CODE: the TL17 projection runtime is already live at
+    lyzortx/pipeline/track_l/steps/deployable_tl17_runtime.py (loads tl17_rbp_runtime.joblib and runs mmseqs easy-search
+    against the reference bank). Do not reinvent — call the existing runtime on BASEL protein FASTAs. Reference bank:
+    lyzortx/generated_outputs/track_l/tl17_phage_compatibility_preprocessor/tl17_rbp_reference_bank.faa. Build script
+    (for context, not rerunning): lyzortx/pipeline/track_l/steps/build_tl17_phage_compatibility_preprocessor.py.
+  - Compute real phage_projection features (33 TL17 RBP family columns) for all 52 BASEL phages via the deployable TL17
+    runtime
   - Rebuild extended phage_projection slot CSV with real BASEL features
   - Verify non-zero feature counts per BASEL phage are broadly comparable to Guelin
   - Re-run SX03 arms B and C with corrected phage_projection; compare to SX03 baseline to quantify the lift from fixing
@@ -1126,8 +1130,12 @@ graph LR
   - CONDITIONAL: If SX06 alone closes the Arm C generalization gap to within 3pp AUC of within-panel performance,
     consider skipping this ticket — known knowledge plm-rbp-redundant indicates PLM features showed zero lift on ST03
     holdout, so the expected value of this work is modest.
-  - Restore precompute_rbp_plm_embeddings.py from git history (deleted in PR 393) and run ProstT5 + SaProt on BASEL RBP
-    protein sequences
+  - RESTORE DELETED CODE from PR 393 (SHA d9717ab, merged 2026-04-12). Use `git show d9717ab^:<path>` to recover each
+    file, then re-apply and fix imports for any deps moved or renamed since. Required files: -
+    lyzortx/pipeline/autoresearch/precompute_rbp_plm_embeddings.py (ProstT5 + SaProt inference + cache) -
+    lyzortx/pipeline/autoresearch/derive_rbp_protein_features.py (extract_rbp_proteins_for_phage, RbpProtein) -
+    lyzortx/tests/test_derive_rbp_protein_features.py Verify restored tests pass before extending to BASEL.
+  - Run ProstT5 + SaProt on BASEL RBP protein sequences using the restored precompute script
   - Transform BASEL PLM embeddings via the existing Guelin-fit PCA (do NOT refit PCA — leakage risk) to produce 32 PLM
     PC features per BASEL phage
   - Rebuild extended phage_rbp_struct slot CSV with real BASEL PLM features
