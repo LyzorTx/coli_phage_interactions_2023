@@ -1778,7 +1778,7 @@ tracks:
       title: BASEL TL17 phage_projection features + SX03 re-evaluation
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - SX02
       - SX03
@@ -1830,7 +1830,7 @@ tracks:
       title: Continuous depolymerase features via MMseqs2 bitscore (quick win)
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - SX05
       acceptance_criteria:

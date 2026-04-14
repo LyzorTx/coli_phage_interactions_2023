@@ -1107,7 +1107,7 @@ graph LR
     paper)
   - Record the rationale, the quantitative effect (how many pairs relabeled, metric deltas), and the paper quote that
     justifies the change in track_SPANDEX.md
-- [ ] **SX06** BASEL TL17 phage_projection features + SX03 re-evaluation. Model: `claude-opus-4-6`. CI image profile:
+- [x] **SX06** BASEL TL17 phage_projection features + SX03 re-evaluation. Model: `claude-opus-4-6`. CI image profile:
       `base`. Depends on tasks: `SX02`, `SX03`, `SX05`.
   - CORRECTION: SX02 zero-filled phage_projection (33 features) for BASEL phages despite the TL17 reference bank
     existing. This compromised SX03 Arm B and Arm C. Verified: Guelin-vs-BASEL lysis correlation is only r=0.58 per
@@ -1141,7 +1141,7 @@ graph LR
   - Rebuild extended phage_rbp_struct slot CSV with real BASEL PLM features
   - Re-run SX03 arms B and C with corrected PLM; compare to SX06 result
   - Record results in track_SPANDEX.md
-- [ ] **SX08** Continuous depolymerase features via MMseqs2 bitscore (quick win). Model: `claude-opus-4-6`. CI image
+- [x] **SX08** Continuous depolymerase features via MMseqs2 bitscore (quick win). Model: `claude-opus-4-6`. CI image
       profile: `base`. Depends on tasks: `SX05`.
   - MOTIVATION: Current depo×capsule cross-terms use binary cluster membership (in_cluster_N × capsule_score).
     Depolymerases that narrowly miss the MMseqs2 clustering threshold contribute zero signal even when they share
