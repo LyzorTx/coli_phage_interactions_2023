@@ -160,8 +160,14 @@ def train_and_predict_fold(
     seed: int,
     device_type: str,
     deposcope_dir: Path | None = None,
+    host_slots: list[str] | None = None,
+    phage_slots: list[str] | None = None,
 ) -> list[dict[str, object]]:
-    """Train with RFE + per-phage blending, predict on holdout_frame."""
+    """Train with RFE + per-phage blending, predict on holdout_frame.
+
+    host_slots / phage_slots default to the SPANDEX baseline lists and can be overridden by
+    downstream evaluation runners (e.g. SX12 adds `phage_moriniere_kmer`).
+    """
     from lyzortx.autoresearch.per_phage_model import fit_per_phage_models, predict_per_phage
     from lyzortx.pipeline.autoresearch.candidate_replay import temporary_module_attribute
     from lyzortx.pipeline.autoresearch.derive_pairwise_depo_capsule_features import (
@@ -173,8 +179,10 @@ def train_and_predict_fold(
     from lyzortx.pipeline.autoresearch.gt03_eval import apply_rfe
 
     # Build entity feature tables.
-    host_slots = ["host_surface", "host_typing", "host_stats", "host_defense"]
-    phage_slots = ["phage_projection", "phage_stats"]
+    if host_slots is None:
+        host_slots = ["host_surface", "host_typing", "host_stats", "host_defense"]
+    if phage_slots is None:
+        phage_slots = ["phage_projection", "phage_stats"]
 
     host_table = candidate_module.build_entity_feature_table(
         context.slot_artifacts, slot_names=host_slots, entity_key="bacteria"

@@ -289,14 +289,17 @@ Compressed lessons from approaches that didn't work.
   - *TK02 was invalidated (zero joined rows). SX03 is the first proper BASEL test with full feature computation
     (Pharokka + DepoScope on 52 genomes): Arm B (our data + BASEL training) gave nDCG +0.3pp with overlapping CIs vs
     baseline — confirmed neutral. 1,240 BASEL pairs (3.8% of training) is too small to move the needle.*
-- **`ordinal-regression-not-better`**: LightGBM regression predicting MLC (0-4 at the time of SX04; 0-3 after SX05's
-  morphology-based MLC=4 collapse) does not improve over binary classification: nDCG +0.4pp (CIs overlap) but mAP -3.1pp
-  and AUC -3.9pp. Binary classification already separates potency grades (Spearman 0.24 among positives). [validated;
-  source: SX04; see also: mlc-dilution-potency, top3-metric-retired]
-  - *79% zero-inflation (MLC=0) dilutes regression capacity for lysis/no-lysis discrimination. The binary model
-    implicitly captures potency information — MLC=4 pairs get P(lysis)=0.82 vs MLC=1 at P(lysis)=0.61. No explicit
-    zero-inflation handling (Tweedie, hurdle model) was tested; vanilla regression was sufficient to reject the approach
-    since the +0.4pp nDCG gain is well below the 2pp threshold.*
+- **`ordinal-regression-not-better`**: Five loss formulations for ordinal potency prediction (vanilla regression/SX04,
+  hurdle two-stage, LambdaRank, ordinal all-threshold/SX11) all fail the +2 pp nDCG gate over binary classification. The
+  binary model's implicit potency signal (Spearman 0.246 among positives) captures most of the available signal. Best
+  alternative is ordinal all-threshold at +1.33 pp nDCG — detectable but sub-threshold, with a trade-off: MLC=1 pairs
+  get demoted. [validated; source: SX04, SX11; see also: mlc-dilution-potency, top3-metric-retired]
+  - *79% zero-inflation (MLC=0) dominates all metrics. Binary P(lysis) implicitly ranks potency because MLC=3 pairs have
+    3 concordant positive training rows vs MLC=1 pairs with 1 positive and 2 negatives. SX11 ordinal all-threshold shows
+    a real within-positive reranking effect (Kendall tau 0.208→0.290, 62% of bacteria improve) but equal-weighted
+    threshold combination suppresses MLC=1 pairs relative to binary — 55% of MLC=1 pairs drop in rank. The mechanism is
+    sound; the data's potency resolution (3 dilution levels) cannot support enough signal to clear the 2 pp gate. Richer
+    potency labels (quantitative EOP) could revisit.*
 - **`label-derived-features-leaky`**: Label-derived features (legacy_label_breadth_count, defense_evasion_*,
   receptor_variant_ seen_in_training_positives) caused severe leakage and were removed entirely from TL18. [validated;
   source: TG04, TG05, TG06, TG08, TG12; see also: pairwise-block-leaky]

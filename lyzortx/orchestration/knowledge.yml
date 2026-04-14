@@ -592,19 +592,24 @@ themes:
 
       - id: ordinal-regression-not-better
         statement: >
-          LightGBM regression predicting MLC (0-4 at the time of SX04; 0-3 after SX05's
-          morphology-based MLC=4 collapse) does not improve over binary classification:
-          nDCG +0.4pp (CIs overlap) but mAP -3.1pp and AUC -3.9pp. Binary classification
-          already separates potency grades (Spearman 0.24 among positives).
-        sources: [SX04]
+          Five loss formulations for ordinal potency prediction (vanilla regression/SX04,
+          hurdle two-stage, LambdaRank, ordinal all-threshold/SX11) all fail the +2 pp
+          nDCG gate over binary classification. The binary model's implicit potency signal
+          (Spearman 0.246 among positives) captures most of the available signal. Best
+          alternative is ordinal all-threshold at +1.33 pp nDCG — detectable but
+          sub-threshold, with a trade-off: MLC=1 pairs get demoted.
+        sources: [SX04, SX11]
         status: dead-end
         confidence: validated
         context: >
-          79% zero-inflation (MLC=0) dilutes regression capacity for lysis/no-lysis
-          discrimination. The binary model implicitly captures potency information — MLC=4
-          pairs get P(lysis)=0.82 vs MLC=1 at P(lysis)=0.61. No explicit zero-inflation
-          handling (Tweedie, hurdle model) was tested; vanilla regression was sufficient to
-          reject the approach since the +0.4pp nDCG gain is well below the 2pp threshold.
+          79% zero-inflation (MLC=0) dominates all metrics. Binary P(lysis) implicitly
+          ranks potency because MLC=3 pairs have 3 concordant positive training rows vs
+          MLC=1 pairs with 1 positive and 2 negatives. SX11 ordinal all-threshold shows a
+          real within-positive reranking effect (Kendall tau 0.208→0.290, 62% of bacteria
+          improve) but equal-weighted threshold combination suppresses MLC=1 pairs relative
+          to binary — 55% of MLC=1 pairs drop in rank. The mechanism is sound; the data's
+          potency resolution (3 dilution levels) cannot support enough signal to clear the
+          2 pp gate. Richer potency labels (quantitative EOP) could revisit.
         relates_to: [mlc-dilution-potency, top3-metric-retired]
 
       - id: label-derived-features-leaky
