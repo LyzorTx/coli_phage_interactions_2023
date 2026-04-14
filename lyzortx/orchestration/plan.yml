@@ -1901,7 +1901,7 @@ tracks:
       title: Potency loss-function ablation — hurdle, LambdaRank, ordinal all-threshold
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       acceptance_criteria:
       - 'MOTIVATION: Training target is binary any_lysis; MLC 0-3 grades go into nDCG
         scoring but never into the loss, so the model cannot distinguish a weak positive
@@ -1911,21 +1911,21 @@ tracks:
         regression on a 79%-zero-inflated target is the wrong loss. This ticket tests
         three loss variants that respect the zero inflation and the ordinal ladder.'
       - 'ARM: Binary baseline (SX10 configuration, unchanged; provides the reference).'
-      - 'ARM: Hurdle (two-stage) — LGBMClassifier on any_lysis + LGBMRegressor on MLC
-        conditional on positive; prediction = P(y>=1) * E[MLC | y>=1]. Decouples
+      - 'ARM: Hurdle (two-stage) — LGBMClassifier on any_lysis + LGBMRegressor on
+        MLC conditional on positive; prediction = P(y>=1) * E[MLC | y>=1]. Decouples
         zero-inflation from potency ranking. Canonical fix for this distribution shape.'
-      - 'ARM: LambdaRank / LambdaMART — LightGBM objective=lambdarank, query group =
-        bacterium, relevance = MLC 0-3. Directly optimizes nDCG. Cheapest way to align
-        loss with evaluation.'
+      - 'ARM: LambdaRank / LambdaMART — LightGBM objective=lambdarank, query group
+        = bacterium, relevance = MLC 0-3. Directly optimizes nDCG. Cheapest way to
+        align loss with evaluation.'
       - 'ARM: Ordinal all-threshold — three binary LGBMClassifier fits for y>=1, y>=2,
         y>=3; combine via cumulative probabilities to produce a potency-aware score.
         Respects the ladder explicitly.'
       - Evaluate each arm via SX01 10-fold bacteria-stratified CV + SX03 Arm C, with
         1000-resample bootstrap CIs on nDCG, mAP, AUC, Brier
-      - 'ACCEPTANCE: Adopt the arm whose nDCG point estimate improves >=2 pp over the
-        SX10 binary baseline AND whose mAP does not regress by more than 1 pp. If two
-        arms qualify, pick highest nDCG. If none qualify, record as validated null
-        alongside SX04 (different losses, same ceiling) and keep binary baseline.'
+      - 'ACCEPTANCE: Adopt the arm whose nDCG point estimate improves >=2 pp over
+        the SX10 binary baseline AND whose mAP does not regress by more than 1 pp.
+        If two arms qualify, pick highest nDCG. If none qualify, record as validated
+        null alongside SX04 (different losses, same ceiling) and keep binary baseline.'
       - Write results to lyzortx/generated_outputs/sx11_eval/ (bootstrap_results.json
         per arm + arm_comparison.csv)
       - Update ordinal-regression-not-better knowledge unit context to reflect which
@@ -1939,23 +1939,22 @@ tracks:
       acceptance_criteria:
       - 'MOTIVATION: Moriniere 2026 showed 5-mer amino-acid motifs at RBP tip regions
         predict receptor class at AUROC 0.99 (Dataset S6: 815 receptor-predictive
-        k-mers). GT06 used these k-mers only to predict receptor class as an
-        intermediate, then cross-termed the class prediction with host OMP score,
-        which failed because of omp-score-homogeneity. The k-mer vector itself has
-        never been fed to the prediction model as direct features, which this ticket
-        tests.'
-      - Load Moriniere Dataset S6 from .scratch/genophi_data/ (re-download if
-        missing) — 815 receptor-predictive amino-acid 5-mers
-      - For each of 148 phages (96 Guelin + 52 BASEL), compute a 815-dim binary
-        vector phage_moriniere_kmer__<kmer> = 1 if the k-mer is present in any
-        predicted protein of the phage proteome
+        k-mers). GT06 used these k-mers only to predict receptor class as an intermediate,
+        then cross-termed the class prediction with host OMP score, which failed because
+        of omp-score-homogeneity. The k-mer vector itself has never been fed to the
+        prediction model as direct features, which this ticket tests.'
+      - Load Moriniere Dataset S6 from .scratch/genophi_data/ (re-download if missing)
+        — 815 receptor-predictive amino-acid 5-mers
+      - For each of 148 phages (96 Guelin + 52 BASEL), compute a 815-dim binary vector
+        phage_moriniere_kmer__<kmer> = 1 if the k-mer is present in any predicted
+        protein of the phage proteome
       - Write the feature slot CSV to .scratch/moriniere_kmer/features.csv; shape
         (148, 816) with a phage column + 815 k-mer columns
-      - Add the slot via the extended-slot patching pattern used in SX03/SX06 so
-        SX01 and SX03 pick it up without pipeline changes
+      - Add the slot via the extended-slot patching pattern used in SX03/SX06 so SX01
+        and SX03 pick it up without pipeline changes
       - Evaluate via SX01 10-fold + SX03 Arm C with bootstrap CIs
-      - 'ACCEPTANCE: Adopt if within-panel AUC >=+2 pp OR Arm C AUC >=+2 pp over
-        the SX10 baseline. Null result also recorded (tests the direct-use hypothesis
+      - 'ACCEPTANCE: Adopt if within-panel AUC >=+2 pp OR Arm C AUC >=+2 pp over the
+        SX10 baseline. Null result also recorded (tests the direct-use hypothesis
         separately from GT06 intermediate-classifier path).'
       - Log top-20 retained k-mers after RFE and manually spot-check against known
         RBP-tip motif literature for biological interpretability
@@ -1969,39 +1968,37 @@ tracks:
       - SX12
       acceptance_criteria:
       - 'MOTIVATION: Whole-gene OMP HMM scores are near-constant across 369 clinical
-        E. coli (CV 0.01-0.17, omp-score-homogeneity knowledge). Receptor x OMP
-        cross-terms therefore collapse. Extracellular-loop variation is preserved in
-        the coding sequence but averaged away by the HMM. This ticket inverts the
-        Moriniere trick onto the host side: k-mer profile each host OMP coding
-        sequence so that loop-level variation becomes a model-visible feature. Cross-
-        term arm activates SX12 x SX13 so the receptor side has something
-        non-constant to multiply against on the host side.'
-      - 'ARM: Marginal host OMP k-mer features. For each of the 12 core OMPs
-        (OmpA/OmpC/OmpF/OmpW/LamB/BtuB/FhuA/FepA/Tsx/LptD/TolC/OmpT) extract the
-        coding sequence per host from Pharokka/HMM-guide annotations, enumerate
-        5-mer amino-acid substrings, emit binary presence-absence per
-        host x OMP x kmer against a pruned global dictionary (keep k-mers with
-        5-95% across-host frequency).'
-      - 'ARM: Pairwise cross-term (requires SX12 landed). For the top-100 (phage
-        k-mer j, host OMP k-mer k) pairs by training-fold correlation with
-        any_lysis, emit pair_receptor_motif__j_x_k = phage_moriniere_kmer_j *
-        host_OMP_kmer_k. Correlation and top-100 selection computed within-fold only
-        to avoid leakage.'
+        E. coli (CV 0.01-0.17, omp-score-homogeneity knowledge). Receptor x OMP cross-terms
+        therefore collapse. Extracellular-loop variation is preserved in the coding
+        sequence but averaged away by the HMM. This ticket inverts the Moriniere trick
+        onto the host side: k-mer profile each host OMP coding sequence so that loop-level
+        variation becomes a model-visible feature. Cross- term arm activates SX12
+        x SX13 so the receptor side has something non-constant to multiply against
+        on the host side.'
+      - 'ARM: Marginal host OMP k-mer features. For each of the 12 core OMPs (OmpA/OmpC/OmpF/OmpW/LamB/BtuB/FhuA/FepA/Tsx/LptD/TolC/OmpT)
+        extract the coding sequence per host from Pharokka/HMM-guide annotations,
+        enumerate 5-mer amino-acid substrings, emit binary presence-absence per host
+        x OMP x kmer against a pruned global dictionary (keep k-mers with 5-95% across-host
+        frequency).'
+      - 'ARM: Pairwise cross-term (requires SX12 landed). For the top-100 (phage k-mer
+        j, host OMP k-mer k) pairs by training-fold correlation with any_lysis, emit
+        pair_receptor_motif__j_x_k = phage_moriniere_kmer_j * host_OMP_kmer_k. Correlation
+        and top-100 selection computed within-fold only to avoid leakage.'
       - 'FALLBACK: If Path 4 (k-mer profile) produces no lift, fall back to Path 1:
         MMseqs2-cluster each OMP across 369 hosts at 99% identity, emit cluster ID
         as categorical. Cheaper, coarser, no external reference DB.'
-      - Write host-side slot CSV to .scratch/host_omp_kmer/features.csv and
-        cross-term feature list to .scratch/host_omp_kmer/cross_term_index.csv
-      - Evaluate four arms against SX10 baseline via SX01 10-fold + SX03 Arm C
-        (with bootstrap CIs)-  arm A= baseline, arm B = marginal host-only, arm C =
-        SX12 marginal + SX13 marginal (no cross-term), arm D = SX12 marginal + SX13
-        marginal + cross-term
-      - 'ACCEPTANCE: Adopt if within-panel AUC >=+2 pp OR Arm C AUC >=+2 pp over
-        the SX10 baseline, AND NILS53 / Dhillonvirus narrow-host rank improves
-        measurably. Honest null is a scientifically valuable outcome here (would
-        prove omp-score-homogeneity was never the real bottleneck).'
-      - Update omp-score-homogeneity knowledge unit with the outcome (ruled in,
-        ruled out with evidence, or split by feature-family)
+      - Write host-side slot CSV to .scratch/host_omp_kmer/features.csv and cross-term
+        feature list to .scratch/host_omp_kmer/cross_term_index.csv
+      - Evaluate four arms against SX10 baseline via SX01 10-fold + SX03 Arm C (with
+        bootstrap CIs)-  arm A= baseline, arm B = marginal host-only, arm C = SX12
+        marginal + SX13 marginal (no cross-term), arm D = SX12 marginal + SX13 marginal
+        + cross-term
+      - 'ACCEPTANCE: Adopt if within-panel AUC >=+2 pp OR Arm C AUC >=+2 pp over the
+        SX10 baseline, AND NILS53 / Dhillonvirus narrow-host rank improves measurably.
+        Honest null is a scientifically valuable outcome here (would prove omp-score-homogeneity
+        was never the real bottleneck).'
+      - Update omp-score-homogeneity knowledge unit with the outcome (ruled in, ruled
+        out with evidence, or split by feature-family)
       - Record arm-level analysis + cross-term importance in track_SPANDEX.md
     - id: SX14
       title: Wave-2 SPANDEX baseline consolidation + stratified evaluation
@@ -2018,18 +2015,17 @@ tracks:
       - Select winning configuration per axis (loss function from SX11; phage k-mer
         features from SX12; host OMP k-mer features + cross-term from SX13). Arms
         that failed their acceptance gate are excluded.
-      - Train the consolidated wave-2 model with the winning configurations. Run
-        full SX01 10-fold CV and SX03 Arm C with bootstrap CIs on nDCG, mAP, AUC,
-        Brier.
-      - 'STRATIFIED EVALUATION LAYER: decompose every reported metric into four
-        subsets per (holdout bacterium x phage) pair: within-family (holdout phage
-        family has >=3 training-positive pairs for host''s cv-group), cross-family
-        (holdout phage family has 0 training-positives for host''s cv-group),
-        narrow-host (holdout phage panel-wide lysis rate <30%), phylogroup-orphan
-        host (host has <=2 training-phylogroup-siblings). Report AUC/nDCG/mAP per
-        subset for SX10 baseline, each wave-2 arm, and the consolidated wave-2 final.'
-      - Persist stratification columns in all_predictions.csv so future tracks
-        inherit the decomposition; save a stratified_metrics.csv per run.
+      - Train the consolidated wave-2 model with the winning configurations. Run full
+        SX01 10-fold CV and SX03 Arm C with bootstrap CIs on nDCG, mAP, AUC, Brier.
+      - 'STRATIFIED EVALUATION LAYER: decompose every reported metric into four subsets
+        per (holdout bacterium x phage) pair: within-family (holdout phage family
+        has >=3 training-positive pairs for host''s cv-group), cross-family (holdout
+        phage family has 0 training-positives for host''s cv-group), narrow-host (holdout
+        phage panel-wide lysis rate <30%), phylogroup-orphan host (host has <=2 training-phylogroup-siblings).
+        Report AUC/nDCG/mAP per subset for SX10 baseline, each wave-2 arm, and the
+        consolidated wave-2 final.'
+      - Persist stratification columns in all_predictions.csv so future tracks inherit
+        the decomposition; save a stratified_metrics.csv per run.
       - 'Produce side-by-side table: SX10 baseline vs wave-2 final, aggregated AND
         per-stratum, with CIs.'
       - Update knowledge.yml with a spandex-wave-2-baseline unit containing the new
@@ -2047,38 +2043,37 @@ tracks:
       acceptance_criteria:
       - 'MOTIVATION: Current evaluation reports three numbers (Arm A within-panel,
         Arm B pooled, Arm C cross-panel) that mix different things and are hard to
-        weight correctly outside the project. Unifying Guelin (369 bacteria x 96
-        phages, MLC 0-3) with BASEL (25 bacteria x 52 phages, binary) into a single
-        k-fold evaluation produces one honest number, forces cross-source
-        generalization in training, and enlarges the effective training set. Adds a
-        phage-axis k-fold as the deployability test for unseen phages (now
-        statistically reasonable with 148 phages vs the prior 96).'
+        weight correctly outside the project. Unifying Guelin (369 bacteria x 96 phages,
+        MLC 0-3) with BASEL (25 bacteria x 52 phages, binary) into a single k-fold
+        evaluation produces one honest number, forces cross-source generalization
+        in training, and enlarges the effective training set. Adds a phage-axis k-fold
+        as the deployability test for unseen phages (now statistically reasonable
+        with 148 phages vs the prior 96).'
       - 'BACTERIA-AXIS K-FOLD: 10-fold StratifiedKFold on the 394 combined bacteria,
         stratified on (source, phylogroup) composite key. Every fold must contain
-        >=2 BASEL bacteria, >=20 Guelin bacteria, and balanced phylogroup
-        representation. cv_group hashing preserved per bacterium.'
-      - 'PHAGE-AXIS K-FOLD: 10-fold StratifiedKFold on the 148 combined phages,
-        stratified on phage family. Tests model performance when the phage is
-        genuinely unseen — the deployability story.'
+        >=2 BASEL bacteria, >=20 Guelin bacteria, and balanced phylogroup representation.
+        cv_group hashing preserved per bacterium.'
+      - 'PHAGE-AXIS K-FOLD: 10-fold StratifiedKFold on the 148 combined phages, stratified
+        on phage family. Tests model performance when the phage is genuinely unseen
+        — the deployability story.'
       - 'LABEL UNIFICATION (default): Guelin MLC 0-3 used as-is for nDCG relevance;
-        BASEL positive mapped to MLC=2 (middle of positive range; Option B per
-        SPANDEX wave-2 plan discussion), BASEL negative mapped to MLC=0.'
-      - 'SENSITIVITY CHECK: rerun evaluation under Option A (BASEL+ -> MLC=1,
-        conservative) and Option C (BASEL+ -> MLC=3, aggressive). Ticket acceptance
-        REQUIRES that the ranking of wave-2 arms adopted by SX14 is invariant under
-        A, B, and C. If ranking flips, flag as a source-weighting artifact and
-        investigate before declaring a new baseline.'
-      - 'MISSING DATA: BASEL has ~11% missing cells. Follow the existing
-        partial-ground-truth scoring design (score only observed cells per
-        bacterium); no imputation, no penalty.'
-      - 'Re-evaluate the wave-2 consolidated baseline (output of SX14) under the
-        unified framework on both axes. Produce four new artifacts:
-        sx15_bacteria_axis_bootstrap.json, sx15_phage_axis_bootstrap.json,
-        sx15_sensitivity_bacteria.csv, sx15_sensitivity_phage.csv.'
+        BASEL positive mapped to MLC=2 (middle of positive range; Option B per SPANDEX
+        wave-2 plan discussion), BASEL negative mapped to MLC=0.'
+      - 'SENSITIVITY CHECK: rerun evaluation under Option A (BASEL+ -> MLC=1, conservative)
+        and Option C (BASEL+ -> MLC=3, aggressive). Ticket acceptance REQUIRES that
+        the ranking of wave-2 arms adopted by SX14 is invariant under A, B, and C.
+        If ranking flips, flag as a source-weighting artifact and investigate before
+        declaring a new baseline.'
+      - 'MISSING DATA: BASEL has ~11% missing cells. Follow the existing partial-ground-truth
+        scoring design (score only observed cells per bacterium); no imputation, no
+        penalty.'
+      - 'Re-evaluate the wave-2 consolidated baseline (output of SX14) under the unified
+        framework on both axes. Produce four new artifacts: sx15_bacteria_axis_bootstrap.json,
+        sx15_phage_axis_bootstrap.json, sx15_sensitivity_bacteria.csv, sx15_sensitivity_phage.csv.'
       - 'Produce comparison table: SX14 metrics (old framework) vs SX15 bacteria-axis
         vs SX15 phage-axis for the same wave-2 winning configuration.'
-      - Add a spandex-unified-kfold-baseline knowledge unit with the canonical
-        unified-framework numbers + artifact paths. This becomes the reference point
-        future tracks evaluate against.
+      - Add a spandex-unified-kfold-baseline knowledge unit with the canonical unified-framework
+        numbers + artifact paths. This becomes the reference point future tracks evaluate
+        against.
       - Record SX15 methodology decisions, sensitivity-check outcomes, and per-axis
         metric interpretations in track_SPANDEX.md.

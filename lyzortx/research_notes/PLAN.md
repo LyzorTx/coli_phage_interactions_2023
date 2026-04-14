@@ -1181,7 +1181,7 @@ graph LR
   - Produce side-by-side comparison table: SX01 baseline vs SX10 final
   - Update knowledge.yml with the final SPANDEX baseline numbers as a validated reference point for future tracks
   - Record final results and track-closing assessment in track_SPANDEX.md
-- [ ] **SX11** Potency loss-function ablation — hurdle, LambdaRank, ordinal all-threshold. Model: `claude-opus-4-6`. CI
+- [x] **SX11** Potency loss-function ablation — hurdle, LambdaRank, ordinal all-threshold. Model: `claude-opus-4-6`. CI
       image profile: `base`.
   - MOTIVATION: Training target is binary any_lysis; MLC 0-3 grades go into nDCG scoring but never into the loss, so the
     model cannot distinguish a weak positive (single spot at 5x10^8) from a strong positive (full lysis at 5x10^6). SX04
