@@ -717,3 +717,108 @@ SX11 and SX12 independent. SX13 depends on SX12 for the cross-term arm. SX14 con
 #### Next step
 
 Tick the orchestrator and start SX11/SX12 in parallel.
+
+### 2026-04-14 23:58 CEST: SX11 — Potency loss-function ablation (sub-threshold signal)
+
+#### Executive summary
+
+Four-arm ablation (binary baseline, hurdle two-stage, LambdaRank, ordinal all-threshold) evaluated via 10-fold
+bacteria-stratified CV with 3 seeds and 1000-resample bootstrap CIs. No arm clears the +2 pp nDCG acceptance gate.
+Best arm is ordinal all-threshold at +1.33 pp nDCG over SX11's own binary baseline. The ordinal improvement is real
+but sub-threshold: 62% of bacteria see improved within-positive potency ranking (Kendall tau 0.208→0.290), but MLC=1
+pairs get demoted by the equal-weighted threshold combination, creating a trade-off between potency resolution and
+lysis/no-lysis discrimination. Binary baseline retained as the training loss for all downstream SPANDEX work.
+
+#### Results
+
+All arms share identical feature engineering, RFE, and fold assignments; only the training loss varies. Per-phage
+blending is excluded from all arms (see Design note below).
+
+| Arm | nDCG | mAP | AUC | Brier | Spearman(+) |
+|-----|------|-----|-----|-------|-------------|
+| SX10 baseline (ref, with per-phage blend) | 0.7958 [0.788, 0.812] | 0.7111 [0.693, 0.729] | 0.8699 [0.857, 0.882] | 0.1248 [0.119, 0.131] | — |
+| binary_baseline | 0.7856 [0.777, 0.804] | 0.6984 [0.679, 0.716] | 0.8483 [0.834, 0.862] | 0.1279 [0.120, 0.136] | 0.246 |
+| hurdle_two_stage | 0.7950 [0.786, 0.811] | 0.6874 [0.669, 0.704] | 0.8473 [0.834, 0.860] | 0.1295 [0.120, 0.139] | 0.310 |
+| lambdarank | 0.7931 [0.784, 0.811] | 0.6721 [0.654, 0.689] | 0.8141 [0.802, 0.826] | 0.1508 [0.146, 0.156] | 0.333 |
+| ordinal_all_threshold | **0.7989** [0.790, 0.815] | 0.6905 [0.672, 0.707] | 0.8461 [0.832, 0.859] | 0.1305 [0.121, 0.140] | 0.306 |
+
+**Acceptance gate:** nDCG +2 pp over SX10 binary baseline AND mAP not regressed >1 pp. No arm qualifies (best is
+ordinal at +1.33 pp nDCG over SX11 binary, +0.31 pp over SX10).
+
+#### Case-by-case analysis: ordinal vs binary
+
+**What ordinal does right — within-positive potency ranking:**
+- Kendall tau (MLC vs predicted, among positives): 0.208→0.290 (+0.082) across 330 bacteria with mixed MLC grades.
+  204 bacteria improve, 68 degrade (62% vs 21%).
+- MLC=3 pairs promoted by 1.2 ranks on average; MLC=1 pairs demoted by 1.2 ranks.
+- NILS20 example: 3 positives (MLC 3, 1, 1). Binary ranks LF82_P8 (MLC=3) at #4 behind 3 false positives. Ordinal
+  promotes it to #1 — the phage that lyses at the lowest concentration correctly ranked first. nDCG 0.522→0.939.
+- H1-003-0105-C-R: 17 positives with MLC 1–3. Ordinal correctly promotes the 7 MLC=3 NAN/536/BCH phages above the
+  MLC=1 DIJ07 phages. nDCG 0.610→0.902.
+
+**What ordinal gets wrong — MLC=1 suppression:**
+- 55% of MLC=1 pairs drop in rank. The ordinal score = (P(y≥1) + P(y≥2) + P(y≥3))/3. For MLC=1 pairs, P(y≥2) and
+  P(y≥3) are low, compressing the score relative to binary P(lysis).
+- H1-006-0003-S-L: 2 positives both MLC=1 (DIJ07_P1, DIJ07_P2). Binary ranks them #1 and #2 (nDCG=1.0). Ordinal
+  drops them to #4 and #5 because broad-host MLC=0 phages (55989_P2, LF82_P8) get higher ordinal scores from their
+  high P(y≥2)/P(y≥3) trained on other bacteria. nDCG 1.0→0.501.
+- Bacteria with only 1 distinct MLC grade among positives lose 3.4 pp mean nDCG under ordinal.
+
+**Mean prediction by MLC grade:**
+
+| MLC | Binary P(lysis) | Ordinal score | Binary gap to next | Ordinal gap to next |
+|-----|----------------|---------------|-------------------|-------------------|
+| 0 | 0.166 | 0.083 | — | — |
+| 1 | 0.485 | 0.260 | +0.319 | +0.178 |
+| 2 | 0.561 | 0.331 | +0.076 | +0.070 |
+| 3 | 0.671 | 0.443 | +0.110 | +0.112 |
+
+The 0→1 gap (lysis boundary) shrinks from 0.319 to 0.178 under ordinal. The 2→3 gap is nearly identical. The
+ordinal model correctly separates potency grades (2→3 gap preserved) but at the cost of a weaker lysis boundary.
+
+#### Arm-specific interpretation
+
+- **Hurdle two-stage** (+0.94 pp nDCG, mAP -1.1 pp): Decouples P(lysis) from E[MLC|lysis]. Biologically sound —
+  these are different questions (adsorption vs replication efficiency). Best Spearman (0.310) but conditional MLC
+  regressor adds noise to the lysis ranking for marginal pairs.
+- **LambdaRank** (+0.75 pp nDCG, AUC -3.4 pp, Brier +2.3 pp): Directly optimizes nDCG per bacterium, but
+  per-bacterium min-max normalization destroys global comparability. With only 96 phages per query and 79% relevance-0,
+  the ranker learns lysis-vs-no-lysis rather than potency ranking. Worst arm overall.
+- **Ordinal all-threshold** (+1.33 pp nDCG, mAP -0.8 pp): Best nDCG among alternatives. The three-threshold structure
+  naturally fits the MLC ladder. The trade-off (MLC=1 suppression) could be mitigated by weighted combination
+  (w1·P(y≥1) + alpha·(P(y≥2)+P(y≥3)) with small alpha), but this is optimizing within a sub-threshold result.
+
+#### Why the binary model already captures potency
+
+Binary P(lysis) correlates with MLC (Spearman 0.246 among positives) because training data consistency scales with
+potency: an MLC=3 pair produces 3 concordant positive rows across dilutions (5×10⁸, 5×10⁷, 5×10⁶); an MLC=1 pair
+produces 1 positive (5×10⁸) and 2 negatives. The binary classifier naturally learns higher P(lysis) for more potent
+interactions because the training evidence is stronger. This implicit potency signal captures most of what explicit
+ordinal supervision adds.
+
+#### Design notes
+
+**Per-phage blending excluded.** The plan specified "Binary baseline — SX10 configuration" but the implementation
+excludes per-phage blending from all arms. This is a deliberate simplification: per-phage blending was designed for
+binary P(lysis) scores, and extending it to hurdle/lambdarank/ordinal outputs would require re-engineering the
+blending mechanism (mixing two experimental variables). The 1 pp gap between SX10 (0.7958) and SX11 binary baseline
+(0.7856) is the per-phage contribution. The ablation is honest within its scope (loss functions compared
+apples-to-apples), but the acceptance gate comparison against SX10 is slightly pessimistic.
+
+**SX03 Arm C not evaluated.** The acceptance criteria specified 10-fold CV + SX03 Arm C. Only 10-fold was
+implemented. Irrelevant to the verdict — no arm passes the gate on within-panel, and cross-panel would only make
+the differences smaller (BASEL has binary-only labels, no MLC grades for potency to help with).
+
+#### Knowledge update
+
+`ordinal-regression-not-better` should be broadened: five loss formulations now tested (vanilla regression/SX04,
+hurdle, LambdaRank, ordinal all-threshold/SX11) and all fail the +2 pp gate. The conclusion is no longer
+loss-choice-specific. However, ordinal all-threshold shows a detectable sub-threshold signal (consistent Kendall
+improvement in 62% of bacteria) — the mechanism is sound, the data can't support enough potency resolution. Future
+work with richer potency labels (e.g., quantitative EOP data if available) could revisit.
+
+#### Where the numbers live
+
+- Arm comparison: `lyzortx/generated_outputs/sx11_eval/arm_comparison.csv`
+- Bootstrap CIs: `lyzortx/generated_outputs/sx11_eval/bootstrap_results.json`
+- Per-arm predictions: `lyzortx/generated_outputs/sx11_eval/{arm}_predictions.csv`
