@@ -1271,7 +1271,7 @@ graph LR
     Preserve spandex-final-baseline (SX10) as the wave-1 reference point.
   - Record wave-2 closing assessment in track_SPANDEX.md. Annotate each adopted arm with which stratum contributed most
     of its lift.
-- [ ] **SX15** Unified Guelin+BASEL k-fold evaluation framework (bacteria + phage axes). Model: `claude-opus-4-6`. CI
+- [x] **SX15** Unified Guelin+BASEL k-fold evaluation framework (bacteria + phage axes). Model: `claude-opus-4-6`. CI
       image profile: `base`. Depends on tasks: `SX14`.
   - MOTIVATION: Current evaluation reports three numbers (Arm A within-panel, Arm B pooled, Arm C cross-panel) that mix
     different things and are hard to weight correctly outside the project. Unifying Guelin (369 bacteria x 96 phages,
