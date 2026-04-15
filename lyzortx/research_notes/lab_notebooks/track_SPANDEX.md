@@ -972,3 +972,194 @@ genuine-wins table above filters to ≥5 positives.
 - Bootstrap CIs: `lyzortx/generated_outputs/sx12_eval/within_panel_bootstrap.json`
 - Per-pair predictions: `lyzortx/generated_outputs/sx12_eval/within_panel_predictions.csv`
 - K-mer feature slot: `.scratch/moriniere_kmer/features.csv` (148 phages × 815 k-mers)
+
+### 2026-04-15 14:19 CEST: SX13 — Host OMP k-mer features (validated null, all 4 arms)
+
+#### Executive summary
+
+Built per-host OMP 5-mer presence-absence features (369 hosts × 5546 features across 12 core OMPs) and evaluated
+four arms against SX10 baseline: marginal (host k-mers only), cross_term (+ within-fold top-100 phage × host
+k-mer products), path1_cluster (MMseqs2 99% cluster IDs as categorical fallback). **All four arms fail the +2 pp
+acceptance gate by wide margins (max AUC Δ = +0.26 pp).** A permutation test on cross_term's aggregate delta
+finds 73% of random prediction swaps are as extreme — the aggregate signal is indistinguishable from noise.
+NILS53 improved +2.59 pp nDCG under cross_term, but peer bacteria at the same lysis rate averaged Δ = -0.001 —
+NILS53 is an outlier, not a reproducible pattern. A small directional signal remains in the marginal arm for
+moderate-narrow hosts (lysis deciles 1-2, +1-2 pp mean), biologically consistent but statistically weak. The
+broader conclusion: host OMP allelic variation IS present in clinical *E. coli* (BTUB 1495 informative k-mers,
+FHUA 1184) but does NOT predict strain-level lysis — the actual bottleneck sits downstream of OMP recognition.
+
+#### Arm definitions
+
+All four arms share the SX10 baseline feature set and evaluation protocol (10-fold bacteria-stratified CV,
+3 seeds, RFE, per-phage blending, 1000-resample bootstrap CIs). They differ only in added host-side slots:
+
+1. **baseline** — SX10 configuration (reference)
+2. **marginal** — + `host_omp_kmer` slot (5546 features)
+3. **cross_term** — + `host_omp_kmer` + `phage_moriniere_kmer` + within-fold top-100 (phage_kmer × host_omp_kmer) products
+4. **path1_cluster** — + `host_omp_cluster` slot (12 categorical features, MMseqs2 99% identity cluster IDs)
+
+Cross-term selection is within-fold-safe: the top-100 (phage_kmer, host_kmer) pairs are chosen by Pearson
+correlation with `any_lysis` computed only on the training fold. Vectorized via two matrix multiplies
+(exploiting binary features); runs in ~1 second per fold.
+
+#### Results
+
+| Metric | baseline | marginal | cross_term | path1_cluster |
+|--------|----------|----------|------------|---------------|
+| nDCG  | 0.7958 [0.788, 0.812] | 0.7984 [0.790, 0.815] | 0.7946 [0.786, 0.811] | 0.7949 [0.787, 0.812] |
+| mAP   | 0.7111 [0.693, 0.729] | 0.7152 [0.697, 0.733] | 0.7119 [0.694, 0.730] | 0.7084 [0.690, 0.727] |
+| AUC   | 0.8699 [0.857, 0.882] | 0.8702 [0.857, 0.882] | **0.8725** [0.860, 0.884] | 0.8689 [0.855, 0.881] |
+| Brier | 0.1248 [0.119, 0.131] | 0.1245 [0.119, 0.131] | **0.1225** [0.116, 0.129] | 0.1253 [0.119, 0.131] |
+
+All deltas within ±0.4 pp. All CIs overlap baseline massively. No arm clears the +2 pp gate on either axis
+(within-panel AUC OR Arm C AUC — only within-panel was run; Arm C would not change the verdict).
+
+Feature retention through RFE (cross_term arm, per fold): **8-10 of the 100 candidate cross-term columns**
+survive pruning. The within-fold top-100 correlation selection is doing its job, but LightGBM sees most of
+the cross-terms as redundant with existing features.
+
+#### Permutation sanity check
+
+To test whether cross_term's aggregate delta is distinguishable from noise: for each of 200 permutations,
+randomly swap each pair's (baseline, cross_term) predictions 50/50, recompute per-bacterium nDCG, take the
+mean delta.
+
+- Actual mean Δ (cross_term − baseline): **−0.0012**
+- Null distribution mean: −0.0001 ± 0.0033
+- Fraction of perms as extreme as observed: **73%**
+
+The cross_term "signal" in the aggregate is functionally indistinguishable from random noise.
+
+#### Per-decile stratification
+
+Per-bacterium nDCG delta, binned by lysis rate (n≈36 per decile):
+
+| Decile | lysis range | n | marginal mean Δ | cross_term mean Δ |
+|--------|-------------|---|-----------------|--------------------|
+| 0 (hardest) | 1-5% | 36 | +0.0025 | **-0.0213** |
+| **1** | 5-7% | 37 | **+0.0188** | +0.0003 |
+| **2** | 8-11% | 34 | **+0.0118** | -0.0056 |
+| 3 | 11-16% | 38 | -0.0024 | +0.0080 |
+| 4 | 16-20% | 34 | -0.0006 | +0.0025 |
+| 5 | 20-25% | 36 | -0.0022 | +0.0023 |
+| 6 | 25-29% | 34 | -0.0023 | -0.0004 |
+| 7 | 30-38% | 36 | -0.0004 | +0.0000 |
+| 8 | 38-51% | 35 | -0.0003 | -0.0003 |
+| 9 (broadest) | 51-100% | 36 | +0.0006 | +0.0020 |
+
+**The marginal arm has a directional signal in moderate-narrow deciles (1-2)**: mean +1-2 pp across ~70
+bacteria with 5-11% lysis rate. This matches the biological prior — OMP variation should matter most for
+phages that can't spray-and-pray on broad receptors. But sign test on the full narrow-host bucket (n=137):
+75/137 positive (p=0.31), not significant.
+
+**The cross_term arm actively hurts the hardest-narrow decile** (-2.1 pp on lysis 1-5% cases). Cross-terms
+rearrange ranks in ways that rescue a few narrow hosts (NILS53) while pushing others further down.
+
+#### NILS53 specifically (acceptance-criterion named case)
+
+| Arm | nDCG | Δ vs baseline |
+|-----|------|---------------|
+| baseline | 0.4330 | — |
+| marginal | 0.4406 | +0.76 pp |
+| **cross_term** | **0.4589** | **+2.59 pp** |
+| path1_cluster | 0.4302 | -0.28 pp |
+
+Seven of 11 NILS53 positives moved to better ranks under cross_term; biggest gains on LM40_P2 (rank 33→18),
+LM40_P1 (28→15), LM40_P3 (22→12), LM33_P1 (26→17).
+
+**But NILS53 is an outlier among its peers.** 51 bacteria within ±3 pp of NILS53's 12% lysis rate had
+cross_term mean Δ = -0.001, median -0.001. NILS53's +2.59 pp places it at the 76th percentile of the peer
+distribution — one lucky draw, not a reproducible pattern. The ticket language ("NILS53 / Dhillonvirus
+narrow-host rank improves measurably") is satisfied in the literal sense, but the peer comparison shows
+this doesn't generalize to other narrow-host cases.
+
+#### Top-3 hit rate
+
+| Arm | top-3 hit rate |
+|-----|----------------|
+| baseline | 329/357 = 92.2% |
+| marginal | 332/357 = 93.0% |
+| cross_term | 333/357 = 93.3% |
+| path1_cluster | 331/357 = 92.7% |
+
+Cross_term rescues 4 additional strains. Marginal rescues 3. Small but directionally consistent.
+
+#### K-mer slot retention audit
+
+Per-OMP retained k-mer counts after 5%-95% frequency pruning (369 hosts × 12 OMPs):
+
+| OMP | unique k-mers | retained (5-95%) | fraction |
+|-----|---------------|------------------|----------|
+| BTUB | 2538 | 1495 | 59% |
+| FHUA | 3114 | 1184 | 38% |
+| NFRA | 3460 | 839 | 24% |
+| FADL | 1102 | 533 | 48% |
+| PQQU | 3084 | 402 | 13% |
+| OMPC | 1243 | 391 | 31% |
+| OMPF | 903 | 202 | 22% |
+| LPTD | 1463 | 166 | 11% |
+| OMPA | 517 | 131 | 25% |
+| LAMB | 791 | 98 | 12% |
+| TOLC | 1184 | 55 | 5% |
+| TSX | 440 | 50 | 11% |
+| **total** | **19839** | **5546** | |
+
+MMseqs2 99% identity clusters across 369 hosts: BTUB 28, OMPC 49, FHUA 16, NFRA 32, PQQU 39, LAMB 10,
+LPTD 10, OMPA 10, OMPF 15, TOLC 11, TSX 6, FADL 16.
+
+**Interpretation:** Host OMP allelic variation IS present at substantial scale (BTUB 1495 informative
+5-mers across 28 MMseqs2 clusters; OMPC 391 k-mers across 49 clusters — matching the knowledge model's
+`receptor-variant-richness` claim of 50 OmpC variants). But variation ≠ prediction: none of these
+representations (fine k-mer or coarse cluster) correlates with lysis outcome at a level the model can exploit.
+
+#### Biological conclusion
+
+`omp-score-homogeneity` was pointing at a real bottleneck but misidentified the *level* at which it applies.
+Whole-gene HMM scores are homogeneous (CV 0.01-0.17). Loop-level 5-mer variation is NOT homogeneous
+(BTUB has 28 distinct clusters, OMPC has 49). But host OMP variation at either level **does not predict
+lysis** in this panel. The biological reading is:
+
+1. In clinical *E. coli* (with intact capsule/O-antigen), physical access to OMP receptors is gated by
+   the polysaccharide layer — already captured by `depo × capsule` cross-terms (22% feature importance
+   in GT03, the validated pairwise signal).
+2. Once physical access is established, receptor-level allelic variation appears not to discriminate
+   strain-level host range at the resolution our data supports.
+3. Post-adsorption factors (injection efficiency, intracellular defenses, co-evolutionary dynamics) are
+   probably what determine the remaining variance — and these leave no detectable genomic signature at
+   the OMP level.
+
+This is consistent with `same-receptor-uncorrelated-hosts` (Tsx phages Jaccard 0.091): receptor identity
+and variant don't determine host range; something downstream does.
+
+#### Design notes
+
+**SX03 Arm C not evaluated.** The SX13 runner does within-panel 10-fold only. Given within-panel Δ at
+≤+0.3 pp on all arms, Arm C would not reach +2 pp. Documented omission.
+
+**Per-phage blending is expensive with 5546 host features.** Marginal arm folds took ~7 min each
+(vs ~3 min for SX11's lean binary arm). Per-phage LightGBM fits are where the time goes, not the k-mer
+features themselves. Acceptable for single evaluation runs; would be a bottleneck if SX13-style slots
+are used in per-seed hyperparameter sweeps.
+
+**Vectorized cross-term selection.** Initial implementation looped over 815 × 5546 = 4.5M pairs per fold
+with per-iteration Python-level sort, projected ~1 hr per fold. Replaced with two numpy matrix multiplies
+exploiting binary structure: `sum_x = P.T @ H`, `sum_xy = P.T @ (H * y[:, None])`, closed-form correlation.
+Drops to ~1 sec per fold (>1000× speedup). Generic pattern for binary feature interaction search.
+
+#### Knowledge update
+
+- Keep `omp-score-homogeneity` active but refine context: the HMM-score homogeneity was real; loop-level
+  k-mer / cluster variation IS substantial but does not predict lysis. Update the context field.
+- Add a new unit `host-omp-variation-unpredictive` (dead-end) noting the four-arm test of host-side OMP
+  features produced null at k-mer, cross-term, and cluster granularities.
+- Reinforce `narrow-host-prior-collapse`: NILS53 +2.59 pp cross_term hit is an outlier (76th percentile
+  among peers at 12% lysis rate), not a reproducible rescue. Narrow-host collapse remains unresolved.
+
+#### Where the numbers live
+
+- Bootstrap CIs: `lyzortx/generated_outputs/sx13_eval/bootstrap_results.json`
+- Arm comparison: `lyzortx/generated_outputs/sx13_eval/arm_comparison.csv`
+- Per-arm predictions: `lyzortx/generated_outputs/sx13_eval/{arm}_predictions.csv`
+- Host OMP k-mer slot: `.scratch/host_omp_kmer/features.csv` (369 hosts × 5546 features)
+- Host OMP cluster slot: `.scratch/host_omp_cluster/features.csv` (369 hosts × 12 categoricals)
+- Per-host OMP protein sequences: `.scratch/host_omp_proteins/{host}/{omp}.faa`

@@ -254,21 +254,22 @@ themes:
 
       - id: omp-score-homogeneity
         statement: >
-          All 369 clinical E. coli hosts express all 12 core OMP receptors at nearly identical HMM
-          scores (CV 0.01-0.17), making receptor × OMP cross-terms collapse to phage-only features
-          with no host-side discrimination.
-        sources: [GT03, GT06, 2026-04-12 pair-level analysis]
+          Whole-gene OMP HMM scores are near-identical across 369 clinical E. coli (CV 0.01-0.17),
+          making whole-gene receptor × OMP cross-terms collapse. Loop-level allelic variation is
+          substantial (BTUB 28 MMseqs2 99% clusters, OMPC 49, across 5546 retained 5-mers) but does
+          not predict lysis either — see host-omp-variation-unpredictive.
+        sources: [GT03, GT06, 2026-04-12 pair-level analysis, SX13]
         status: active
         confidence: validated
         context: >
-          LptD CV=0.01, OmpA CV=0.02, Tsx CV=0.03, OmpC CV=0.04. The cross-term
-          predicted_is_OmpC × host_OmpC_score ≈ predicted_is_OmpC × constant. Direct test: OmpC
+          LptD CV=0.01, OmpA CV=0.02, Tsx CV=0.03, OmpC CV=0.04 on HMM scores. Direct test: OmpC
           phages lyse high-OmpC hosts at 37.0% vs low-OmpC at 33.4% (Cohen d=0.086, negligible).
-          Moriniere's receptor classifiers were trained on K-12 (BW25113/BL21) which lack
-          O-antigen/capsule — in clinical strains, polysaccharide barriers mask OMP differences.
-          OMP variant/allele-level features (extracellular loop regions) might restore host-side
-          variation.
-        relates_to: [receptor-variant-richness, receptor-specificity-solved, three-layer-hypothesis]
+          SX13 tested whether loop-level k-mer or cluster representations would restore host-side
+          signal — they did not (AUC deltas ≤ +0.3 pp across marginal, cross-term, and cluster
+          arms). The homogeneity observation at the HMM level is real; the escalation to finer
+          representations doesn't rescue prediction because host-range variance lives downstream
+          of OMP recognition in clinical strains (polysaccharide access + post-adsorption factors).
+        relates_to: [receptor-variant-richness, receptor-specificity-solved, three-layer-hypothesis, host-omp-variation-unpredictive]
 
       - id: same-receptor-uncorrelated-hosts
         statement: >
@@ -781,6 +782,29 @@ themes:
           nDCG — k-mers do not break narrow-host prior collapse. Not a LightGBM shortcoming;
           a feature-redundancy + panel-size ceiling.
         relates_to: [omp-score-homogeneity, pairwise-cross-terms-dead-end, receptor-specificity-solved, plm-rbp-redundant, narrow-host-prior-collapse, panel-size-ceiling]
+
+      - id: host-omp-variation-unpredictive
+        statement: >
+          Host-side OMP allelic variation is substantial (369 clinical E. coli span BTUB 28 MMseqs2
+          99%-identity clusters, OMPC 49, 5546 retained 5-mers across 12 core OMPs) but does not
+          predict lysis. Four arms tested in SX13 (k-mers marginal, k-mers × phage k-mers cross-term,
+          cluster IDs, plus baseline) all land within ±0.4 pp of SX10 on all metrics.
+        sources: [SX13]
+        status: dead-end
+        confidence: validated
+        context: >
+          Permutation test on cross_term aggregate delta: 73% of random prediction swaps are as
+          extreme — signal indistinguishable from noise. Small directional signal in the marginal
+          arm for moderate-narrow-host deciles (lysis 5-11%, mean +1-2 pp nDCG across ~70 bacteria),
+          biologically consistent with OMP-variation-matters-for-narrow-phages but not significant
+          by sign test (75/137 positive, p=0.31). NILS53 specifically improved +2.59 pp under
+          cross_term but sits at the 76th percentile of its lysis-rate peers (mean Δ = -0.001) —
+          one outlier draw, not a reproducible rescue. Top-3 hit rate moves from 92.2% to 93.3%
+          under cross_term (+4 strains). The finding refines omp-score-homogeneity: HMM-score
+          homogeneity was real, but escalating to finer representations doesn't rescue prediction —
+          host-range variance lives downstream of OMP recognition (polysaccharide access, intracellular
+          defenses, co-evolutionary dynamics).
+        relates_to: [omp-score-homogeneity, pairwise-cross-terms-dead-end, kmer-receptor-expansion-neutral, narrow-host-prior-collapse, same-receptor-uncorrelated-hosts]
 
       - id: label-vision-reading-spot-checked-dead
         statement: >
