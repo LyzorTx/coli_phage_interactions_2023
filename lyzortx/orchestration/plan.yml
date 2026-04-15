@@ -1935,7 +1935,7 @@ tracks:
       title: Moriniere 5-mer features directly on phage side
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       acceptance_criteria:
       - 'MOTIVATION: Moriniere 2026 showed 5-mer amino-acid motifs at RBP tip regions
         predict receptor class at AUROC 0.99 (Dataset S6: 815 receptor-predictive

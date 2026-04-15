@@ -1203,7 +1203,7 @@ graph LR
   - Write results to lyzortx/generated_outputs/sx11_eval/ (bootstrap_results.json per arm + arm_comparison.csv)
   - Update ordinal-regression-not-better knowledge unit context to reflect which specific losses are now ruled in vs out
   - Record results and arm-level analysis in track_SPANDEX.md
-- [ ] **SX12** Moriniere 5-mer features directly on phage side. Model: `claude-opus-4-6`. CI image profile: `base`.
+- [x] **SX12** Moriniere 5-mer features directly on phage side. Model: `claude-opus-4-6`. CI image profile: `base`.
   - MOTIVATION: Moriniere 2026 showed 5-mer amino-acid motifs at RBP tip regions predict receptor class at AUROC 0.99
     (Dataset S6: 815 receptor-predictive k-mers). GT06 used these k-mers only to predict receptor class as an
     intermediate, then cross-termed the class prediction with host OMP score, which failed because of
