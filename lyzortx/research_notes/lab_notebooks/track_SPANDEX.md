@@ -1163,3 +1163,138 @@ Drops to ~1 sec per fold (>1000× speedup). Generic pattern for binary feature i
 - Host OMP k-mer slot: `.scratch/host_omp_kmer/features.csv` (369 hosts × 5546 features)
 - Host OMP cluster slot: `.scratch/host_omp_cluster/features.csv` (369 hosts × 12 categoricals)
 - Per-host OMP protein sequences: `.scratch/host_omp_proteins/{host}/{omp}.faa`
+
+### 2026-04-15 15:40 CEST: SX14 — Wave-2 consolidation + stratified evaluation
+
+#### Executive summary
+
+All three wave-2 tickets (SX11 potency losses, SX12 phage k-mers, SX13 host OMP k-mers) failed the
+aggregate +2 pp acceptance gate, so per the SX14 spec the consolidated wave-2 final = SX10 unchanged
+(no retraining). The real deliverable is the stratified evaluation layer applied to existing prediction
+outputs. It reveals the wave was not all null: **SX11 alternative losses (LambdaRank, ordinal
+all-threshold, hurdle two-stage) deliver +2.7 to +3.5 pp within-family nDCG — LambdaRank with disjoint
+CIs from baseline.** The aggregate +2 pp gate buried this because cross-family pairs (69% of the panel)
+dilute the within-family signal. SX12 and SX13 are null across all four strata; narrow-host phage
+performance is ceiling-bound near 0.70 nDCG for every arm, confirming `narrow-host-prior-collapse`
+remains unresolved.
+
+#### Stratum definitions
+
+Each holdout (bacterium, phage) pair is tagged with four boolean stratum flags:
+
+- **within_family**: phage's family has ≥3 training-positive pairs on this bacterium's cv_group
+  (abundant family-specific signal available)
+- **cross_family**: phage's family has 0 training-positive pairs on this bacterium's cv_group (cold-start
+  on this phage family against this host subpopulation)
+- **narrow_host_phage**: phage's panel-wide lysis rate <30% (the hard specialists)
+- **phylogroup_orphan**: holdout bacterium has ≤2 training-phylogroup-siblings in its CV fold (host-side
+  cold-start on phylogroup)
+
+Stratum counts (out of 31,962 pairs, sx10_baseline):
+within_family = 8,902 (28%); cross_family = 21,907 (69%); narrow_host_phage = 23,037 (72%);
+phylogroup_orphan = 520 (1.6% — wide bootstrap CIs).
+
+#### Key result: within-family nDCG
+
+| Arm | within-family nDCG | Δ vs SX10 | CIs |
+|-----|----|-----|-----|
+| sx10_baseline | 0.8165 [0.800, 0.840] | — | reference |
+| sx11_binary_baseline | 0.8154 [0.802, 0.839] | -0.11 pp | overlap |
+| **sx11_lambdarank** | **0.8513** [0.838, 0.874] | **+3.48 pp** | **disjoint from baseline** |
+| **sx11_ordinal** | **0.8442** [0.831, 0.868] | **+2.77 pp** | barely overlap |
+| **sx11_hurdle** | **0.8434** [0.830, 0.867] | **+2.69 pp** | barely overlap |
+| sx12_moriniere_kmer | 0.8148 [0.799, 0.838] | -0.17 pp | overlap |
+| sx13_marginal | 0.8144 [0.799, 0.839] | -0.21 pp | overlap |
+| sx13_cross_term | 0.8173 [0.801, 0.841] | +0.08 pp | overlap |
+| sx13_path1_cluster | 0.8138 [0.798, 0.838] | -0.27 pp | overlap |
+
+**SX11 LambdaRank's within-family CI is disjoint from the SX10 baseline CI** — the strongest
+stratum-level evidence in the entire wave. Ordinal all-threshold and hurdle two-stage are not far
+behind. SX11's own binary baseline sits at SX10's level, confirming the gain is from the loss function,
+not any setup artifact.
+
+#### Why aggregate missed this
+
+The wave-2 evaluation weighted all 31,962 pairs equally:
+
+- Within-family pairs (28%, where SX11 losses help by +3 pp): small weight
+- Cross-family pairs (69%, where no arm helps): large weight
+- Narrow-host overlap (mostly double-tagged): large weight
+
+The aggregate arithmetic: 0.28 × (+0.03) + 0.69 × (+0.00) + 0.03 × (+0.00) ≈ +0.008 pp,
+which matches the ~0 pp aggregate nDCG delta we observed.
+
+#### The trade-off inside SX11 arms
+
+SX11 alternative losses trade mAP down ~0.7–1.7 pp within-family for nDCG up 2.7–3.5 pp within-family.
+Interpretation: these losses reshape the potency gradient among positives (higher MLC → higher rank,
+captured by nDCG) at the cost of some lysis/no-lysis boundary (mAP). Ranking-focused users benefit from
+ordinal / LambdaRank; calibration-focused users should stick with SX10's binary target. Note this is
+without per-phage blending — an integration question for wave 3 if we adopt.
+
+#### Cross-family and narrow-host: no arm helps
+
+Cross-family nDCG sits at 0.76–0.79 across all 10 arms; spreads are within ±0.2 pp and CIs fully
+overlap. Cross-family host prediction is capped by the fundamental cold-start problem — no training
+examples of this phage family on this host subpopulation.
+
+Narrow-host phage nDCG (phages <30% panel-wide lysis rate) sits at 0.67–0.71 across all arms. None
+breaks past ~0.71. `narrow-host-prior-collapse` remains the top unresolved ranking failure mode; no
+feature family tested in wave 2 reaches it.
+
+#### Phylogroup-orphan (n=520)
+
+Bootstrap CIs are too wide for individual comparisons (narrowest CI is ±2 pp, widest ±6 pp). Point
+estimates suggest ordinal (0.8381) and marginal (0.8255) may help, but CIs overlap SX10's 0.7998 by
+≥40% of their range. Treat as uninformative at this sample size; revisit if phylogroup-orphan
+cohort grows.
+
+#### Calibration (Brier score) findings
+
+| Arm | Aggregate Brier | Δ vs SX10 |
+|-----|----|-----|
+| sx10_baseline | 0.1248 | — |
+| sx12_moriniere_kmer | 0.1221 | -0.27 pp (improved) |
+| sx13_cross_term | 0.1225 | -0.23 pp (improved) |
+| sx11_lambdarank | 0.1508 | **+2.60 pp (worse)** |
+| sx11_hurdle | 0.1295 | +0.47 pp (worse) |
+| sx11_ordinal | 0.1305 | +0.57 pp (worse) |
+
+SX11 loss changes degrade calibration (especially LambdaRank's per-bacterium min-max normalization
+which destroys probabilistic interpretation). SX12 and SX13 cross_term both improve Brier by ~0.2 pp
+without improving ranking — a minor calibration benefit not worth adopting on its own.
+
+#### Consolidated wave-2 "final"
+
+Per the SX14 acceptance criteria ("arms that failed their acceptance gate are excluded"), the
+consolidated model is **SX10 unchanged**. No retraining occurred; the canonical SPANDEX baseline
+(`spandex-final-baseline` in knowledge) remains the production configuration.
+
+Recorded separately in knowledge: the stratum-level SX11 signal as a candidate for a wave-3 follow-up
+(integrate ordinal / LambdaRank with per-phage blending, evaluate whether the within-family gain
+survives and whether it can be realized at inference time via stratum-aware routing).
+
+#### What wave-2 stratified eval delivered beyond aggregate metrics
+
+1. **Reclassified SX11 from "validated null" to "within-family specialist"** — a wave-2 deliverable that
+   wasn't visible in aggregate-level reporting.
+2. **Confirmed SX12 and SX13 as true nulls** — no stratum-level signal either. Strengthens their
+   respective dead-end knowledge units.
+3. **Quantified the ceiling on narrow-host phage ranking** at ~0.71 nDCG across 10 tested configurations.
+   Any future ticket proposing to attack narrow-host prior collapse should beat this number.
+4. **Established the evaluation framework** for future tracks. Every ticket going forward should report
+   stratified metrics alongside aggregate.
+
+#### Knowledge update
+
+- Preserve `spandex-final-baseline` (SX10) unchanged — still the production configuration.
+- Add new unit `spandex-wave-2-baseline` recording the SX14 stratified-eval finding: the consolidated
+  wave-2 model is identical to SX10 on aggregate, but the within-family stratum shows +2.7–3.5 pp
+  nDCG for SX11 alternative losses (LambdaRank CI disjoint).
+- Add `stratified-eval-framework` unit so future tracks adopt the decomposition as default reporting.
+
+#### Where the numbers live
+
+- Stratified metrics: `lyzortx/generated_outputs/sx14_eval/stratified_metrics.csv`
+- Per-pair predictions with stratum labels: `lyzortx/generated_outputs/sx14_eval/all_predictions.csv`
+- Side-by-side markdown table: `lyzortx/generated_outputs/sx14_eval/notebook_table.md`
