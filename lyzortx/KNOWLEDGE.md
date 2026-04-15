@@ -3,7 +3,7 @@
 <!-- Last consolidated: 2026-04-13T01:40:00+02:00 -->
 <!-- Source: lyzortx/research_notes/lab_notebooks -->
 
-**59 knowledge units** across 7 themes (44 active, 15 dead ends)
+**61 knowledge units** across 7 themes (46 active, 15 dead ends)
 
 ## Data & Labels
 
@@ -159,12 +159,39 @@ Architecture choices, calibration, and performance bounds.
   0.7290], AUC 0.8699 [0.8570, 0.8819], Brier 0.1248 [0.1187, 0.1309]. Cross-panel Arm C (train Guelin → predict BASEL ×
   ECOR): nDCG 0.7619 [0.7219, 0.8207], mAP 0.5186 [0.4591, 0.5780], AUC 0.7607 [0.6886, 0.8307], Brier 0.1844 [0.1426,
   0.2213]. SX07 and SX09 skipped (plm-rbp-redundant); SX08 continuous depolymerase bitscore validated as null
-  (bit-identical Arm C metrics). [validated; source: SX05, SX06, SX08, SX10; see also: autoresearch-baseline,
-  mlc-dilution-potency, new-phage-generalization, plm-rbp-redundant, panel-size-ceiling]
+  (bit-identical Arm C metrics). Wave-2 (SX11–SX13) did not displace this baseline — see spandex-wave-2-baseline.
+  [validated; source: SX05, SX06, SX08, SX10; see also: autoresearch-baseline, mlc-dilution-potency,
+  new-phage-generalization, plm-rbp-redundant, panel-size-ceiling, spandex-wave-2-baseline]
   - *The 10.9 pp within-panel AUC (0.87) vs cross-panel AUC (0.76) gap is the main SPANDEX-era unresolved item. Closing
     it requires panel expansion rather than richer phage-side features. Use this record as the reference point for
     future tracks; the canonical artifacts live at lyzortx/generated_outputs/sx05_sx01_eval/ (within-panel) and
     lyzortx/generated_outputs/sx06_sx03_eval/ (cross-panel Arm C).*
+- **`spandex-wave-2-baseline`**: SPANDEX wave-2 final (SX14, 2026-04-15): identical to wave-1 `spandex-final-baseline`
+  because all wave-2 tickets (SX11 potency losses, SX12 phage k-mers, SX13 host OMP k-mers) failed the aggregate +2 pp
+  gate. Stratified evaluation across four strata (within-family / cross-family / narrow-host-phage / phylogroup-orphan)
+  reveals the wave was not all null: SX11 LambdaRank, ordinal all-threshold, and hurdle two-stage deliver +2.7 to +3.5
+  pp within-family nDCG (LambdaRank CI disjoint from baseline), but cross-family (69% of pairs) dilutes to zero
+  aggregate delta. SX12 and SX13 are null across all four strata. [validated; source: SX14; see also:
+  spandex-final-baseline, ordinal-regression-not-better, kmer-receptor-expansion-neutral,
+  host-omp-variation-unpredictive, narrow-host-prior-collapse, stratified-eval-framework]
+  - *Within-family defined as phage's family having ≥3 training-positive pairs on this bacterium's cv_group.
+    Cross-family = 0 training-positive pairs same constraint. Narrow-host-phage = phage panel-wide lysis rate <30%.
+    Phylogroup-orphan = holdout bacterium has ≤2 training-phylogroup-siblings in its CV fold. Stratum counts per pair:
+    within_family ~28%, cross_family ~69%, narrow_host_phage ~72%, phylogroup_orphan ~1.6% (too small for reliable
+    bootstrap). Narrow-host nDCG ceiling is ~0.71 across all 10 tested arms — no feature family tested in wave 2 breaks
+    the narrow-host-prior-collapse. Future within-family follow-up: integrate SX11 ordinal or LambdaRank loss with
+    per-phage blending (SX11 arms ran without blending) and evaluate whether the within-family gain persists; if so,
+    investigate stratum-aware inference. Canonical artifacts:
+    lyzortx/generated_outputs/sx14_eval/stratified_metrics.csv.*
+- **`stratified-eval-framework`**: Aggregate metrics (nDCG/mAP/AUC/Brier on full panel) can hide stratum-specific wins
+  and losses. SX14 demonstrated a +3.5 pp within-family nDCG gain that was invisible in aggregate because cross-family
+  pairs (69% of the panel) diluted the signal to zero. Every ticket from SX14 onward should report metrics stratified by
+  within-family / cross-family / narrow-host-phage / phylogroup-orphan alongside aggregate. [validated; source: SX14;
+  see also: spandex-wave-2-baseline, panel-size-ceiling]
+  - *Stratum routing at inference requires computing training-positive family overlap and phylogroup sibling counts from
+    the training fold — these are cheap to compute per-pair and do not leak test information. Future tracks evaluating a
+    single candidate arm can reuse `.agents/skills/case-by-case/compare_predictions.py` for per-bacterium audit and the
+    sx14_eval.py pipeline for full four-stratum decomposition.*
 - **`autoresearch-baseline`**: AUTORESEARCH all-pairs model (0.810 AUC, 90.8% top-3 on ST03 holdout) is the canonical
   clean baseline: derived from raw FASTA, no leakage, no feature mismatch, no per-phage blending. Track GIANTS improved
   this to 0.823 AUC with depolymerase × capsule features and RFE. [validated; source: 2026-04-08 AUTORESEARCH eval,
