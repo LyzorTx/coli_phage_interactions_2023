@@ -1223,7 +1223,7 @@ graph LR
   - Log top-20 retained k-mers after RFE and manually spot-check against known RBP-tip motif literature for biological
     interpretability
   - Record results and k-mer importance analysis in track_SPANDEX.md
-- [ ] **SX13** OMP k-mer host-side features + SX12 x SX13 cross-term. Model: `claude-opus-4-6`. CI image profile:
+- [x] **SX13** OMP k-mer host-side features + SX12 x SX13 cross-term. Model: `claude-opus-4-6`. CI image profile:
       `base`. Depends on tasks: `SX12`.
   - MOTIVATION: Whole-gene OMP HMM scores are near-constant across 369 clinical E. coli (CV 0.01-0.17,
     omp-score-homogeneity knowledge). Receptor x OMP cross-terms therefore collapse. Extracellular-loop variation is

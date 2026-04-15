@@ -1963,7 +1963,7 @@ tracks:
       title: OMP k-mer host-side features + SX12 x SX13 cross-term
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - SX12
       acceptance_criteria:
