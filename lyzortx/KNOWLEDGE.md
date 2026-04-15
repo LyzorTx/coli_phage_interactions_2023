@@ -365,13 +365,20 @@ Compressed lessons from approaches that didn't work.
   (37,788/37,788 pairs match after name normalization). Our data is already in their framework. No new training pairs
   available from GenoPHI for existing phages. [validated; source: GT09; see also: genophi-benchmark,
   raw-interactions-authority]
-- **`kmer-receptor-expansion-neutral`**: Expanding Gate 2 receptor coverage from 8/96 (genus-level) to 39/96
-  (k-mer-based) OMP phages produces zero AUC improvement (0.824 vs 0.823, delta CI [-0.005, +0.005]). [validated;
-  source: GT06; see also: omp-score-homogeneity, pairwise-cross-terms-dead-end, receptor-specificity-solved]
-  - *Used GenoPHI's 815 receptor-predictive k-mers from Moriniere 2026 Dataset S6. The simplified k-mer max-vote
-    predictor assigns 39 OMP, 33 LPS, 22 NGR, 2 unknown. Despite 5x more OMP-assigned phages, the cross-terms still
-    collapse because the host-side OMP scores have CV 0.01-0.17. More accurate receptor predictions (full GenoPHI
-    classifier) would not help because the host side — not the phage side — is the bottleneck.*
+- **`kmer-receptor-expansion-neutral`**: Moriniere 2026's 815 receptor-predictive 5-mers fail to lift performance
+  regardless of encoding path: as intermediate-classifier features (GT06: AUC 0.824 vs 0.823, delta CI [-0.005, +0.005])
+  or as direct phage-side features (SX12: AUC 0.8722 vs 0.8699, delta +0.23 pp, CIs overlap). The Moriniere 815-kmer
+  approach is exhausted on this panel. [validated; source: GT06, SX12; see also: omp-score-homogeneity,
+  pairwise-cross-terms-dead-end, receptor-specificity-solved, plm-rbp-redundant, narrow-host-prior-collapse,
+  panel-size-ceiling]
+  - *Two failure modes overlap. (1) The k-mers were selected to discriminate receptor class on K-12 derivatives
+    (BW25113/BL21) which lack capsule/O-antigen — they predict what we already know (receptor identity), not what we
+    need (strain-level capsule penetration). (2) The k-mers are information-redundant with phage_projection (TL17 BLAST)
+    — both encode phage sequence similarity at different granularities. SX12 RFE keeps 95/815 k-mers (11.7%) but they
+    contribute ~5% of total importance vs 22% for depo×capsule; zero k-mers appear in the top-20 features. Per-bacterium
+    analysis: ~10 genuine wins (e.g., IAI78 +0.12 nDCG, ECOR-25 +0.17) exactly offset by ~10 genuine losses (e.g.,
+    ECOR-19 -0.36, EDL933 -0.24). NILS53 (the canonical narrow-host case) gains +0.011 nDCG — k-mers do not break
+    narrow-host prior collapse. Not a LightGBM shortcoming; a feature-redundancy + panel-size ceiling.*
 - **`label-vision-reading-spot-checked-dead`**: Using a vision model to re-read the ambiguous 'n' plaque-image scores
   (the plate crops backing the ~10% of training rows labeled negative but with uninterpretable raw scores) was evaluated
   via manual spot checks before 2026-04 and did not look promising enough to justify a full re-read pipeline. Do not

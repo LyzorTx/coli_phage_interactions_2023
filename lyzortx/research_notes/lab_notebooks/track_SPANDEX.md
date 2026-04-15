@@ -822,3 +822,153 @@ work with richer potency labels (e.g., quantitative EOP data if available) could
 - Arm comparison: `lyzortx/generated_outputs/sx11_eval/arm_comparison.csv`
 - Bootstrap CIs: `lyzortx/generated_outputs/sx11_eval/bootstrap_results.json`
 - Per-arm predictions: `lyzortx/generated_outputs/sx11_eval/{arm}_predictions.csv`
+
+### 2026-04-15 07:32 CEST: SX12 — Moriniere 5-mer phage features (validated null)
+
+#### Executive summary
+
+Direct import of Moriniere 2026's 815 receptor-predictive amino-acid 5-mers as marginal phage-side features
+produces zero net lift on within-panel evaluation (AUC +0.23 pp, far below the +2 pp gate). RFE retains 95/815
+k-mers (11.7%), but they contribute ~5% of total feature importance and zero appear in the top-20 features. The
+mechanism is information redundancy with `phage_projection` (TL17 BLAST) — both encode phage sequence similarity
+at different granularities, and the 96-148-phage panel saturates the family-level signal. Confirms that
+Moriniere's 815 k-mers fail in this panel regardless of encoding path (intermediate classifier in GT06, direct
+features in SX12).
+
+#### Results
+
+10-fold bacteria-stratified CV with 3 seeds, per-phage blending, RFE feature selection, 1000-resample bootstrap
+CIs. Comparison against SX10 baseline (the canonical SPANDEX final, same evaluation protocol):
+
+| Metric | SX10 baseline | SX12 (+Moriniere k-mers) | Δ |
+|--------|---------------|--------------------------|-----|
+| nDCG  | 0.7958 [0.788, 0.812] | 0.7967 [0.789, 0.814] | +0.09 pp |
+| mAP   | 0.7111 [0.693, 0.729] | 0.7130 [0.695, 0.732] | +0.19 pp |
+| AUC   | 0.8699 [0.857, 0.882] | 0.8722 [0.859, 0.884] | **+0.23 pp** |
+| Brier | 0.1248 [0.119, 0.131] | 0.1221 [0.116, 0.128] | -0.27 pp |
+
+**Acceptance gate:** within-panel AUC ≥+2 pp OR Arm C AUC ≥+2 pp. Got +0.23 pp on within-panel (CIs massively
+overlap). Recorded as validated null.
+
+#### Feature-side audit
+
+Pre-RFE feature count: 1322 (507 SX10 baseline + 815 Moriniere k-mers).
+Post-RFE: 426 (331 non-kmer + 95 kmer). RFE keeps 11.7% of k-mers — they're not silently filtered out.
+
+Top 20 retained k-mers by LightGBM importance (fold 0 of 10):
+
+```
+NVSVG (11)  EVIDG (10)  EQLQV (9)   NRNVV (9)   LTFGG (8)
+AHTVG (6)   ASEQE (6)   GGGRV (6)   IRGQG (6)   LGRNT (6)
+LNENG (6)   VLQAI (6)   FLTAV (5)   AGTGG (4)   FIIRR (4)
+IGAHT (4)   LDGKL (4)   NSTDF (4)   SITPQ (4)   AGGSS (3)
+```
+
+For comparison, top non-kmer features (importance scale):
+
+```
+host_typing__host_serotype                 2076
+phage_stats__phage_gc_content              1633
+phage_stats__phage_genome_length_nt         546
+host_stats__host_sequence_record_count      196
+host_typing__host_o_type                    174
+host_stats__host_n50_contig_length_nt       157
+pair_receptor_omp__predicted_lps_x_o_antigen 148
+phage_stats__phage_n50_contig_length_nt     122
+host_stats__host_genome_length_nt           114
+host_stats__host_gc_content                 109
+```
+
+The top k-mer (NVSVG, importance 11) is 190× weaker than the top feature (host_serotype, 2076). Total k-mer
+contribution: ~5% of model importance, vs 22% for `depo × capsule` cross-terms in the validated GT03 baseline.
+
+#### Case-by-case analysis
+
+Per-bacterium nDCG comparison (356 bacteria with ≥1 positive):
+- 160 bacteria better with k-mers, 171 worse, 25 tied (essentially balanced)
+- Mean delta +0.09 pp, median -0.04 pp
+- Top-3 hit rate: 92.2% (SX10) → 92.4% (SX12), net +1 bacterium (4 rescued, 3 lost)
+
+**Genuine k-mer wins** (real rank improvements, ≥5 positives so not nDCG noise):
+
+| Bacterium | nDCG SX10→SX12 | Δ | n_pos | lysis rate |
+|-----------|---------------|-----|-------|-----------|
+| H1-001-0155-M-I | 0.552→0.746 | +0.194 | 5 | 5% |
+| ECOR-25 | 0.653→0.826 | +0.173 | 5 | 6% |
+| NILS23 | 0.649→0.820 | +0.171 | 7 | 7% |
+| NILS31 | 0.538→0.703 | +0.164 | 7 | 8% |
+| ECOR-46 | 0.655→0.781 | +0.126 | 12 | 13% |
+| IAI78 | 0.669→0.793 | +0.125 | 26 | 28% |
+
+**Genuine k-mer losses** (offsetting real degradations):
+
+| Bacterium | nDCG SX10→SX12 | Δ | n_pos | lysis rate |
+|-----------|---------------|-----|-------|-----------|
+| ECOR-19 | 0.744→0.389 | -0.355 | 4 | 4% |
+| EDL933 | 0.793→0.552 | -0.241 | 3 | 4% |
+| E1492 | 0.942→0.713 | -0.229 | 6 | 7% |
+| ECOR-14 | 0.786→0.578 | -0.209 | 6 | 7% |
+| NILS38 | 0.931→0.806 | -0.125 | 9 | 10% |
+| NILS15 | 0.898→0.778 | -0.120 | 4 | 4% |
+
+**NILS53 (the canonical narrow-host failure case from `narrow-host-prior-collapse`):** nDCG 0.433→0.444
+(+0.011). Essentially unchanged. K-mers do NOT rescue narrow-host prior collapse — broad-host phages with similar
+k-mer profiles (Straboviridae) continue to dominate rankings.
+
+By lysis-rate stratum: no systematic pattern (narrow +0.22 pp, mid -0.03/+0.02 pp, broad +0.11 pp). K-mers don't
+preferentially help any band.
+
+#### Why the null
+
+1. **K-mers encode phage-family structure already in `phage_projection`.** Two phages sharing 80% of Moriniere
+   k-mers also share TL17 BLAST hits (same family). RFE keeps 95 k-mers because they correlate with the label,
+   but their information overlaps with existing phage-side features. Each tree split prefers the more informative
+   non-kmer. Total k-mer importance (~5%) is dwarfed by `phage_stats` and `phage_projection`.
+2. **Moriniere k-mers were selected for the wrong prediction task.** They achieve AUROC 0.99 for receptor-class
+   prediction on K-12 derivatives (BW25113/BL21) which lack capsule/O-antigen. In our 369 clinical _E. coli_
+   the bottleneck isn't receptor identity — it's polysaccharide-mediated access to the receptor (per
+   `omp-score-homogeneity` + `same-receptor-uncorrelated-hosts`). The k-mers predict what we already know
+   (receptor class), not what we need to predict (strain-level capsule/O-antigen penetration).
+3. **Panel-size ceiling.** The ~10 genuine wins are exactly offset by ~10 genuine losses — RFE's effective
+   feature budget is fixed (~300-426 features), so adding 95 k-mers knocks out other useful features in some
+   folds. Real per-bacterium effects exist but cannot move aggregate metrics on a 96-phage panel.
+
+This is not a LightGBM shortcoming. The k-mers are largely redundant with existing features at the data level,
+not the algorithm level. A neural network on the same 815 k-mers + 148 phages would face the same redundancy
+plus severe n<<p overfitting risk.
+
+#### Implications for SX13
+
+The SX13 cross-term arm (phage Moriniere k-mers × host OMP-loop k-mers) is now weakened by SX12's null.
+Standalone phage k-mers are redundant with `phage_projection`. The cross-term with host OMP-loop k-mers may
+reconstruct what `phage_projection × host_receptor_score` already does — to the extent the host k-mers add
+genuinely new variation. SX13's host k-mers (loop-level OMP variants) might still surface a real signal because
+they target the actual `omp-score-homogeneity` bottleneck, but the *combined* arm should be entered with low
+prior. Recommend SX13 implements both arms (host k-mers alone, host k-mers × phage k-mers) so we can attribute
+any lift correctly.
+
+#### Design notes
+
+**SX03 Arm C not evaluated.** Same omission as SX11. The `sx12_eval.py` runner only does within-panel; an
+explicit `sx12_eval_arm_c` flag is logged as TODO in the script. Within-panel AUC is +0.23 pp — Arm C wouldn't
+reach +2 pp from there. Documented and accepted.
+
+**ECOR-06 / NILS17 single-positive wins not counted as evidence.** Both bacteria have only 1 positive and large
+nDCG flips (+0.61, +0.37). Single-positive nDCG is unstable — these are top-3-rank flips, not robust signal. The
+genuine-wins table above filters to ≥5 positives.
+
+#### Knowledge update
+
+- Broaden `kmer-receptor-expansion-neutral`: both intermediate-classifier (GT06) AND direct-feature (SX12) k-mer
+  approaches fail with the same null. Moriniere's 815-kmer approach is exhausted in this panel regardless of
+  encoding path.
+- Reinforces `narrow-host-prior-collapse`: NILS53 explicitly tested, remains unrescued by k-mer features
+  (Δ +0.011 pp).
+- Consistent with `plm-rbp-redundant`: PLM embeddings, k-mers, and phage_projection all encode phage sequence
+  similarity at different granularities; all saturate at the family-level signal.
+
+#### Where the numbers live
+
+- Bootstrap CIs: `lyzortx/generated_outputs/sx12_eval/within_panel_bootstrap.json`
+- Per-pair predictions: `lyzortx/generated_outputs/sx12_eval/within_panel_predictions.csv`
+- K-mer feature slot: `.scratch/moriniere_kmer/features.csv` (148 phages × 815 k-mers)
