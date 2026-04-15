@@ -2004,7 +2004,7 @@ tracks:
       title: Wave-2 SPANDEX baseline consolidation + stratified evaluation
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - SX11
       - SX12

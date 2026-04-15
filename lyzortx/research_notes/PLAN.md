@@ -1251,7 +1251,7 @@ graph LR
   - Update omp-score-homogeneity knowledge unit with the outcome (ruled in, ruled out with evidence, or split by
     feature-family)
   - Record arm-level analysis + cross-term importance in track_SPANDEX.md
-- [ ] **SX14** Wave-2 SPANDEX baseline consolidation + stratified evaluation. Model: `claude-opus-4-6`. CI image
+- [x] **SX14** Wave-2 SPANDEX baseline consolidation + stratified evaluation. Model: `claude-opus-4-6`. CI image
       profile: `base`. Depends on tasks: `SX11`, `SX12`, `SX13`.
   - PURPOSE: Consolidate SX11-SX13 winning arms into a single wave-2 baseline and enable honest reporting via stratified
     evaluation. Mirrors SX10 pattern.
