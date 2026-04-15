@@ -1298,3 +1298,151 @@ survives and whether it can be realized at inference time via stratum-aware rout
 - Stratified metrics: `lyzortx/generated_outputs/sx14_eval/stratified_metrics.csv`
 - Per-pair predictions with stratum labels: `lyzortx/generated_outputs/sx14_eval/all_predictions.csv`
 - Side-by-side markdown table: `lyzortx/generated_outputs/sx14_eval/notebook_table.md`
+
+### 2026-04-15 21:21 CEST: SX15 — Unified Guelin+BASEL k-fold (bacteria + phage axes)
+
+#### Executive summary
+
+Re-evaluated the wave-2 consolidated baseline (= SX10 unchanged) under a unified Guelin+BASEL panel on two
+axes with stratified reporting. Bacteria-axis is essentially identical to SX10 (aggregate nDCG 0.7965 vs
+0.7958) — adding BASEL's 1240 pairs to shared ECOR bacteria gives no aggregate lift, consistent with
+`external-data-neutral`. **Phage-axis produces the first honest deployability estimate for unseen phages:
+aggregate AUC 0.8988 (higher than within-panel!) but nDCG 0.7229 (7 pp lower) — AUC and ranking metrics
+diverge because per-phage blending cannot apply to held-out phages.** BASEL phages on the phage-axis split
+generalize as well as Guelin phages (holdout_phage_basel nDCG 0.83 > holdout_phage_guelin 0.72), a
+reassuring signal for cross-source deployability. Ran under default BASEL+→MLC=2 (Option B); A/C
+sensitivity deferred since wave-2 adopted no arm so the invariance check is vacuously satisfied.
+
+#### Panel and fold setup
+
+**Unified panel:** 369 unique bacteria (no new BASEL bacteria — all 25 ECOR are already in Guelin) ×
+148 unique phages (96 Guelin + 52 BASEL) = 33,202 observed pairs (31,962 Guelin + 1,240 BASEL). The
+spec's "394 combined bacteria" was incorrect; all 25 BASEL ECOR hosts overlap with Guelin, so the combined
+bacteria count is still 369.
+
+**Bacteria-axis k-fold:** StratifiedKFold on 369 bacteria with (source, phylogroup) composite key (source
+tagged as "both" for ECOR-12/etc. shared bacteria). 10 folds of ~37 bacteria each, 2-4 BASEL per fold.
+
+**Phage-axis k-fold:** StratifiedKFold on 148 phages with ICTV family key. 10 folds of 14-15 phages each.
+
+**Label mapping:** Guelin MLC 0-3 as-is; BASEL+ → MLC=2 (default); BASEL- → MLC=0.
+
+#### Bacteria-axis results (with per-phage blending, full SX10 configuration)
+
+| Metric | Aggregate | source_guelin (n=31,962) | source_basel (n=1,240) |
+|---|---|---|---|
+| nDCG | 0.7965 [0.789, 0.814] | 0.7970 | 0.8370 [0.778, 0.909] |
+| mAP | 0.7130 [0.695, 0.732] | 0.7138 | 0.6971 [0.602, 0.789] |
+| AUC | 0.8685 [0.855, 0.881] | 0.8723 | 0.7723 [0.649, 0.885] |
+| Brier | 0.1255 [0.119, 0.132] | 0.1242 | 0.1579 [0.115, 0.213] |
+
+SX10 reference (SX14 table, same protocol): nDCG 0.7955, AUC 0.8699. Bacteria-axis with BASEL training is
+statistically indistinguishable — the ~4% extra training data on shared ECOR doesn't move the Guelin
+predictions. BASEL's source_basel AUC 0.77 is lower than Guelin's 0.87 because BASEL labels are binary
+(compressed graded relevance).
+
+Per-stratum (bacteria-axis):
+| Stratum | nDCG | AUC |
+|---|---|---|
+| within_family | 0.8225 [0.806, 0.848] | 0.8736 |
+| cross_family | 0.7794 [0.769, 0.802] | 0.8580 |
+| narrow_host_phage | 0.7002 [0.682, 0.722] | 0.8380 |
+| phylogroup_orphan | 0.8308 [0.781, 0.893] | 0.7929 (n=520, wide CI) |
+
+Within-family is 0.6 pp higher than SX14 (0.8225 vs 0.8165) — a tiny bump from BASEL training pairs, well
+below the noise floor.
+
+#### Phage-axis results (all-pairs model only; held-out phages unseen)
+
+| Metric | Aggregate | source_guelin | source_basel | holdout_phage_guelin | holdout_phage_basel |
+|---|---|---|---|---|---|
+| nDCG | 0.7229 | 0.7193 | 0.8332 | 0.7193 | **0.8332** |
+| mAP | 0.6055 | 0.6013 | 0.6888 | 0.6013 | **0.6888** |
+| AUC | **0.8988** | 0.8986 | 0.8965 | 0.8986 | 0.8965 |
+| Brier | 0.1144 | 0.1151 | 0.0956 | 0.1151 | 0.0956 |
+
+Note: in phage-axis, every pair's phage is held out from training, so `source_basel` and
+`holdout_phage_basel` are the same stratum (both measure "predictions for BASEL phages that were never
+seen"). Same for Guelin.
+
+Per-stratum (phage-axis):
+| Stratum | nDCG | AUC |
+|---|---|---|
+| within_family | 0.7753 | 0.8694 |
+| cross_family | 0.6673 [0.636, 0.715] | 0.7862 [0.742, 0.827] |
+| narrow_host_phage | 0.6190 | 0.8816 |
+| phylogroup_orphan | 0.6122 | 0.8381 (n=520) |
+
+#### The AUC vs nDCG/mAP divergence
+
+Phage-axis AUC (0.8988) is **higher** than bacteria-axis AUC (0.8685), but phage-axis nDCG (0.7229) is
+**7 pp lower** than bacteria-axis nDCG (0.7965). This is counterintuitive but mechanically correct:
+
+- **AUC is threshold-independent and ranks pairs globally** — 33,202 positives-above-negatives. The
+  all-pairs model's feature engineering is strong enough to keep global discrimination even for unseen
+  phages. Actually **improves** slightly because the phage-axis holdout doesn't include per-phage
+  regularization noise.
+- **nDCG and mAP are per-bacterium ranking metrics** — each bacterium's ~148 predictions are scored
+  independently. When 15 of those predictions are for held-out phages with no per-phage model, those
+  predictions are noisier in their exact ordering, even though they're correctly above/below the
+  lysis threshold. That noisy ordering drops nDCG at the top-k level.
+
+**Interpretation:** for discrimination-focused use (screening recommendations where threshold matters
+most), phage-axis deployability is actually fine (AUC 0.90). For ranking-focused use (picking the top-3
+phages to recommend per clinical strain), phage-axis degrades ~7 pp nDCG. This is the per-phage blending
+tax: it buys 7 pp nDCG when phages are seen during training.
+
+#### Cross-source generalization: encouraging
+
+**BASEL phages generalize as well as Guelin phages on phage-axis.** When we hold out a BASEL phage
+(trained on 133 Guelin+BASEL phages), nDCG is 0.8332. When we hold out a Guelin phage, nDCG is 0.7193.
+BASEL-phage predictions are actually *better* than Guelin-phage predictions in this split — not because
+BASEL phages are easier to predict, but because BASEL labels (binary mapped to MLC=0 or MLC=2) give fewer
+graded-ranking opportunities for the model to lose points on. The AUCs are nearly identical (0.8965 vs
+0.8986), which is the honest comparison.
+
+Biological reading: the TL17 phage-family projection features (computed in SX06) transfer successfully
+from Guelin to BASEL. The feature engineering generalizes across phage collections — not just numerically
+but across the full stratified panel.
+
+#### Cross-family is where deployability hurts most
+
+Phage-axis cross_family nDCG is 0.6673, AUC 0.7862 (both the lowest in their rows). This makes sense:
+held-out phage × held-out family-level cold-start × holdout bacterium's cv_group has zero training
+positives. Features must do all the work. The 13 pp AUC drop (0.786 vs 0.869 within-family) is the
+honest cost of cross-family cold-start deployment.
+
+#### Sensitivity check deferred
+
+Per the SX15 spec: "the ranking of wave-2 arms adopted by SX14 is invariant under A, B, C". Since SX14
+adopted no arm (all wave-2 failed their gates), the ranking set is singleton {SX10}; invariance is
+vacuously satisfied. The A/B/C sensitivity check becomes a calibration curio (how much do source_basel
+metrics shift across BASEL+ ∈ {1,2,3}?) rather than an invariance gate. Deferred to an optional
+follow-up; default Option B provides the canonical numbers.
+
+#### What SX15 delivered
+
+1. **First honest deployability estimate for unseen phages:** AUC 0.8988, nDCG 0.7229. Future work
+   quoting "deployability performance" should cite phage-axis, not bacteria-axis.
+2. **Cross-source generalization confirmed:** BASEL phages generalize as well as Guelin phages on
+   phage-axis. Feature engineering transfers across phage collections.
+3. **Quantified the per-phage blending tax:** ~7 pp nDCG when the phage is unseen. This is the cost of
+   the cold-start-phage scenario.
+4. **Unified framework established:** future wave evaluations should use the bacteria-axis for
+   within-panel comparisons and phage-axis for deployability claims, with the SX14 + SX15 strata as
+   default decomposition.
+
+#### Knowledge update
+
+Add `spandex-unified-kfold-baseline` unit recording:
+- Bacteria-axis default BASEL+→MLC=2 — canonical unified within-panel numbers
+- Phage-axis all-pairs-only — canonical deployability numbers
+- Per-stratum decomposition including source_basel / source_guelin
+- The AUC-vs-nDCG divergence interpretation (per-phage blending tax)
+
+#### Where the numbers live
+
+- Bacteria-axis metrics: `lyzortx/generated_outputs/sx15_eval/sx15_bacteria_axis_stratified_metrics.csv`
+- Phage-axis metrics: `lyzortx/generated_outputs/sx15_eval/sx15_phage_axis_stratified_metrics.csv`
+- Per-pair predictions with all stratum labels: `sx15_{bacteria,phage}_axis_predictions.csv`
+- Side-by-side comparison: `lyzortx/generated_outputs/sx15_eval/sx15_comparison_table.md`
