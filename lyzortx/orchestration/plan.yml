@@ -2067,13 +2067,36 @@ tracks:
       - 'MISSING DATA: BASEL has ~11% missing cells. Follow the existing partial-ground-truth
         scoring design (score only observed cells per bacterium); no imputation, no
         penalty.'
+      - 'STRATIFIED EVALUATION (carries forward from SX14): every SX15 bootstrap must
+        report aggregate AND per-stratum metrics across the SX14 strata (within_family,
+        cross_family, narrow_host_phage, phylogroup_orphan) PLUS two new SX15-specific
+        strata enabled by the unified panel: source_basel vs source_guelin (per-pair),
+        and on phage-axis only a holdout_phage_source stratum (held-out Guelin phage
+        vs held-out BASEL phage). Reuse attach_stratum_labels() and bootstrap_per_stratum()
+        from sx14_eval.py. Aggregate-only reporting is not acceptable — SX14 proved that
+        aggregate hides stratum-specific wins and losses.'
+      - 'SENSITIVITY INVARIANCE (stratified): the A/B/C invariance requirement applies
+        per-stratum, not only in aggregate. Required: for each stratum, the ranking of
+        wave-2-adopted arms under BASEL+ mappings {MLC=1, MLC=2, MLC=3} is invariant.
+        Since SX14 adopted no wave-2 arm (all failed their gates), the ranking set is
+        singleton {SX10}; invariance is vacuously satisfied, but the source_basel stratum
+        metric is expected to shift across A/B/C and that shift should be reported as a
+        calibration sanity check, not a failure.'
+      - 'PHAGE-AXIS LIMITATION: on the phage-axis split, held-out phages have zero
+        training pairs so per-phage blending cannot apply. The phage-axis evaluation
+        therefore measures the all-pairs model only, not the full SX10 configuration.
+        Document this explicitly; bacteria-axis remains the apples-to-apples comparison
+        to SX14.'
       - 'Re-evaluate the wave-2 consolidated baseline (output of SX14) under the unified
-        framework on both axes. Produce four new artifacts: sx15_bacteria_axis_bootstrap.json,
-        sx15_phage_axis_bootstrap.json, sx15_sensitivity_bacteria.csv, sx15_sensitivity_phage.csv.'
-      - 'Produce comparison table: SX14 metrics (old framework) vs SX15 bacteria-axis
-        vs SX15 phage-axis for the same wave-2 winning configuration.'
+        framework on both axes. Produce artifacts: sx15_bacteria_axis_stratified_metrics.csv
+        (aggregate + all strata × 3 sensitivity settings),
+        sx15_phage_axis_stratified_metrics.csv (same), sx15_bacteria_axis_predictions.csv
+        (per-pair predictions with stratum labels), sx15_phage_axis_predictions.csv,
+        sx15_comparison_table.md (side-by-side: SX14 vs SX15 bacteria-axis vs SX15 phage-axis
+        per stratum).'
       - Add a spandex-unified-kfold-baseline knowledge unit with the canonical unified-framework
-        numbers + artifact paths. This becomes the reference point future tracks evaluate
-        against.
-      - Record SX15 methodology decisions, sensitivity-check outcomes, and per-axis
-        metric interpretations in track_SPANDEX.md.
+        numbers + artifact paths, including per-stratum decomposition. This becomes the
+        reference point future tracks evaluate against.
+      - Record SX15 methodology decisions, sensitivity-check outcomes, per-stratum source
+        effects (source_basel vs source_guelin), and per-axis metric interpretations in
+        track_SPANDEX.md.

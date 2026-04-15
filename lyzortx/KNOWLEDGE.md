@@ -3,7 +3,7 @@
 <!-- Last consolidated: 2026-04-13T01:40:00+02:00 -->
 <!-- Source: lyzortx/research_notes/lab_notebooks -->
 
-**61 knowledge units** across 7 themes (46 active, 15 dead ends)
+**62 knowledge units** across 7 themes (47 active, 15 dead ends)
 
 ## Data & Labels
 
@@ -187,11 +187,28 @@ Architecture choices, calibration, and performance bounds.
   and losses. SX14 demonstrated a +3.5 pp within-family nDCG gain that was invisible in aggregate because cross-family
   pairs (69% of the panel) diluted the signal to zero. Every ticket from SX14 onward should report metrics stratified by
   within-family / cross-family / narrow-host-phage / phylogroup-orphan alongside aggregate. [validated; source: SX14;
-  see also: spandex-wave-2-baseline, panel-size-ceiling]
+  see also: spandex-wave-2-baseline, panel-size-ceiling, spandex-unified-kfold-baseline]
   - *Stratum routing at inference requires computing training-positive family overlap and phylogroup sibling counts from
     the training fold — these are cheap to compute per-pair and do not leak test information. Future tracks evaluating a
     single candidate arm can reuse `.agents/skills/case-by-case/compare_predictions.py` for per-bacterium audit and the
     sx14_eval.py pipeline for full four-stratum decomposition.*
+- **`spandex-unified-kfold-baseline`**: SX15 unified Guelin+BASEL k-fold baseline (2026-04-15, default BASEL+→MLC=2):
+  bacteria-axis with per-phage blending is essentially identical to SX10 (aggregate nDCG 0.7965 [0.789, 0.814] vs SX10
+  0.7958; AUC 0.8685 vs 0.8699). Phage-axis (all-pairs only; held-out phages unseen) gives the first honest
+  deployability estimate for unseen phages — aggregate AUC 0.8988 [0.892, 0.906] but nDCG 0.7229 [0.714, 0.743] (7 pp
+  lower). BASEL phages generalize as well as Guelin phages on phage-axis (holdout_phage_basel nDCG 0.8332 vs
+  holdout_phage_guelin 0.7193; AUCs essentially identical at 0.896 vs 0.899). [validated; source: SX15; see also:
+  spandex-final-baseline, spandex-wave-2-baseline, stratified-eval-framework, new-phage-generalization,
+  external-data-neutral]
+  - *Panel: 369 bacteria (all 25 BASEL ECOR overlap with Guelin; no new bacteria) × 148 phages (96 Guelin + 52 BASEL) =
+    33,202 observed pairs. The AUC-vs-nDCG divergence on phage-axis reflects the "per-phage blending tax" — AUC stays
+    high because all-pairs features preserve global lysis/no-lysis ranking, but per-bacterium top-k ranking suffers when
+    held-out phages have no per-phage model. ~7 pp nDCG is the cost of the cold-start-phage scenario. Ran under default
+    Option B (BASEL+→MLC=2) only; A/C sensitivity (BASEL+→{1,3}) deferred since SX14 adopted no wave-2 arm (invariance
+    is vacuously satisfied on singleton {SX10}). Cross-family phage-axis nDCG 0.6673, AUC 0.7862 are the honest floor
+    for new phage × new family cold-start. Artifact paths:
+    lyzortx/generated_outputs/sx15_eval/sx15_{bacteria,phage}_axis_stratified_metrics.csv and
+    sx15_{bacteria,phage}_axis_predictions.csv.*
 - **`autoresearch-baseline`**: AUTORESEARCH all-pairs model (0.810 AUC, 90.8% top-3 on ST03 holdout) is the canonical
   clean baseline: derived from raw FASTA, no leakage, no feature mismatch, no per-phage blending. Track GIANTS improved
   this to 0.823 AUC with depolymerase × capsule features and RFE. [validated; source: 2026-04-08 AUTORESEARCH eval,
