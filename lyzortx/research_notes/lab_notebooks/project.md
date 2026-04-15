@@ -1773,3 +1773,258 @@ recognized as important is tracked in knowledge / open questions but deferred ou
   subagents, same workflow as SX05–SX10.
 - At wave close (after SX15), produce a fundamentals-style science/biology review of results with case-by-case
   explanations, mirroring the post-SPANDEX wave-1 review format.
+
+### 2026-04-15 22:17 CEST: SPANDEX wave-2 closing review — fundamentals
+
+#### Executive summary
+
+Wave-2 attacked three structural shortcomings identified at SPANDEX wave-1 close: (1) binary training target
+not learning potency, (2) omp-score-homogeneity collapsing receptor × host cross-terms, (3) whole-protein
+phage features averaging over binding-interface motifs. All three attacks **failed the +2 pp aggregate
+acceptance gate**. But SX14's stratified evaluation layer changed the reading: **SX11 ordinal/LambdaRank
+losses deliver +2.7–3.5 pp within-family nDCG (LambdaRank CI disjoint from baseline)**, a real stratum-
+specific win hidden in aggregate because cross-family pairs (69% of panel) dilute to zero. SX15 then gave
+the first honest deployability estimate for unseen phages (AUC 0.8988, nDCG 0.7229) and confirmed BASEL
+phages generalize as well as Guelin on phage-axis. The canonical production baseline (`spandex-final-baseline`
+= SX10) is unchanged; the wave's real deliverables are three new knowledge artifacts (`spandex-wave-2-baseline`,
+`stratified-eval-framework`, `spandex-unified-kfold-baseline`) and the `case-by-case` skill.
+
+#### The wave in plain terms
+
+We set out to fix three things we thought were wrong with SX10:
+
+1. **Potency blindness.** SX10 treats MLC=1 and MLC=3 as identical positive labels. A phage that kills at 5×10⁸
+   pfu/ml (weak) looks the same as one that kills at 5×10⁶ (strong). Surely explicit potency supervision helps?
+
+2. **OMP homogeneity.** Our 369 clinical *E. coli* all express the 12 core OMPs at near-identical HMM bit
+   scores (CV 0.01-0.17). Every cross-term like `phage_is_OmpC × host_OmpC_score` collapses to phage-only.
+   But OmpC has ~50 allelic variants across clinical strains — that variation must matter somewhere?
+
+3. **Whole-protein phage features.** The TL17 phage_projection averages over whole proteomes. Moriniere 2026
+   showed receptor class is determined by 5-mer motifs at RBP tip regions. Surely feeding the model those
+   specific motifs helps over the averaged features?
+
+For each, we built the test and ran it honestly. All three came back null on aggregate. But stratified
+reporting showed that the first hypothesis wasn't fully wrong — it just helps where the data supports it
+(within-family).
+
+#### Ticket-by-ticket fundamentals review
+
+**SX11 — Potency loss-function ablation**
+
+**The hypothesis:** Four loss formulations might recover the potency signal the binary label discards.
+SX04 had tested vanilla MLC regression on 79%-zero-inflated data and it failed. We tested three losses
+that explicitly handle zero-inflation + ordinal structure:
+
+- *Hurdle (two-stage):* `P(y>=1) × E[MLC | y>=1]`. Decouples lysis/no-lysis from potency grade. Canonical
+  statistical fix for zero-inflated ordinals.
+- *LambdaRank:* directly optimizes nDCG at training time, query-grouped by bacterium. If ranking is what
+  we want, train for ranking.
+- *Ordinal all-threshold:* three binary classifiers for y>=1, y>=2, y>=3 combined via cumulative
+  probabilities. Respects the ladder explicitly.
+
+**The aggregate verdict:** validated null. Best arm (ordinal) was +1.33 pp nDCG over SX11's own binary
+baseline, which was still below the +2 pp gate. But the aggregate hid what was actually happening.
+
+**What SX14 stratified eval revealed:** **Within-family (≥3 training-positive pairs for this bacterium's
+cv_group), all three alternative losses deliver +2.7–3.5 pp nDCG over SX10.** LambdaRank's within-family
+CI [0.838, 0.874] is **disjoint** from SX10's [0.800, 0.840] — the strongest stratum-level signal in the
+entire wave. Cross-family (69% of pairs) shows no improvement for any arm, which dilutes to zero
+aggregate.
+
+**Why this is biologically sensible:** When the model has seen this phage family hitting hosts of this
+cv_group before, it has learned the family's host-range signature. An explicit ordinal loss lets it
+reshape the per-bacterium potency gradient among positives — "rank MLC=3 above MLC=1 within this
+bacterium's lysers." This costs ~1 pp mAP (some lysis/no-lysis boundary softening) but gains 2.7-3.5 pp
+nDCG within-family. In cross-family cold-start, the model has no family-specific signal to refine, so
+loss choice is irrelevant — and it shows.
+
+**What it means for production:** SX11 alternative losses are not yet adoption-ready because SX11's arms
+ran *without* per-phage blending (the SX10 architectural gain). Integrating ordinal/LambdaRank with
+per-phage blending is the natural wave-3 follow-up; if the within-family gain persists, stratum-aware
+inference routing becomes worth building.
+
+**Case-by-case notes from SX11 analysis:** NILS20 (3 positives, MLC 3/1/1) is the clearest positive.
+Baseline ranks LF82_P8 (MLC=3) at rank 4 behind 3 false positives; ordinal promotes to rank 1. But
+H1-006-0003-S-L (2 positives, both MLC=1) is the clearest negative — binary ranks them #1 and #2, ordinal
+demotes to #4 and #5 because MLC=0 phages get boosted by their high P(y>=2)/P(y>=3). The trade-off is
+mechanical: equal-weighted threshold combination compresses the MLC=1 vs MLC=0 gap.
+
+**SX12 — Moriniere phage 5-mer features (direct)**
+
+**The hypothesis:** Moriniere 2026's 815 receptor-predictive k-mers achieve AUROC 0.99 for receptor class
+prediction on K-12 derivatives. GT06 tested them as intermediate-classifier features and saw zero lift.
+But maybe feeding them directly as phage features lets LightGBM find the signal GT06's intermediate
+classification discarded.
+
+**The verdict:** null at every granularity. Aggregate +0.23 pp AUC (CIs overlap massively). SX14
+stratified showed no stratum-specific lift either (all within ±0.2 pp). RFE keeps 95 of 815 k-mers
+(11.7%) but they contribute ~5% of total feature importance and **zero appear in the top-20 features**.
+
+**Why it's biologically null in our panel:**
+
+1. **The k-mers are information-redundant with `phage_projection`.** Both encode phage sequence
+   similarity — k-mers via shared 5-mer presence, TL17 BLAST via shared protein hits. Two phages sharing
+   80% of Moriniere k-mers almost always share TL17 BLAST hits. RFE keeps both but the trees preferentially
+   split on the already-engineered `phage_projection` features because they have higher information gain
+   per split (top feature `host_serotype` imp=2076 vs top k-mer `NVSVG` imp=11, a 190× gap).
+
+2. **Moriniere selected k-mers for the wrong prediction task.** They discriminate receptor class on
+   K-12/BL21 (which lack capsule and O-antigen). In those hosts, receptor identity IS the dominant
+   factor. In our clinical *E. coli*, **the bottleneck sits upstream of receptor recognition** —
+   polysaccharide barriers gate physical access to OMP receptors. That's what `depo × capsule` features
+   (Gate 1 in `three-layer-hypothesis`) capture, and it's the validated +1.2 pp mechanism in GT03.
+   Knowing the phage's target receptor doesn't help when the surface is blocked.
+
+3. **Per `same-receptor-uncorrelated-hosts`:** phages sharing a predicted receptor have **weakly
+   correlated host ranges** (Tsx phages Jaccard 0.091, below the random-pair baseline of 0.17). Receptor
+   identity tells you which OMP a phage *could* bind; it doesn't tell you which strains will actually
+   support lysis. That extra information is what we don't have.
+
+**Case-by-case:** ~10 bacteria win meaningfully (IAI78 +0.12 nDCG, ECOR-25 +0.17, NILS31 +0.16), exactly
+offset by ~10 losers (ECOR-19 -0.36, EDL933 -0.24, NILS38 -0.13). RFE's effective feature budget is
+fixed, so adding 95 correlated k-mers knocks out other useful features in some folds. NILS53 — the
+canonical narrow-host failure — gains only +0.011 nDCG. K-mers do not break narrow-host prior collapse.
+
+**SX13 — Host OMP 5-mer features (four-arm ablation)**
+
+**The hypothesis:** Invert the Moriniere trick onto the host side. OmpC has 50 allelic variants across
+our clinical panel; surely the extracellular loop variations encoded in 5-mer presence-absence predict
+which strains a given phage can actually infect.
+
+**The verdict:** null across all four arms (marginal, cross-term, path1 cluster, baseline). All deltas
+within ±0.4 pp of SX10. Permutation test on cross-term aggregate: 73% of random prediction swaps produce
+deltas this extreme or larger. Signal indistinguishable from noise.
+
+**What's biologically surprising:** host OMP variation IS substantial. Our 369 clinical hosts span 28
+MMseqs2 clusters on BTUB at 99% identity, 49 on OMPC (matching the knowledge model's 50 OmpC variants
+claim), 16 on FHUA, 32 on NFRA. The 5% – 95% frequency band retains **5,546 informative k-mers** across
+the 12 core OMPs (BTUB alone contributes 1,495). The variation is real and recoverable.
+
+**But variation ≠ prediction.** None of the 4 arms could extract lysis-predictive signal from that
+variation. The `omp-score-homogeneity` unit was pointing at the right *biological* bottleneck but at the
+wrong *representational* level — HMM scores ARE homogeneous, but escalating to finer representations
+doesn't rescue prediction because **host-range variance lives downstream of OMP recognition** in clinical
+strains. Polysaccharide access (Gate 1, captured by `depo × capsule`) + post-adsorption factors
+(intracellular defenses, injection efficiency, co-evolutionary dynamics) do the real work. OMP-level
+features are looking where the light is, not where the key was dropped.
+
+**Case-by-case notes:**
+
+- NILS53 improves +2.59 pp nDCG under cross_term, BUT 51 bacteria at the same lysis rate (12% ±3pp) had
+  mean Δ=-0.001. NILS53 is at the 76th percentile of its peer group — **one outlier draw, not a
+  reproducible narrow-host rescue**. The `case-by-case` skill's peer-percentile check caught this.
+- Small directional signal in marginal arm for moderate-narrow deciles (lysis 5-11%, mean +1-2 pp nDCG).
+  Biologically consistent with OMP variation mattering more for specialists, but not significant by sign
+  test (75/137 positive, p=0.31).
+
+**SX14 — Wave-2 consolidation + stratified evaluation**
+
+This ticket was the structural deliverable that transformed the wave-2 reading. Per spec, arms that
+failed their acceptance gate are excluded from the consolidated model; since SX11/12/13 all failed, the
+"consolidated wave-2 final" is literally SX10 unchanged. The stratified eval layer is what made the wave
+interpretable.
+
+**The insight:** aggregate metrics on a 33k-pair evaluation can hide real stratum-specific effects. SX11
+LambdaRank's +3.48 pp within-family is real; it's invisible in aggregate because cross-family pairs
+(69% weight) pull the weighted mean to zero. This generalizes: **every future ticket should report
+stratified metrics alongside aggregate**. That's now codified in `stratified-eval-framework` knowledge
+and in the `case-by-case` skill.
+
+**SX15 — Unified Guelin+BASEL k-fold**
+
+This ticket gave the first honest deployability estimate on unseen phages. Bacteria-axis (SX10
+configuration with BASEL training pairs added to shared ECOR hosts) is essentially identical to SX10 —
+adding BASEL's 1240 pairs buys no aggregate lift (consistent with `external-data-neutral`). Phage-axis
+(unseen phages, all-pairs model only) gives AUC 0.8988 — *higher* than within-panel — but nDCG 0.7229,
+7 pp lower than bacteria-axis.
+
+**The AUC-vs-nDCG divergence is structural:** AUC is threshold-independent and ranks pairs globally; the
+all-pairs model's features preserve lysis/no-lysis discrimination cleanly. nDCG and mAP are per-bacterium
+ranking metrics; when 15 of each bacterium's 148 predictions are for held-out phages with no per-phage
+model, their exact ordering is noisier even though the threshold separation is clean. **~7 pp nDCG is
+the per-phage blending tax — the cost of the cold-start-phage scenario.**
+
+**The reassuring finding:** BASEL phages generalize as well as Guelin phages on phage-axis — AUCs
+essentially identical (holdout_phage_basel 0.8965 vs holdout_phage_guelin 0.8986). Feature engineering
+(TL17 phage_projection from SX06) transfers cleanly across phage collections, not just numerically but
+across the full stratified panel.
+
+#### The narrow-host specialist problem remains unresolved
+
+The most clinically relevant failure mode — narrow-host phages with <15% panel-wide lysis rate — stays
+unresolved through the wave. All 10 SX14-evaluated arms cluster at nDCG 0.67–0.71 on narrow-host pairs.
+None breaks past ~0.71. This is the `narrow-host-prior-collapse` knowledge unit: when broad-host
+Straboviridae with 60-70% panel-wide lysis rates dominate model rankings, narrow-host specialists
+(Dhillonvirus, Kagunavirus, Autographiviridae at 10-25% lysis) get buried below the top-k cutoff. No
+feature family tested in wave 2 reaches it. Future tracks must either (a) rethink the ranking architecture
+(per-phage-family priors instead of global all-pairs priors) or (b) expand the panel with more narrow-host
+positives to teach the model that broad doesn't mean probable.
+
+#### What we actually learned (beyond nulls)
+
+1. **The binary model's implicit potency signal is stronger than expected.** Spearman 0.25 between
+   P(lysis) and MLC among positives — not because we asked, but because higher-MLC pairs have more
+   consistent positive training rows across dilutions. Explicit ordinal supervision adds ~3 pp within-family
+   nDCG but costs calibration (+2.6 pp Brier for LambdaRank). The binary target captures most of the
+   easily-extractable potency signal.
+
+2. **OMP homogeneity was only half-right.** HMM scores are homogeneous. Loop-level k-mer / cluster
+   variation is substantial (5546 informative 5-mers, 49 OMPC clusters). But variation doesn't predict
+   lysis — the bottleneck is upstream (polysaccharide access) or downstream (post-adsorption), not at
+   the receptor level.
+
+3. **Cross-source generalization works.** BASEL phages behave like unseen Guelin phages in the phage-axis
+   split. The TL17 family projection features are source-agnostic. This is encouraging for expanding the
+   phage panel with other collections (genoPHI, VHRdb, KlebPhaCol as non-*E. coli* benchmarks).
+
+4. **Per-phage blending is load-bearing.** SX10's +2.0 pp aggregate AUC over the all-pairs baseline comes
+   from per-phage blending (AX02). It's also 7 pp of nDCG on the phage-axis eval — exactly the gap
+   between 0.80 (seen phage) and 0.72 (unseen phage). Per-phage blending works when the phage is in
+   training; it cannot be applied to new phages at inference time. That's the deployability bound.
+
+5. **Aggregate-only reporting is dangerous.** If we'd stopped at SX11's aggregate null, we'd have
+   wrongly concluded loss-function alternatives offer nothing. Stratified eval changed that. Future
+   tracks inherit this as a default.
+
+#### Production baseline: unchanged, but better characterized
+
+The canonical production configuration remains **`spandex-final-baseline` (SX10)** — GT03 all_gates_rfe +
+AX02 per-phage blending on SX05-corrected MLC labels with SX06 real TL17 BASEL features. Within-panel:
+nDCG 0.7958, AUC 0.8699. Wave-2 did not displace it. But wave-2 added four things the baseline didn't
+have before:
+
+1. **Stratified metric decomposition** (within_family / cross_family / narrow_host_phage /
+   phylogroup_orphan) as the default reporting format.
+2. **Unified Guelin+BASEL k-fold** on two axes, with phage-axis providing the honest unseen-phage
+   deployability number (`spandex-unified-kfold-baseline`).
+3. **Quantified per-phage blending tax** (~7 pp nDCG when phage is unseen). Important for production
+   cost/benefit thinking.
+4. **`case-by-case` skill** — automated per-bacterium audit with permutation test, peer-percentile
+   outlier detection, and Decision headline classification.
+
+#### What wave-2 didn't address (open questions)
+
+- **Narrow-host ranking.** Persistent failure mode; no arm broke the ~0.71 nDCG ceiling on narrow-host
+  phages. `narrow-host-prior-collapse` remains active.
+- **~10% ambiguous `n` labels.** Vision re-read was cut; label noise floor remains.
+- **Cross-panel cross-family cold-start.** Phage-axis cross-family nDCG 0.67, AUC 0.79 — the honest
+  floor for "new phage + new family on new host subpopulation". Panel expansion is the direct path.
+- **Deferred feature families:** CRISPR spacer pairwise match, phage anti-defense, Kaptive K-typing,
+  phylogroup residualization. Still scientifically sound, explicitly deferred to keep wave-2 scope
+  tight. First candidates for wave-3 if within-family SX11 losses don't pan out in per-phage integration.
+
+#### Strategic read on wave cost
+
+Wave-2 produced zero new production configurations and three validated nulls. That's a "success" in
+science terms — we learned what doesn't work, tightened our knowledge model, and now have sharper tools
+(stratified eval, case-by-case skill, unified k-fold). But it's a "failure" in product terms — four
+weeks of engineering for zero prediction-quality lift in production. The trade-off was implicit in the
+wave-2 plan's "highest-EV structural attacks" framing; the specific attacks we chose were biologically
+motivated but turned out to be dominated by more fundamental bottlenecks (polysaccharide access, panel
+size, narrow-host prior collapse) that feature engineering on 96-148 phages can't overcome.
+
+The prescription for future tracks: **lead with stratified-eval-first design.** Don't run aggregate-only
+experiments. Treat the +2 pp gate as one signal among several; stratum-specific significance (CI
+disjoint) is more meaningful than aggregate point-estimate lift. And accept that the 0.82 AUC ceiling is
+probably panel-bound, not feature-bound — closing it means expanding the panel, not adding more features.
