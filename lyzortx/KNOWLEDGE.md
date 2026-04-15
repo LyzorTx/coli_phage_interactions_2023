@@ -3,7 +3,7 @@
 <!-- Last consolidated: 2026-04-13T01:40:00+02:00 -->
 <!-- Source: lyzortx/research_notes/lab_notebooks -->
 
-**58 knowledge units** across 7 themes (44 active, 14 dead ends)
+**59 knowledge units** across 7 themes (44 active, 15 dead ends)
 
 ## Data & Labels
 
@@ -126,15 +126,17 @@ What works, what doesn't, leakage risks, and encoding decisions.
     reaches 0.823 AUC [0.781, 0.858]. The cross-terms capture a specific mechanism: this phage has a depolymerase that
     can degrade this host's capsule type. This works because capsule profiles vary richly across clinical E. coli (99
     features with distinct variation), unlike OMP receptor scores which are near-constant.*
-- **`omp-score-homogeneity`**: All 369 clinical E. coli hosts express all 12 core OMP receptors at nearly identical HMM
-  scores (CV 0.01-0.17), making receptor × OMP cross-terms collapse to phage-only features with no host-side
-  discrimination. [validated; source: GT03, GT06, 2026-04-12 pair-level analysis; see also: receptor-variant-richness,
-  receptor-specificity-solved, three-layer-hypothesis]
-  - *LptD CV=0.01, OmpA CV=0.02, Tsx CV=0.03, OmpC CV=0.04. The cross-term predicted_is_OmpC × host_OmpC_score ≈
-    predicted_is_OmpC × constant. Direct test: OmpC phages lyse high-OmpC hosts at 37.0% vs low-OmpC at 33.4% (Cohen
-    d=0.086, negligible). Moriniere's receptor classifiers were trained on K-12 (BW25113/BL21) which lack
-    O-antigen/capsule — in clinical strains, polysaccharide barriers mask OMP differences. OMP variant/allele-level
-    features (extracellular loop regions) might restore host-side variation.*
+- **`omp-score-homogeneity`**: Whole-gene OMP HMM scores are near-identical across 369 clinical E. coli (CV 0.01-0.17),
+  making whole-gene receptor × OMP cross-terms collapse. Loop-level allelic variation is substantial (BTUB 28 MMseqs2
+  99% clusters, OMPC 49, across 5546 retained 5-mers) but does not predict lysis either — see
+  host-omp-variation-unpredictive. [validated; source: GT03, GT06, 2026-04-12 pair-level analysis, SX13; see also:
+  receptor-variant-richness, receptor-specificity-solved, three-layer-hypothesis, host-omp-variation-unpredictive]
+  - *LptD CV=0.01, OmpA CV=0.02, Tsx CV=0.03, OmpC CV=0.04 on HMM scores. Direct test: OmpC phages lyse high-OmpC hosts
+    at 37.0% vs low-OmpC at 33.4% (Cohen d=0.086, negligible). SX13 tested whether loop-level k-mer or cluster
+    representations would restore host-side signal — they did not (AUC deltas ≤ +0.3 pp across marginal, cross-term, and
+    cluster arms). The homogeneity observation at the HMM level is real; the escalation to finer representations doesn't
+    rescue prediction because host-range variance lives downstream of OMP recognition in clinical strains
+    (polysaccharide access + post-adsorption factors).*
 - **`same-receptor-uncorrelated-hosts`**: Phages sharing a predicted receptor class have weakly correlated or
   uncorrelated host ranges: Tsx phages (8 phages) have mean pairwise Jaccard 0.091 (below random-pair baseline of 0.17);
   only OmpC phages show above-random cohesion (Jaccard 0.42) due to Felixounavirus family dominance. [validated; source:
@@ -379,6 +381,21 @@ Compressed lessons from approaches that didn't work.
     analysis: ~10 genuine wins (e.g., IAI78 +0.12 nDCG, ECOR-25 +0.17) exactly offset by ~10 genuine losses (e.g.,
     ECOR-19 -0.36, EDL933 -0.24). NILS53 (the canonical narrow-host case) gains +0.011 nDCG — k-mers do not break
     narrow-host prior collapse. Not a LightGBM shortcoming; a feature-redundancy + panel-size ceiling.*
+- **`host-omp-variation-unpredictive`**: Host-side OMP allelic variation is substantial (369 clinical E. coli span BTUB
+  28 MMseqs2 99%-identity clusters, OMPC 49, 5546 retained 5-mers across 12 core OMPs) but does not predict lysis. Four
+  arms tested in SX13 (k-mers marginal, k-mers × phage k-mers cross-term, cluster IDs, plus baseline) all land within
+  ±0.4 pp of SX10 on all metrics. [validated; source: SX13; see also: omp-score-homogeneity,
+  pairwise-cross-terms-dead-end, kmer-receptor-expansion-neutral, narrow-host-prior-collapse,
+  same-receptor-uncorrelated-hosts]
+  - *Permutation test on cross_term aggregate delta: 73% of random prediction swaps are as extreme — signal
+    indistinguishable from noise. Small directional signal in the marginal arm for moderate-narrow-host deciles (lysis
+    5-11%, mean +1-2 pp nDCG across ~70 bacteria), biologically consistent with OMP-variation-matters-for-narrow-phages
+    but not significant by sign test (75/137 positive, p=0.31). NILS53 specifically improved +2.59 pp under cross_term
+    but sits at the 76th percentile of its lysis-rate peers (mean Δ = -0.001) — one outlier draw, not a reproducible
+    rescue. Top-3 hit rate moves from 92.2% to 93.3% under cross_term (+4 strains). The finding refines
+    omp-score-homogeneity: HMM-score homogeneity was real, but escalating to finer representations doesn't rescue
+    prediction — host-range variance lives downstream of OMP recognition (polysaccharide access, intracellular defenses,
+    co-evolutionary dynamics).*
 - **`label-vision-reading-spot-checked-dead`**: Using a vision model to re-read the ambiguous 'n' plaque-image scores
   (the plate crops backing the ~10% of training rows labeled negative but with uninterpretable raw scores) was evaluated
   via manual spot checks before 2026-04 and did not look promising enough to justify a full re-read pipeline. Do not
