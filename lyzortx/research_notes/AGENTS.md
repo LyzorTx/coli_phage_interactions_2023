@@ -60,6 +60,23 @@ validated facts, dead-end lessons, and active assumptions extracted from noteboo
 - Source references in the knowledge model (e.g., `[TG02]`) point back to notebook entries. Keep notebook entry IDs
   (task codes) stable so these references remain valid.
 
+## GLOSSARY.md
+
+`GLOSSARY.md` defines recurring terms — metrics (AUC, Brier, nDCG, Spearman), losses (LambdaRank,
+hurdle, ordinal all-threshold), evaluation splits (bacteria-axis, phage-axis), framework pieces
+(strata, MLC), etc. Entries are alphabetical and keep definitions short, concrete, and grounded in
+how the term is used in *this* project — not textbook generality.
+
+Each entry should link back to the knowledge unit or notebook entry where the term is load-bearing
+(e.g. `See ordinal-regression-not-better`) so readers can find where we learned what we know.
+
+Add a new entry when a term starts showing up in notebook entries, PR discussions, or PR review
+comments and can't be understood from context alone. Update an existing entry when a later ticket
+sharpens what the term means for us (e.g. a new result changes the "rough interpretation scale").
+
+Do not duplicate knowledge units — the glossary explains terminology; the knowledge model records
+findings.
+
 ## LITERATURE.md separation of concerns
 
 `LITERATURE.md` documents **what external papers and resources offer**: findings, methods, data, tools, caveats about
@@ -82,6 +99,7 @@ about our internal codebase.
 - `KNOWLEDGE.md` (at `lyzortx/KNOWLEDGE.md`) is auto-generated from `lyzortx/orchestration/knowledge.yml` by
   `lyzortx/orchestration/render_knowledge.py`. Do not edit it by hand.
 - `LITERATURE.md` is a curated reading list maintained manually.
+- `GLOSSARY.md` is a curated glossary of project-specific terminology (see section above).
 - `external_data/` contains the source registry and external dataset metadata.
 - `ad_hoc_analysis_code/` contains one-off analysis scripts referenced by lab notebook entries.
 - `TIER_BENCHMARK_DENOMINATOR_POLICY.md` documents denominator rules for benchmark reporting.
