@@ -452,12 +452,19 @@ Compressed lessons from approaches that didn't work.
     wet-lab panel or accept the label noise as a fixed ceiling.*
 - **`plm-rbp-redundant`**: ProstT5+SaProt PLM embeddings of RBP sequences (1280-dim, PCA to 32) achieve 33.9% LightGBM
   feature importance but zero predictive lift on ST03 holdout; they cannibalize existing phage family features without
-  adding new discriminative signal. [validated; source: 2026-04-10 AX08 holdout; see also:
-  physicochemical-rbp-insufficient, receptor-specificity-solved]
+  adding new discriminative signal. [validated; source: 2026-04-10 AX08 holdout, 2026-04-16 APEX retro stratified audit;
+  see also: physicochemical-rbp-insufficient, receptor-specificity-solved, kmer-receptor-expansion-neutral,
+  phage-functional-noise]
   - *PLM embeddings encode protein-level similarity that correlates with genome-level family membership. Mean-pooling
     across RBPs further dilutes binding-specific signal. Moriniere 2026 confirms the signal is in localized
     hypervariable sequence motifs at RBP tip domains, not global protein embeddings — k=5 amino acid k-mers predict
-    receptor class at AUROC 0.99.*
+    receptor class at AUROC 0.99. Retroactive stratified audit (2026-04-16) confirmed null across all SX14 strata: PLM
+    features give +0.89 pp within-family nDCG (CIs overlap baseline) but -1.22 pp cross-family nDCG — phage features
+    that encode family structure actively hurt cold-start predictions because they inject within-family priors the model
+    misapplies to unseen families. Same cross-family damage pattern observed for phage_functional (AX04, -0.40 pp
+    cross-family) and the combined AX06 config (-0.86 pp cross-family). Unlike SX11's loss- function changes (+3.5 pp
+    within-family with disjoint CI), feature-level APEX additions are null at every stratum level. AUC flat at 0.849
+    across all arms — no discrimination signal.*
 
 ## Open Questions
 
