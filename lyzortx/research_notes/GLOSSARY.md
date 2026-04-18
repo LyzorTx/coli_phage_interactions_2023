@@ -155,6 +155,35 @@ bacteria improve). But equal-weight averaging **demotes 55% of MLC=1 pairs** bec
 broad-host MLC=0 phage can earn higher P(y≥2)/P(y≥3) from training on other bacteria. Net: cleaner
 2-vs-3 separation, weaker lysis/no-lysis boundary. See `ordinal-regression-not-better`.
 
+## Per-phage blending (and the "blending tax")
+
+An architectural trick from AX02 that adds a second predictor on top of the all-pairs model.
+
+**How it works**: the production model has two components.
+
+1. **All-pairs LightGBM**: one model trained on all (bacterium, phage) pairs using features that
+   describe both sides. Works for any phage with features computed, including unseen ones.
+2. **Per-phage LightGBM**: for each phage in training, a small dedicated 32-tree LightGBM fit on
+   **host-only features** — answering "does host X support lysis by *this specific phage*?" At
+   inference, the per-phage score is blended 50/50 with the all-pairs score.
+
+Per-phage blending contributes the dominant architectural gain over the all-pairs baseline (+2 pp
+AUC on ST03 holdout). See `per-phage-blending-dominant`.
+
+**Why it's not universally deployable**: per-phage sub-models require training pairs for that
+phage. For a newly-isolated phage with zero training rows, there's nothing to fit. At deployment
+on unseen phages we can only use the all-pairs component.
+
+**The "blending tax"**: the performance gap between bacterium-axis CV (every phage was in training
+— can use blending) and phage-axis CV (held-out phages have no sub-model — can't). Under SX10's
+canonical nDCG scoring the gap was ~7 pp; under AUC it's ~3 pp (0.870 bacteria-axis vs 0.899
+phage-axis). Either way it's the cost paid per unseen phage and the dominant deployability bound
+for cocktail-against-new-phage use cases. See `per-phage-not-deployable`, `deployment-goal`,
+`spandex-unified-kfold-baseline`.
+
+Note that "tax" is our shorthand for "structural cost from a missing component," not a modeling
+failure — there is no fix without per-phage training data.
+
 ## Phage-axis evaluation
 
 The symmetric cross-validation split to bacteria-axis: **phages are held out** but all bacteria
