@@ -50,6 +50,17 @@
 - When adding new fields to `plan.yml`, update `render_plan.py` to render them. Do not add YAML fields that are silently
   dropped during rendering.
 
+# Task ID Numbering
+
+- Task IDs use a track prefix followed by an integer with no letter suffix: `CH01`, `CH02`, `CH03`, never `CH02a` /
+  `CH02b`. Letter suffixes hide the true ticket count, confuse grep, and imply a substructure the orchestrator doesn't
+  model.
+- If a task feels too big for one ID, split it into separate numbered tasks (`CH02`, `CH03`, `CH04`) and renumber
+  subsequent tasks. Do not paper over the split with letters.
+- Renumbering pending tasks is cheap. Renumbering done tasks is not allowed — done IDs are referenced across
+  notebooks, knowledge units, and PR history (see Done Task Immutability below). If a task sequence needs to change
+  after some entries are done, keep the done IDs stable and let the pending numbering flow around them.
+
 # Pending Task Requirements
 
 - Every pending task in `plan.yml` must have both a `model` field and non-empty `acceptance_criteria`.

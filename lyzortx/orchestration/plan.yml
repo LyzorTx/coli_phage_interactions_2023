@@ -2099,3 +2099,323 @@ tracks:
       - Record SX15 methodology decisions, sensitivity-check outcomes, per-stratum
         source effects (source_basel vs source_guelin), and per-axis metric interpretations
         in track_SPANDEX.md.
+  CHISEL:
+    name: Concentration-aware binary lysis modeling
+    description: >
+      Successor track to SPANDEX. Retires MLC as a training/evaluation label and
+      switches the atomic unit to (bacterium, phage, concentration, replicate) ->
+      {0, 1}. Concentration becomes a numeric feature; the model learns its weight.
+      Drops ranking metrics (nDCG, mAP, top-3) as primary scorecard items —
+      ranking is a downstream product-layer concern, not a biological model
+      property. Primary scorecard becomes AUC + Brier. Evaluation runs at each
+      pair's highest-observed concentration.
+
+
+      Why now: SPANDEX wave-2 exposed a cascade of metric artifacts (nDCG
+      comparison between binary-labelled BASEL vs graded Guelin, aggregate-vs-
+      stratified-nDCG dilution, MLC=4 collapse rule fragility). Under AUC+Brier
+      on per-observation binary labels, most of those artifacts disappear.
+      Integrating new data sources with different concentration grids also
+      becomes trivial under the new frame — no MLC derivation rule to patch.
+
+
+      First wave of CHISEL replaces SPANDEX's canonical baselines with their
+      CHISEL-framed equivalents and re-audits wave-2 feature-family nulls under
+      the new frame.
+    stage: 8
+    depends_on:
+    - SPANDEX
+    tasks:
+    - id: CH01
+      title: CHISEL track opening — knowledge cleanup and SPANDEX closure
+      model: claude-opus-4-6
+      ci_image_profile: base
+      status: pending
+      depends_on_tasks: []
+      acceptance_criteria:
+      - No code or training changes. Documentation and knowledge-unit updates only.
+      - 'KNOWLEDGE UNIT UPDATES (lyzortx/orchestration/knowledge.yml): rewrite the
+        following units to reflect the AUC+Brier-only scorecard and the retirement
+        of MLC as a training label. Re-run render_knowledge.py after editing.'
+      - 'spandex-final-baseline: re-headline AUC 0.87 / Brier 0.125 (within-panel);
+        mark MLC-derived labels and nDCG narratives as historical; add note pointing
+        to chisel-baseline (to be established in CH04) as the active canonical.'
+      - 'spandex-wave-2-baseline: remove the "hidden within-family +3.48 pp nDCG"
+        claim (nDCG-specific; collapses to null under AUC). Rewrite as a clean
+        three-null wave. Flag for re-verification under CHISEL frame once CH07
+        completes.'
+      - 'spandex-unified-kfold-baseline: re-headline AUC numbers (bacteria-axis
+        0.8685, phage-axis 0.8988); drop the nDCG BASEL-vs-Guelin comparison
+        entirely (metric artifact — BASEL binary labels have fewer nDCG rungs).
+        Keep the AUC cross-source near-parity finding (0.896 vs 0.899).'
+      - 'stratified-eval-framework: rescope from "aggregate metrics hide real
+        signals" to "per-stratum reporting as a narrow-host diagnostic." Under
+        AUC+Brier, aggregate and stratified are more aligned; the framework''s
+        marquee discovery case (SX11 LambdaRank within-family) does not survive
+        the metric change.'
+      - 'ordinal-regression-not-better: harden from "detectable sub-threshold"
+        to clean validated null. Under AUC, SX11 ordinal all-threshold was -0.2
+        pp (null) and LambdaRank was -3.4 pp (regression). Five loss formulations,
+        all null under the primary scorecard.'
+      - 'top3-metric-retired: reverse the retirement rationale. The unit currently
+        argues top-3 is retired because graded-relevance nDCG is a better metric.
+        Replace with: top-3, nDCG, and mAP are all retired because ranking is a
+        product-layer concern (how many phages to administer, selection policy)
+        not a biological model property. The biological model predicts P(lysis
+        | pair, concentration); downstream product code turns that into rankings.'
+      - 'mlc-dilution-potency: mark historical. MLC is a derived summary (rule-
+        based rollup from binary-at-concentration). CHISEL trains and evaluates
+        on the raw binary observations directly. Retain the unit as documentation
+        of the SPANDEX-era label convention.'
+      - 'label-policy-binary: update. Binary labels now apply at the (pair,
+        concentration, replicate) level — each raw observation stands on its own.
+        The any_lysis rollup is retired.'
+      - 'GLOSSARY UPDATES (lyzortx/research_notes/GLOSSARY.md): add a "Deprecated"
+        marker to nDCG and MLC entries pointing to the CHISEL transition. Add a
+        new entry for "Concentration-aware training unit" describing the (pair,
+        concentration, replicate) atomic row.'
+      - 'SPANDEX CLOSURE NOTE: add a final entry to
+        lyzortx/research_notes/lab_notebooks/track_SPANDEX.md stating that wave-2
+        is the last SPANDEX wave, all continuing modeling work moves to CHISEL,
+        and pointing to the project.md rationale entry.'
+      - 'PROJECT.MD ENTRY: add a single cross-track entry to
+        lyzortx/research_notes/lab_notebooks/project.md documenting (a) why MLC
+        is retired as a training/evaluation label, (b) why AUC+Brier replace
+        ranking metrics, (c) why (pair, concentration, binary) is the training
+        unit, (d) the sequencing of CH02-CH07, and (e) explicit acknowledgement
+        that this is a framework pivot on top of the prior top-3 -> nDCG pivot;
+        include the separation-of-concerns argument as the load-bearing
+        rationale.'
+    - id: CH02
+      title: cv_group leakage fix and SX10 baseline revalidation
+      model: claude-opus-4-6
+      ci_image_profile: base
+      status: pending
+      depends_on_tasks:
+      - CH01
+      acceptance_criteria:
+      - 'PROBLEM: the current fold-assignment logic (assign_bacteria_folds in
+        sx01_eval and related callers) hashes folds on bacterium name, not on
+        cv_group. 52 of 301 cv_groups span multiple bacteria; those groups split
+        across folds, which is a genomic-similarity leakage (train and test see
+        bacteria within 1e-4 ANI of each other).'
+      - 'FIX: change fold assignment to hash on cv_group (deterministic, salted
+        as before). All bacteria sharing a cv_group must land in the same fold.'
+      - 'REVALIDATE: rerun the SX10 canonical configuration (GT03 all_gates_rfe +
+        AX02 per-phage blending, any_lysis labels, SX10 feature bundle) under the
+        fixed fold design. Report AUC + Brier aggregate with bacterium-level
+        bootstrap CIs. Expected: small shift vs SX10 published numbers — most
+        cv_groups are singletons, so the leak only affects ~17% of bacteria.'
+      - 'ARTIFACTS: ch02_fixed_folds.csv (bacterium -> fold mapping under new
+        hashing), ch02_sx10_revalidated_metrics.json (aggregate AUC/Brier + CIs
+        under fixed folds).'
+      - 'KNOWLEDGE: add a small "cv-group-leakage-fixed" unit recording the
+        magnitude of the correction and flagging that all prior SPANDEX
+        aggregate numbers are subject to this small shift. Do not update
+        existing SPANDEX baseline units'' numbers — they are historical under
+        the old fold design.'
+      - Record CV fix methodology and the magnitude of the AUC/Brier shift in a
+        new CHISEL lab notebook (create lyzortx/research_notes/lab_notebooks/track_CHISEL.md).
+    - id: CH03
+      title: Row-expanded training matrix with preserved any_lysis semantics
+      model: claude-opus-4-6
+      ci_image_profile: base
+      status: pending
+      depends_on_tasks:
+      - CH02
+      acceptance_criteria:
+      - 'GOAL: safety-net ticket. Restructure the training matrix from pair-level
+        to (bacterium, phage, concentration, replicate)-level, but keep the
+        any_lysis label rollup so behavior is unchanged. Verify this restructure
+        reproduces CH02''s revalidated SX10 numbers within tight tolerance
+        (|delta AUC| < 0.005, |delta Brier| < 0.005). Localizes row-expansion
+        bugs before CH04 adds real behavioral changes on top.'
+      - 'BUILD: a new data-loader that reads raw_interactions.csv directly and
+        emits one row per (bacterium, phage, concentration, replicate) with the
+        raw {0, 1, n} score. Drop no rows at this stage — keep "n" as a
+        third-state marker for downstream.'
+      - 'TRAINING-TIME ROLLUP: for CH03, collapse rows to pair-level any_lysis
+        before fitting (so the label semantics match SX10). This is explicitly
+        temporary scaffolding — CH04 removes the rollup.'
+      - 'FOLD INTEGRITY: when splitting, all rows belonging to one bacterium go
+        to the same fold (enforced by CH02 cv_group-aware hashing). Verify no
+        (pair, concentration, replicate) row appears in both train and test.'
+      - 'REGRESSION CHECK: the SX10 configuration trained on the new
+        row-expanded frame (with any_lysis rollup) must reproduce CH02''s
+        revalidated AUC/Brier within 0.005. If it does not, investigate before
+        proceeding to CH04.'
+      - 'ARTIFACTS: ch03_expanded_training_frame.parquet (the new row-level
+        frame, for reuse by CH04+), ch03_regression_check.json (SX10 metrics
+        under expanded frame vs CH02 baseline, delta reported).'
+      - Record the row-expansion design and regression-check outcome in
+        track_CHISEL.md.
+    - id: CH04
+      title: CHISEL baseline — per-row binary, concentration feature, AUC/Brier
+      model: claude-opus-4-6
+      ci_image_profile: base
+      status: pending
+      depends_on_tasks:
+      - CH03
+      acceptance_criteria:
+      - 'GOAL: establish chisel-baseline. The first canonical CHISEL result.'
+      - 'TRAINING LABEL: the row''s own binary score. No any_lysis rollup. Drop
+        rows with score == "n" from training (treated as missing observation,
+        not negative).'
+      - 'FEATURE ADDITION: add concentration as a numeric feature (use the raw
+        log_dilution value, e.g., 0, -1, -2 for Guelin; the BASEL equivalent at
+        its higher concentration). No binning, no conditioning, no per-
+        concentration models — the model learns the concentration effect as
+        part of training.'
+      - 'OTHER FEATURES: replicate the SX10 feature bundle exactly (host_surface
+        with Gate 1 depolymerase x capsule cross-terms, phage_projection,
+        phage_stats, RFE). No feature engineering changes in this ticket — only
+        the training unit, one new feature, the label semantics, and the metric
+        change.'
+      - 'PER-PHAGE BLENDING: retain AX02 per-phage blending for the bacteria-axis
+        evaluation (phages are still in training for this axis). Per-phage
+        sub-models train on per-row binary labels with concentration as a
+        feature, same as the all-pairs model.'
+      - 'EVALUATION: compute AUC + Brier at each pair''s highest-observed
+        concentration. For each held-out (bacterium, phage) pair, run inference
+        at the highest concentration that pair was actually tested at; score
+        against the observed binary label. Aggregate over pairs with
+        bacterium-level bootstrap CIs (1000 resamples).'
+      - 'NO RANKING METRICS: do not compute, report, or print nDCG, mAP, or
+        top-k hit rate. They are retired. If any legacy call-site still
+        computes them, delete it in this ticket.'
+      - 'ARTIFACTS: ch04_predictions.csv (per-pair predictions at per-pair-max-
+        concentration), ch04_aggregate_metrics.json (AUC + Brier with CIs),
+        ch04_feature_importance.csv (LightGBM importance with concentration
+        explicitly flagged).'
+      - 'KNOWLEDGE: add chisel-baseline knowledge unit with canonical numbers,
+        artifact paths, and the training-unit / feature-set / CV-design
+        description. This unit supersedes spandex-final-baseline as the active
+        reference point. Mark spandex-final-baseline as historical in its text.'
+      - Record the first CHISEL baseline result, comparison vs CH02 revalidated
+        SX10 (so the reader can see the net effect of the frame change on the
+        aggregate number), and feature importance of the concentration feature
+        in track_CHISEL.md.
+    - id: CH05
+      title: Phage-axis and cross-source evaluation under CHISEL frame
+      model: claude-opus-4-6
+      ci_image_profile: base
+      status: pending
+      depends_on_tasks:
+      - CH04
+      acceptance_criteria:
+      - 'GOAL: SX15 successor under the CHISEL frame. Establishes the honest
+        deployability number for unseen phages and verifies cross-source
+        generalization under AUC.'
+      - 'BACTERIA-AXIS: replicate CH04 baseline on the unified Guelin+BASEL
+        panel (148 phages x 369 bacteria). Use CH02 cv_group-aware folds.
+        Per-phage blending enabled.'
+      - 'PHAGE-AXIS: 10-fold StratifiedKFold on the 148 phages, stratified by
+        ICTV family. All 369 bacteria remain in training. Per-phage blending
+        is structurally unavailable (held-out phages have no training rows) —
+        the all-pairs model only.'
+      - 'CROSS-SOURCE SANITY CHECK: on the phage-axis evaluation, report
+        separately the AUC for held-out Guelin phages vs held-out BASEL phages.
+        SX15 under nDCG produced an artifact (BASEL > Guelin by 11 pp) that
+        should not reappear under AUC. Expected result: AUCs within ~1 pp of
+        each other. If not, investigate.'
+      - 'BLENDING TAX: report the AUC gap between bacteria-axis and phage-axis
+        as the updated "per-phage blending tax" number under CHISEL. Replaces
+        SX15''s nDCG-based 7 pp figure.'
+      - 'ARTIFACTS: ch05_bacteria_axis_metrics.json, ch05_phage_axis_metrics.json,
+        ch05_cross_source_breakdown.csv (per-source AUC + Brier with CIs on
+        phage-axis).'
+      - 'KNOWLEDGE: add chisel-unified-kfold-baseline knowledge unit with the
+        two-axis numbers + blending tax. Supersedes spandex-unified-kfold-baseline
+        as active canonical; mark the SPANDEX unit as historical in its text.'
+      - Record two-axis methodology, cross-source AUC comparison, and updated
+        blending tax in track_CHISEL.md.
+    - id: CH06
+      title: Both-axis holdout evaluation (10 x 10 double cross-validation)
+      model: claude-opus-4-6
+      ci_image_profile: base
+      status: pending
+      depends_on_tasks:
+      - CH05
+      acceptance_criteria:
+      - 'GOAL: the strongest generalization test — bacterium AND phage held out
+        simultaneously. Directly addresses the external-critic concern that the
+        "panel-size ceiling" has only been probed on single-axis CV. If both-axis
+        AUC holds above ~0.80, the model learned pair-level mechanism; if it
+        crashes to 0.60-0.70, we''ve been riding host-side + phage-side
+        marginals.'
+      - 'DESIGN: 10-fold bacteria x 10-fold phage = 100 train/test cells. For
+        each cell, train on (all-but-this-bacterium-fold) x (all-but-this-
+        phage-fold) observations; test on the held-out bacterium x held-out
+        phage cell.'
+      - 'PANEL: unified Guelin+BASEL, same as CH05. ~330 observed (pair,
+        concentration, replicate) rows per cell on average — enough for
+        bootstrap.'
+      - 'BLENDING: per-phage blending is structurally unavailable (held-out
+        phages have no training rows). All-pairs model only. Same constraint
+        as CH05 phage-axis, but compounded by simultaneous bacterium holdout.'
+      - 'METRICS: aggregate AUC + Brier across all 100 cells, with bootstrap
+        CIs at the pair level (since pair counts per cell are small, cell-level
+        bootstrap is underpowered). Also report the per-cell distribution of
+        AUCs as a diagnostic.'
+      - 'COMPUTE: ~10x single-axis compute. Estimate before running and confirm
+        wallclock is feasible on local laptop (caffeinate -dims -w <pid>) or
+        available CI compute.'
+      - 'ARTIFACTS: ch06_cell_metrics.csv (per-cell AUC + Brier +
+        observation count), ch06_aggregate.json (pooled AUC + Brier with CIs),
+        ch06_cell_distribution.png (histogram of per-cell AUC, to visualize
+        variance).'
+      - 'KNOWLEDGE: add chisel-both-axis-holdout knowledge unit. This is the
+        honest cold-start deployability number. Must be distinguished in
+        language from the single-axis phage-axis and bacteria-axis numbers.'
+      - 'CRITIC RESPONSE: the entry must explicitly address whether the
+        "panel-size ceiling" framing holds or breaks under both-axis. If
+        AUC > 0.80, ceiling framing is strengthened; if AUC drops to the
+        marginal-riding range, ceiling framing is undermined and a new
+        knowledge unit (chisel-marginal-riding-suspicion) must be added
+        flagging that feature/model choices, not panel size, may be the
+        binding constraint.'
+      - Record both-axis methodology, per-cell distribution commentary, and
+        critic-framing verdict in track_CHISEL.md.
+    - id: CH07
+      title: Wave-2 feature-family re-audit under CHISEL frame
+      model: claude-opus-4-6
+      ci_image_profile: base
+      status: pending
+      depends_on_tasks:
+      - CH04
+      acceptance_criteria:
+      - 'GOAL: verify SPANDEX wave-2 feature-family nulls (SX12 Moriniere phage
+        k-mers, SX13 host OMP k-mers) still hold under the CHISEL training
+        frame. These were feature-family claims, not metric-artifact claims,
+        so the expected result is "still null" — but the check is cheap and
+        the verification lets us retire the wave-2 nulls cleanly under the
+        new baseline.'
+      - 'SCOPE: SX12 and SX13 only. SX11 (loss-function ablation) retires
+        entirely — it chased MLC-graded potency, which no longer exists in the
+        CHISEL label frame. Do not re-run SX11 arms.'
+      - 'SX12 RE-AUDIT: attach the Moriniere 815-kmer phage-side slot to the
+        CHISEL baseline (CH04 configuration). Re-run bacteria-axis evaluation.
+        Report AUC + Brier delta with CIs. Expected: null (within ~0.5 pp of
+        chisel-baseline).'
+      - 'SX13 RE-AUDIT: attach the host OMP 5-mer slot to the CHISEL baseline.
+        Re-run the marginal arm only (cross_term, path1_cluster added no
+        additional lift in SX13 and can be skipped). Report AUC + Brier delta
+        with CIs. Expected: null.'
+      - 'DELTA REPORTING: compare chisel-baseline to chisel-baseline+moriniere
+        and chisel-baseline+omp_kmer with paired bacterium-level bootstrap.
+        Headline: is the null stable, or did concentration-aware training
+        surface a previously hidden feature-family signal?'
+      - 'ARTIFACTS: ch07_sx12_delta.json, ch07_sx13_delta.json,
+        ch07_summary.csv (one table: baseline vs +moriniere vs +omp_kmer,
+        AUC + Brier + CIs + delta).'
+      - 'KNOWLEDGE: harden kmer-receptor-expansion-neutral and
+        host-omp-variation-unpredictive units with the CHISEL-frame
+        confirmation. These units were SX12/SX13 originals; adding a
+        "confirmed under CHISEL frame" line hardens them from single-evidence
+        to cross-frame nulls.'
+      - 'CRITIC RESPONSE: if either re-audit shows non-null lift (CI disjoint
+        from zero), this reopens the wave-2 feature-family conclusions and
+        the corresponding knowledge units must be reverted from null to
+        open. Do not suppress unexpected positives.'
+      - Record the re-audit outcomes and null-stability conclusions in
+        track_CHISEL.md.
