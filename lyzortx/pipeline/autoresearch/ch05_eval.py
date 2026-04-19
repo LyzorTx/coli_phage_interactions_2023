@@ -90,39 +90,64 @@ CH04_AGGREGATE_METRICS_PATH = Path("lyzortx/generated_outputs/ch04_chisel_baseli
 SOURCE_GUELIN = "guelin"
 SOURCE_BASEL = "basel"
 BASEL_REPLICATE_ID = 1
-BASEL_LOG_DILUTION = 0  # BASEL's single spot test approximates Guelin's neat concentration.
+# Sentinel log_dilution value for BASEL rows: BASEL is a single spot test, not a dilution
+# step, so `log_dilution` is semantically undefined. We carry 0 as a sentinel to keep the
+# (pair_id, log_dilution, replicate) observation-key shape uniform across sources. The
+# LightGBM feature is `pair_concentration__log10_pfu_ml`, not `log_dilution` — see
+# `BASEL_LOG10_PFU_ML`.
+BASEL_LOG_DILUTION_SENTINEL = 0
+# BASEL working titer reported as >10⁹ pfu/ml in Maffei 2021 Fig. 12 and Maffei 2025 Fig. 13
+# (PLOS Biology). Neither paper reports a more specific number; the 2025 paper adds "if
+# possible", suggesting some batches may be lower. We adopt 9.0 as the conservative lower
+# bound for the absolute log₁₀ pfu/ml concentration feature. Guelin's steps land at
+# {4.7, 6.7, 7.7, 8.7} (GUELIN_NEAT_LOG10_PFU_ML + log_dilution), so BASEL at 9.0 is above
+# Guelin's max concentration — the 0.3 log gap is the honest encoding, not an artifact of
+# collapsing BASEL onto Guelin's neat.
+BASEL_LOG10_PFU_ML = 9.0
 PHAGE_AXIS_RANDOM_STATE = 42
 
 
-def load_basel_as_row_frame(bacteria_cv_group: dict[str, str]) -> pd.DataFrame:
+def load_basel_as_row_frame(
+    bacteria_cv_group: dict[str, str],
+    *,
+    basel_log10_pfu_ml: float = BASEL_LOG10_PFU_ML,
+) -> pd.DataFrame:
     """Materialise BASEL pairs as row-level training rows.
 
     BASEL is a single spot test (>10⁹ pfu/ml) per pair, not a dilution series, so each
-    pair contributes exactly one training row. We encode it as `log_dilution=0` (matching
-    Guelin's neat concentration) and `replicate=1`, with `score` copied from the binary
-    interaction outcome.
+    pair contributes exactly one training row. Encoded with `replicate=1`,
+    `log_dilution=0` (sentinel — BASEL is not a dilution step; see
+    `BASEL_LOG_DILUTION_SENTINEL`), `log10_pfu_ml=basel_log10_pfu_ml` (default 9.0,
+    the conservative lower bound on the Maffei-reported >10⁹ pfu/ml titer), and
+    `score` copied from the binary interaction outcome. `basel_log10_pfu_ml` is
+    exposed as a parameter for sensitivity analysis (e.g. testing a more optimistic
+    9.3 encoding if a future paper quotes a specific higher value).
 
     BASEL bacteria are a subset of Guelin bacteria (all 25 BASEL ECOR strains appear in
     the 369-bacterium Guelin panel), so `cv_group` is inherited from the Guelin mapping.
-    Rows whose bacterium is absent from the Guelin cv_group map are dropped (should be
-    zero in practice — the BASEL ECOR panel is fully contained in Guelin).
+    Fails loudly if any BASEL bacterium is absent from the map — per AGENTS.md fail-fast.
     """
     basel = load_basel_interactions().copy()
     basel = basel.dropna(subset=["interaction"])
     basel["score"] = basel["interaction"].astype(int).astype(str)
-    basel["log_dilution"] = BASEL_LOG_DILUTION
+    basel["log_dilution"] = BASEL_LOG_DILUTION_SENTINEL
+    basel["log10_pfu_ml"] = float(basel_log10_pfu_ml)
     basel["replicate"] = BASEL_REPLICATE_ID
     basel["source"] = SOURCE_BASEL
 
     basel["cv_group"] = basel["bacteria"].map(bacteria_cv_group)
     missing = basel[basel["cv_group"].isna()]
     if not missing.empty:
-        LOGGER.warning(
-            "BASEL rows with no Guelin cv_group (dropped): %d (example bacteria: %s)",
-            len(missing),
-            missing["bacteria"].unique()[:5].tolist(),
+        # AGENTS.md fail-fast rule: the BASEL ECOR panel is documented as fully contained in
+        # the 369-bacterium Guelin panel (basel-binary-only knowledge unit). A missing bacterium
+        # is a data-integrity violation, not a recoverable case — silent drop would corrupt the
+        # "1,240 BASEL pairs" headline in the knowledge unit without anyone noticing.
+        raise ValueError(
+            f"{len(missing)} BASEL rows have no Guelin cv_group mapping; BASEL ECOR panel "
+            f"is expected to be fully contained in the Guelin panel "
+            f"(offending bacteria: {sorted(missing['bacteria'].unique())}). "
+            f"If this is intentional, update the docstring, the knowledge unit, and this check."
         )
-        basel = basel.dropna(subset=["cv_group"])
 
     # Downstream per-row training frame filters on split_holdout and is_hard_trainable.
     # Treat every BASEL observation as trainable — no ST03-style holdout split applies to
@@ -144,6 +169,7 @@ def load_basel_as_row_frame(bacteria_cv_group: dict[str, str]) -> pd.DataFrame:
             "bacteria",
             "phage",
             "log_dilution",
+            "log10_pfu_ml",
             "replicate",
             "score",
             "source",
@@ -154,19 +180,25 @@ def load_basel_as_row_frame(bacteria_cv_group: dict[str, str]) -> pd.DataFrame:
     ].copy()
 
 
-def load_unified_row_frame() -> pd.DataFrame:
+def load_unified_row_frame(basel_log10_pfu_ml: float = BASEL_LOG10_PFU_ML) -> pd.DataFrame:
     """Concatenate Guelin (318K rows, 9 replicates × pair) + BASEL (~1.2K rows, 1 row × pair).
 
     Both sides carry `source ∈ {"guelin", "basel"}` and the minimal column set CH04's
     per-row pipeline consumes. Guelin rows inherit split_holdout / is_hard_trainable from
     ST02+ST03; BASEL rows are marked universally trainable.
+
+    `basel_log10_pfu_ml` threads through to `load_basel_as_row_frame`; the default (9.0)
+    is the conservative lower bound on the Maffei-reported BASEL working titer >10⁹ pfu/ml.
+    Guelin rows carry `log10_pfu_ml ∈ {8.7, 7.7, 6.7, 4.7}` from `ch03_row_expansion`; the
+    absolute-titer feature places BASEL 0.3 log above Guelin's neat rather than collapsing
+    both onto the same concentration.
     """
     guelin = load_row_expanded_frame().copy()
     guelin["source"] = SOURCE_GUELIN
 
     # Extract Guelin bacteria → cv_group so BASEL rows can inherit cv_group.
     guelin_map = bacteria_to_cv_group_map(guelin)
-    basel = load_basel_as_row_frame(guelin_map)
+    basel = load_basel_as_row_frame(guelin_map, basel_log10_pfu_ml=basel_log10_pfu_ml)
 
     # Reduce both frames to the shared column set before concatenation. Guelin has many
     # additional pair-level columns (host/phage metadata, training_weight_v3, etc.) that
@@ -177,6 +209,7 @@ def load_unified_row_frame() -> pd.DataFrame:
         "bacteria",
         "phage",
         "log_dilution",
+        "log10_pfu_ml",
         "replicate",
         "score",
         "source",
@@ -245,13 +278,14 @@ def _aggregate_fold_rows_to_pairs(fold_rows: list[dict[str, object]]) -> pd.Data
                 "bacteria",
                 "phage",
                 "log_dilution",
+                "log10_pfu_ml",
                 "replicate",
                 "label_row_binary",
             ],
             as_index=False,
         )["predicted_probability"]
         .mean()
-        .sort_values(["bacteria", "phage", "log_dilution", "replicate"])
+        .sort_values(["bacteria", "phage", "log10_pfu_ml", "replicate"])
     )
     return aggregated
 
@@ -322,6 +356,8 @@ def _ci_to_dict(ci: BootstrapMetricCI) -> dict[str, Optional[float]]:
         "point_estimate": safe_round(ci.point_estimate) if ci.point_estimate is not None else None,
         "ci_low": ci.ci_low,
         "ci_high": ci.ci_high,
+        "bootstrap_samples_requested": ci.bootstrap_samples_requested,
+        "bootstrap_samples_used": ci.bootstrap_samples_used,
     }
 
 
@@ -442,12 +478,17 @@ def run_ch05_eval(
     output_dir: Path,
     cache_dir: Path,
     candidate_dir: Path,
+    basel_log10_pfu_ml: float = BASEL_LOG10_PFU_ML,
 ) -> dict[str, object]:
     output_dir.mkdir(parents=True, exist_ok=True)
     start_time = datetime.now(timezone.utc)
-    LOGGER.info("CH05 evaluation starting at %s", start_time.isoformat())
+    LOGGER.info(
+        "CH05 evaluation starting at %s (basel_log10_pfu_ml=%.2f)",
+        start_time.isoformat(),
+        basel_log10_pfu_ml,
+    )
 
-    unified = load_unified_row_frame()
+    unified = load_unified_row_frame(basel_log10_pfu_ml=basel_log10_pfu_ml)
     clean_rows = build_clean_row_training_frame(unified)
     LOGGER.info(
         "CH05 clean row frame: %d rows, %d pairs, %d bacteria, %d phages",
@@ -530,7 +571,13 @@ def run_ch05_eval(
             len({r["phage"] for r in subset}),
         )
         if not subset:
-            continue
+            # Cross-source breakdown is a required CH05 output; an empty subset means the
+            # unified frame lost its source tag or a whole cohort disappeared — either is a
+            # pipeline bug, not a recoverable case.
+            raise ValueError(
+                f"Phage-axis cross-source subset for {source_label!r} is empty; "
+                f"unified frame and source tag propagation must cover both Guelin and BASEL."
+            )
         subset_cis = _bootstrap_by_unit(
             subset,
             unit_key="phage",
@@ -608,6 +655,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
     parser.add_argument("--candidate-dir", type=Path, default=DEFAULT_CANDIDATE_DIR)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument(
+        "--basel-log10-pfu-ml",
+        type=float,
+        default=BASEL_LOG10_PFU_ML,
+        help=(
+            "Absolute log₁₀ pfu/ml value to assign to BASEL rows on the "
+            "`pair_concentration__log10_pfu_ml` feature axis. Default 9.0 is the "
+            "conservative lower bound on Maffei's >10⁹ pfu/ml working titer. Raise "
+            "to e.g. 9.3 for a sensitivity analysis if a more specific titer is sourced."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -619,6 +677,7 @@ def main(argv: list[str] | None = None) -> None:
         output_dir=args.output_dir,
         cache_dir=args.cache_dir,
         candidate_dir=args.candidate_dir,
+        basel_log10_pfu_ml=args.basel_log10_pfu_ml,
     )
 
 

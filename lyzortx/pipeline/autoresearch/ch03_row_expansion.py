@@ -39,6 +39,13 @@ RAW_SCORE_POSITIVE = "1"
 RAW_SCORE_NEGATIVE = "0"
 RAW_SCORE_UNINTERPRETABLE = "n"
 
+# Guelin protocol neat concentration: 5×10⁸ pfu/ml → log10 ≈ 8.69897, rounded to 8.7. The
+# concentration feature fed to LightGBM is `log10_pfu_ml = GUELIN_NEAT_LOG10_PFU_ML +
+# log_dilution` (log_dilution ∈ {0, -1, -2, -4} gives {8.7, 7.7, 6.7, 4.7}). This replaces the
+# earlier relative `log_dilution` encoding so BASEL rows (single spot test at >10⁹ pfu/ml) can
+# share the same feature axis without implicitly mapping BASEL's >10⁹ onto Guelin's neat.
+GUELIN_NEAT_LOG10_PFU_ML = 8.7
+
 
 def load_raw_observation_rows(raw_path: Path = RAW_INTERACTIONS_PATH) -> pd.DataFrame:
     """Load raw_interactions.csv as one row per observation.
@@ -93,11 +100,15 @@ def load_row_expanded_frame(
             f"(example pair_ids: {missing_pair_meta['pair_id'].head().tolist()})"
         )
 
+    merged["log10_pfu_ml"] = GUELIN_NEAT_LOG10_PFU_ML + merged["log_dilution"].astype(float)
+
     LOGGER.info(
-        "Row-expanded frame: %d rows, %d pairs, %d columns",
+        "Row-expanded frame: %d rows, %d pairs, %d columns, log10_pfu_ml range [%.2f, %.2f]",
         len(merged),
         merged["pair_id"].nunique(),
         len(merged.columns),
+        merged["log10_pfu_ml"].min(),
+        merged["log10_pfu_ml"].max(),
     )
     return merged
 
