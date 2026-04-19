@@ -44,6 +44,7 @@ from typing import Any, Optional, Sequence
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import brier_score_loss, roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 
 from lyzortx.log_config import setup_logging
@@ -284,8 +285,6 @@ def _bootstrap_by_unit(
         preds = np.array([float(r["predicted_probability"]) for r in sampled])
         if len(np.unique(labels)) < 2:
             continue
-        from sklearn.metrics import brier_score_loss, roc_auc_score
-
         aucs.append(float(roc_auc_score(labels, preds)))
         briers.append(float(brier_score_loss(labels, preds)))
 
