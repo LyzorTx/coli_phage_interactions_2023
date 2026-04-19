@@ -89,8 +89,8 @@ grade (0–3) on top. CHISEL drops the rollup. The consequences:
 
 - rows with `score='n'` are excluded from training instead of silently counted as negatives
 - BASEL (single-concentration) observations fit the training frame natively — one row per pair
-- each pair now contributes up to 7 rows (three replicates at the highest dilution, two at the
-  middle, three at the lowest in the Guelin protocol), giving the model more signal per pair
+- each Guelin pair now contributes up to 9 rows (3 replicates at 5×10⁸ pfu/ml, 2 at 5×10⁷,
+  3 at 5×10⁶, 1 at 5×10⁴), giving the model more signal per pair than a single rollup label
 
 **Evaluation** is scored at each pair's highest observed concentration so within-panel and
 cross-source results share a comparable operating point. See `label-policy-binary` for the

@@ -2070,9 +2070,9 @@ discrimination).
 Three reasons. One, it's the data's own atomic unit — `raw_interactions.csv` is keyed on
 `(bacteria, phage, image, replicate, plate, log_dilution, X, Y, score)`; collapsing it imposes a
 convention the raw data does not. Two, it integrates BASEL natively (single concentration = one
-row) without a label-convention knob. Three, it gives each pair up to seven training rows (three
-Guelin replicates at the highest dilution, two at the middle, three at the lowest) instead of one
-rolled-up label, which should help calibration. Concentration enters as `log_dilution ∈
+row) without a label-convention knob. Three, it gives each Guelin pair up to nine training rows
+(3 replicates at 5×10⁸ pfu/ml, 2 at 5×10⁷, 3 at 5×10⁶, 1 at 5×10⁴) instead of one rolled-up
+label, which should help calibration. Concentration enters as `log_dilution ∈
 {0, -1, -2, -4}` — a plain numeric feature, not a dose-response functional form. Rows with
 `score='n'` are dropped from training (not silently treated as negatives). Evaluation is scored at
 each pair's highest observed concentration so within-panel and cross-source comparisons share a
