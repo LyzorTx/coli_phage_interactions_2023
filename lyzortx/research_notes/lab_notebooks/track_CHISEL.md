@@ -385,3 +385,135 @@ sets `tm_isdst` correctly so `%z` picks `time.altzone` (`+0200`) during DST and 
 - 5 unit tests cover `n`-row dropping, concentration feature attachment, max-concentration selection,
   and replicate aggregation. 2 unit tests cover the log_config TZ fix with hardcoded DST probe
   timestamps.
+
+---
+
+## 2026-04-19 18:30 CEST: CH05 — unified Guelin+BASEL two-axis k-fold under CHISEL
+
+### Executive summary
+
+Successor to SX15 under the CHISEL frame. Ran CH04's per-row all-pairs pipeline on the unified 148-phage × 369-
+bacterium panel (36,643 pairs: 35,403 Guelin + 1,240 BASEL). **Bacteria-axis AUC 0.8061 [0.7917, 0.8199], Brier
+0.1778 [0.1702, 0.1853]** (10-fold CH02 cv_group hash); **phage-axis AUC 0.8850 [0.8617, 0.9062], Brier 0.1348
+[0.1219, 0.1495]** (10-fold StratifiedKFold by ICTV family). Bacteria-axis sits inside CH04's CI (|Δ| ~0.2 pp) —
+BASEL's 1,240 pairs barely move the aggregate on 35K Guelin pairs. Phage-axis beats bacteria-axis by 7.9 pp with
+disjoint CIs, a structural effect: holding out phages keeps all 369 bacteria in training, giving test pairs full
+host-side signal. Cross-source phage-axis split (Guelin 96 phages AUC 0.8863 vs BASEL 52 phages AUC 0.8818):
+**|ΔAUC| = 0.0045** — confirms SX15's 11 pp nDCG BASEL-vs-Guelin artifact is dead under AUC. **Per-phage blending
+is retired on both axes** (ticket deviation inheriting CH04 rationale per `per-phage-retired-under-chisel`);
+the "blending tax" metric is retired with it.
+
+**Design.**
+
+- `ch05_eval.py` reuses CH04's per-row training / pair-max-concentration evaluation / bacterium-bootstrap
+  infrastructure without modification. New pieces:
+  - `load_basel_as_row_frame` — BASEL pairs as row-level observations with `log_dilution=0`, `replicate=1`,
+    score ∈ {"0", "1"} copied from the binary interaction. BASEL bacteria are a subset of Guelin bacteria, so
+    `cv_group` is inherited from the Guelin mapping (no separate cv_group computation needed; the 25 BASEL
+    ECOR strains all appear in the 369-bacterium Guelin panel).
+  - `load_unified_row_frame` — concatenates Guelin's 318K-row frame (9 replicates × pair across 4 dilutions)
+    with BASEL's 1.2K-row frame (1 replicate × pair at log_dilution=0). Both carry `source ∈ {guelin, basel}`.
+  - `assign_phage_folds` — StratifiedKFold on 148 phages by ICTV family (rare families <10 phages collapsed
+    into "other" bucket). Deterministic seed. Reuses the SX15 pattern but as a standalone helper under CH05.
+  - `_bootstrap_by_unit(..., unit_key="bacteria" or "phage")` — parametric bootstrap that matches the
+    resampling unit to the held-out axis (bacteria-axis → resample bacteria, phage-axis → resample phages).
+    See the updated GLOSSARY.md bootstrap entry for why.
+  - BASEL phage features are patched into the cache context via
+    `sx03_eval.patch_context_with_extended_slots`.
+- Per-phage blending is **omitted on both axes**. On phage-axis it's structurally impossible (held-out phages
+  have zero training rows). On bacteria-axis it's omitted by design inheritance from CH04: the
+  `per-phage-retired-under-chisel` knowledge unit forbids re-enablement in CHISEL or successor tracks
+  (non-deployable, inflates bacteria-axis metrics non-transferably, collapses under per-row training).
+- The ticket's "BLENDING TAX" directive is moot under all-pairs-only — there is no blending to tax. The
+  bacteria-axis vs phage-axis AUC gap is reported as the **phage-axis generalization gap** instead; it's a
+  structural training-coverage effect, not a blending artifact.
+
+**Run.**
+
+```
+PYTHONPATH=. python -m lyzortx.pipeline.autoresearch.ch05_eval --device-type cpu
+```
+
+Total runtime 10,774 s (3 hours): 2 axes × 10 folds × 3 seeds = 60 LightGBM fits, each on ~270–290K rows.
+
+**Results.**
+
+| Quantity | Value | 95% CI |
+|---|---|---|
+| Bacteria-axis AUC | 0.8061 | [0.7917, 0.8199] |
+| Bacteria-axis Brier | 0.1778 | [0.1702, 0.1853] |
+| Phage-axis AUC | **0.8850** | [0.8617, 0.9062] |
+| Phage-axis Brier | 0.1348 | [0.1219, 0.1495] |
+| Phage-axis Guelin-subset AUC (96 phages, 35,403 pairs) | 0.8863 | [0.8653, 0.9078] |
+| Phage-axis BASEL-subset AUC (52 phages, 1,240 pairs) | 0.8818 | [0.8194, 0.9320] |
+| Phage-axis generalization gap (bacteria − phage AUC) | **−0.0789** | CIs disjoint |
+| Cross-source \|ΔAUC\| (Guelin vs BASEL, phage-axis) | 0.0045 | well under 1 pp tolerance |
+
+Per-fold AUCs (bacteria-axis): 0.822, 0.783, 0.781, 0.835, 0.806, 0.816, 0.798, 0.840, 0.794, 0.781.
+Per-fold AUCs (phage-axis):    0.884, 0.938, 0.890, 0.900, 0.865, 0.914, 0.896, 0.895, 0.841, 0.875.
+
+**Interpretation.**
+
+*Bacteria-axis is CH04 plus BASEL bacteria in holdout folds.* Aggregate AUC 0.8061 sits inside CH04's CI
+(0.7944–0.8217), with a 0.25 pp point drop that is within-noise. BASEL adds 1,240 pairs against 35K Guelin
+pairs — too small a fraction to move the aggregate on its own, and all 25 BASEL ECOR strains were already in
+Guelin so no new bacterium-side signal is introduced. Brier moves 3 bp worse (0.1750 → 0.1778), also
+within-noise. **The bacteria-axis number is the same story as CH04**; adding BASEL does not change the
+deployability estimate for unseen bacteria.
+
+*Phage-axis is ~8 pp higher than bacteria-axis, but this is not a deployment gain.* The 7.9 pp gap is a
+training-coverage effect, not a model-quality effect. On bacteria-axis, holding out bacterium X removes all
+~96 (bacterium X, phage p) pairs from training, so the model must predict for X's host features without ever
+having seen X in training. On phage-axis, holding out phage Y removes all (bacterium b, phage Y) pairs but
+every bacterium b remains in training on all 147 retained phages — the model has full host-side signal for
+every test pair. The phage-axis result answers "how well does the model predict for an unseen phage when we
+have complete bacterium-side data?" — a real deployability question, but a narrower one than the bacteria-
+axis question. Do NOT report phage-axis AUC 0.8850 as a better result than bacteria-axis AUC 0.8061;
+they measure different generalization axes.
+
+The generalization gap concept is preserved but renamed. SX15 called this the "per-phage blending tax"
+because per-phage memorized bacterium priors on bacteria-axis and couldn't on phage-axis. Under CHISEL's
+all-pairs-only model, there is no blending to tax — the gap is purely the structural
+training-coverage difference between the two axes. `spandex-unified-kfold-baseline` retired its
+blending-tax number (2 pp in SX15 nDCG, 3 pp in SX15 AUC) as non-load-bearing under CHISEL.
+
+*Cross-source parity under AUC confirms SX15's metric-artifact diagnosis.* The Guelin-vs-BASEL AUC gap is
+0.0045 (with the BASEL CI heavily overlapping Guelin's), well under the 1 pp expected tolerance. SX15's
+BASEL-nDCG > Guelin-nDCG by 11 pp (0.8332 vs 0.7193) was a graded-vs-binary label artifact — nDCG rewards
+predictions that rank higher-relevance items higher, but BASEL is binary (relevance ∈ {0, 1}) while Guelin
+carries MLC 0–3 grades, so the nDCG denominators are not comparable across cohorts. Under AUC, both cohorts
+are indistinguishable. BASEL's Brier (0.1884) is worse than Guelin's (0.1329) but the BASEL CI [0.158,
+0.221] is wide enough that the difference is not load-bearing — 1,240 pairs vs 35,403 pairs, fewer phages
+so less fold-level averaging.
+
+**Artifacts.**
+
+- `lyzortx/generated_outputs/ch05_unified_kfold/ch05_combined_summary.json` — two-axis numbers, cross-source
+  breakdown, gap measurement.
+- `lyzortx/generated_outputs/ch05_unified_kfold/ch05_bacteria_axis_metrics.json`,
+  `ch05_phage_axis_metrics.json` — per-axis bootstrap CIs.
+- `lyzortx/generated_outputs/ch05_unified_kfold/ch05_cross_source_breakdown.csv` — phage-axis AUC+Brier with
+  CIs split by source.
+- `lyzortx/generated_outputs/ch05_unified_kfold/ch05_{bacteria,phage}_axis_predictions.csv` — pair-level
+  predictions at max observed concentration.
+- `lyzortx/generated_outputs/ch05_unified_kfold/ch05_{bacteria,phage}_axis_per_row_predictions.csv` —
+  per-row predictions for downstream per-concentration diagnostics.
+
+**Acceptance met.**
+
+- Unified 148-phage × 369-bacterium panel assembled at row level; BASEL embedded as log_dilution=0 rows with
+  cv_group inherited from Guelin.
+- Bacteria-axis CV under CH02 cv_group hash; phage-axis CV under ICTV-stratified 10-fold.
+- AUC + Brier only; no ranking metrics.
+- Cross-source AUC+Brier breakdown emitted with CIs.
+- Phage-axis generalization gap reported in place of the retired "blending tax"; cross-source AUC within
+  1 pp as expected (0.45 pp actual).
+- Artifacts `ch05_bacteria_axis_metrics.json`, `ch05_phage_axis_metrics.json`,
+  `ch05_cross_source_breakdown.csv` emitted.
+- `chisel-unified-kfold-baseline` knowledge unit added as active canonical;
+  `spandex-unified-kfold-baseline` marked HISTORICAL with forward reference.
+- **Ticket deviation**: per-phage blending retired on bacteria-axis (not enabled as the ticket requests).
+  Inherits CH04's `per-phage-retired-under-chisel` unit with explicit "do not re-enable" directive.
+  "Blending tax" concept retired with it.
+- 5 unit tests cover phage-fold determinism, rare-family collapse, missing-family handling, BASEL cv_group
+  inheritance, and source-constant invariance.
