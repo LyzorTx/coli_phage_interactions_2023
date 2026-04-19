@@ -1331,7 +1331,7 @@ graph LR
   sources with different concentration grids also becomes trivial under the new frame — no MLC derivation rule to patch.
   First wave of CHISEL replaces SPANDEX's canonical baselines with their CHISEL-framed equivalents and re-audits wave-2
   feature-family nulls under the new frame.
-- [ ] **CH01** CHISEL track opening — knowledge cleanup and SPANDEX closure. Model: `claude-opus-4-6`. CI image profile:
+- [x] **CH01** CHISEL track opening — knowledge cleanup and SPANDEX closure. Model: `claude-opus-4-6`. CI image profile:
       `base`.
   - No code or training changes. Documentation and knowledge-unit updates only.
   - KNOWLEDGE UNIT UPDATES (lyzortx/orchestration/knowledge.yml): rewrite the following units to reflect the
