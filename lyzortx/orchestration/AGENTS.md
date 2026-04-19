@@ -29,7 +29,13 @@
   1. **Acceptance criteria met?** Does the PR implement what the ticket asks for? Are all criteria satisfied with real
      results (not scaffolding, not zero-row outputs)?
   2. **Scientific/biological/logical correctness.** Biological plausibility, statistical rigor, honest interpretation.
-     Wrong biology or flawed statistics are worse than ugly code.
+     Wrong biology or flawed statistics are worse than ugly code. **If the PR writes prediction or metric artifacts
+     under `lyzortx/generated_outputs/` (CSV, JSON) or cites AUC / Brier / bootstrap CI numbers, the reviewer subagent
+     MUST invoke the `review-ml-pr` skill as part of this step.** Reading the diff and acceptance criteria is not
+     sufficient verification — the skill recomputes headline numbers from the artifacts, checks fold disjointness
+     empirically, decomposes aggregates into strata, and builds reliability diagrams. A read-only review of an ML
+     results PR is not an acceptable self-review; the implementing agent's spawn prompt must explicitly instruct the
+     reviewer to run `review-ml-pr` in that case.
   3. **Code correctness.** Bugs, logic errors, off-by-one, wrong variable usage.
   4. **Code cleanliness.** Naming, structure, readability. Do NOT nitpick style — ruff handles formatting.
 
