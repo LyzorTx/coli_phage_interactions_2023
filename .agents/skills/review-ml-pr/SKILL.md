@@ -51,9 +51,9 @@ Work through this in order. Later checks depend on earlier ones being clean.
 ### 1. Recompute headline metrics from the predictions CSV
 
 Load the per-pair predictions, compute the aggregate AUC and Brier yourself, compare to the
-reported numbers to ≥6 decimal places. Any delta larger than float rounding means the summary JSON
-was produced by different code / different inputs than the predictions CSV, which is a bug to stop
-and investigate.
+reported numbers at the precision the artifact reports (typically 4 dp for this project's bootstrap
+JSONs). Any delta beyond float rounding at that precision means the summary JSON was produced by
+different code / different inputs than the predictions CSV, which is a bug to stop and investigate.
 
 Do the same for every cross-source / cross-axis subset the PR reports. "Reported" numbers and
 "recomputable from predictions" numbers must match.
@@ -61,9 +61,11 @@ Do the same for every cross-source / cross-axis subset the PR reports. "Reported
 ### 2. Fold disjointness — empirical, not from code reading
 
 Check that the holdout unit (bacteria for bacteria-axis, phages for phage-axis, etc.) is **disjoint
-across folds** and that **every pair lands in exactly one holdout fold**. Do this on the per-row
-predictions (which carry `fold_id`), not by reading the fold-assignment function. A well-written
-fold-assignment function can still be called on the wrong input.
+across folds** and that **every pair lands in exactly one holdout fold**. This requires `fold_id`
+on at least one of the predictions artifacts; in this project the per-row file typically carries
+it while the pair-level file does not. If neither file carries `fold_id`, treat its absence as a
+finding and request it be added before approving — empirical fold-disjointness is not optional.
+A well-written fold-assignment function can still be called on the wrong input.
 
 ### 3. Basic hygiene on predictions
 
@@ -142,9 +144,11 @@ the knowledge unit — don't call it "X-stratified" when 40% of the panel is in 
 
 ### 10. Bootstrap output completeness
 
-If the PR reports bootstrap CIs, check that the artifact includes `bootstrap_samples_used`
-alongside `bootstrap_samples_requested`. Degenerate resamples (all-positive or all-negative units)
-get silently skipped on small cohorts; without the used count, wide CIs and thin CIs look the same.
+If the PR reports bootstrap CIs, the artifact should include `bootstrap_samples_used` alongside
+`bootstrap_samples_requested`. Degenerate resamples (all-positive or all-negative units) get
+silently skipped on small cohorts; without the used count, wide CIs and thin CIs look the same.
+If the current bootstrap code does not emit `bootstrap_samples_used` yet, treat that as a
+finding — request the field be added as part of the PR rather than accepting the artifact as-is.
 
 ### 11. Comparison to prior baseline
 

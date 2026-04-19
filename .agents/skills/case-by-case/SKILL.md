@@ -1,7 +1,8 @@
 ---
 name: case-by-case
 description: >
-  Compare two phage–host prediction files case-by-case (per-bacterium AUC + Brier deltas, lysis-rate decile
+  Compare two phage–host prediction files case-by-case (per-bacterium AUC + Brier deltas intended under the CHISEL
+  scorecard — script still computes pre-CHISEL ranking metrics, see Pre-CHISEL note; lysis-rate decile
   stratification, narrow-host sign test, permutation significance, named-case spotlight). Use whenever a ticket
   produces a new predictions CSV to be compared against a baseline, to audit whether aggregate metric deltas
   reflect real signal or just noise. Triggers on "case-by-case", "compare predictions", "per-bacterium delta",

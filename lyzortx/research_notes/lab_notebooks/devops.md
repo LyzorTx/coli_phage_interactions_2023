@@ -1179,7 +1179,7 @@ than depending on a human reviewer repeating the audit by hand.
 
 #### Scope of changes
 
-- `.agents/skills/review-ml-pr/SKILL.md` — new skill, ~4 KB, concise checklist + snapshot discipline + related-skills
+- `.agents/skills/review-ml-pr/SKILL.md` — new skill, ~10 KB, checklist + snapshot discipline + related-skills
   cross-reference to `case-by-case`.
 - `.agents/skills/case-by-case/SKILL.md` — de-tracked (removed SPANDEX / SX10-13 / autoresearch references), de-ranked
   (removed nDCG / top-3 / MLC as primary outputs), added a Pre-CHISEL note flagging that `compare_predictions.py`
