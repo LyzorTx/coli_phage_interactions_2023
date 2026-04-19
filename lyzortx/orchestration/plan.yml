@@ -2285,7 +2285,7 @@ tracks:
       title: Phage-axis and cross-source evaluation under CHISEL frame
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - CH04
       acceptance_criteria:
@@ -2320,20 +2320,20 @@ tracks:
       depends_on_tasks:
       - CH05
       acceptance_criteria:
-      - 'GOAL: directly attack the discrimination half of the cross-source failure mode
-        surfaced by CH05 — phage features derived from the Guelin-only TL17 reference bank
-        actively hurt BASEL discrimination (non-zero-projection BASEL phages Brier 0.31
-        on bacteria-axis vs zero-projection BASEL phages Brier 0.12, model applies
-        Guelin-calibrated host-range priors that do not fit BASEL''s narrower actual host
-        ranges). Four-arm ablation on CH05 unified panel with cross-source breakdown.
-        Success criterion: **BASEL bacteria-axis AUC materially above 0.7152 on at least
-        one arm** (discrimination-only target). The calibration component of BASEL''s
-        miscalibration is a separate layer — CH05''s isotonic diagnostic showed
-        Guelin-fitted calibration closes 78-89% of Guelin decile gaps but only 34-37% of
-        BASEL''s (outcome B), so calibration transfer across panels is a distinct problem
-        that a dedicated post-hoc calibration ticket will handle (see CH09 candidate).
-        CH06 should not be judged on mid-P reliability closure — that is a calibration-
-        layer question, not a phage-feature-set question.'
+      - 'GOAL: directly attack the discrimination half of the cross-source failure
+        mode surfaced by CH05 — phage features derived from the Guelin-only TL17 reference
+        bank actively hurt BASEL discrimination (non-zero-projection BASEL phages
+        Brier 0.31 on bacteria-axis vs zero-projection BASEL phages Brier 0.12, model
+        applies Guelin-calibrated host-range priors that do not fit BASEL''s narrower
+        actual host ranges). Four-arm ablation on CH05 unified panel with cross-source
+        breakdown. Success criterion: **BASEL bacteria-axis AUC materially above 0.7152
+        on at least one arm** (discrimination-only target). The calibration component
+        of BASEL''s miscalibration is a separate layer — CH05''s isotonic diagnostic
+        showed Guelin-fitted calibration closes 78-89% of Guelin decile gaps but only
+        34-37% of BASEL''s (outcome B), so calibration transfer across panels is a
+        distinct problem that a dedicated post-hoc calibration ticket will handle
+        (see CH09 candidate). CH06 should not be judged on mid-P reliability closure
+        — that is a calibration- layer question, not a phage-feature-set question.'
       - 'DESIGN: fixed CH05 unified panel (148 phages x 369 bacteria, 36,643 pairs),
         fixed CH05 folds (bacteria-axis CH02 cv_group hash + phage-axis ICTV family/Other/UNKNOWN
         StratifiedKFold). Feature bundle held constant except for the phage-side slot
@@ -2341,50 +2341,50 @@ tracks:
         and the per-source (Guelin/BASEL) subset breakdown — both aggregate and per-decile
         reliability.'
       - 'ENGINEERING PRE-FLIGHT (required, before any feature-arm retraining): parallelise
-        the training loop before burning 4× more CPU on serial feature-arm reruns. CH05''s
-        4-hour wall-clock surfaced that the training loop is strictly serial across seeds
-        and folds — each LightGBM fit uses all cores internally but the 3 seeds per fold
-        and 10 folds per axis run sequentially. CH06''s 4-arm sweep would inherit and
-        multiply that cost (~16 hours of CPU serial), so fixing the loop before running
-        the arms is high-leverage. Two edits in `candidate_replay.py` / `ch04_eval.py` /
-        `ch05_eval.py`: (a) `multiprocessing.Pool(3)` across the 3 seeds inside a fold
-        (each fit independent, different PAIR_SCORER_RANDOM_STATE, ~3 GB resident for
-        3 concurrent design matrices — fine on a 16 GB laptop); (b) cache the first seed''s
-        RFECV-selected feature list and reuse for seeds 2-3 (final fit only) since RFECV
-        on the canonical feature set is deterministic given the training frame. Combined
-        target: CH04 90 min → <30 min, CH05 240 min → <80 min, each CH06 arm proportional.
-        **Determinism gate** (must pass before the 4 arms start): rerun CH04 under the
-        parallelised loop and confirm aggregate AUC and Brier match the CH04 canonical
-        (0.8083 AUC / 0.1751 Brier) within 1e-4. If metrics drift, parallelism broke
-        determinism — diagnose before landing. Record the wall-clock comparison in
-        devops.md. Fold-level parallelism stays out of scope (4× memory footprint,
-        separate optional follow-up if seed-level parallelism leaves wall-clock as the
-        bottleneck).'
-      - 'ORDERING: run the engineering pre-flight first (parallelism + determinism check,
-        ~1 hr), then ARM 1 (no retraining, testable on existing CH05 artifacts in
-        ~15 min), then the variance pre-flight below, then ARM 2, then ARMs 3 and 4
-        in whichever order their pre-flights allow. If a pre-flight kills an arm, do
-        not run it — report the pre-flight verdict in the notebook instead.'
+        the training loop before burning 4× more CPU on serial feature-arm reruns.
+        CH05''s 4-hour wall-clock surfaced that the training loop is strictly serial
+        across seeds and folds — each LightGBM fit uses all cores internally but the
+        3 seeds per fold and 10 folds per axis run sequentially. CH06''s 4-arm sweep
+        would inherit and multiply that cost (~16 hours of CPU serial), so fixing
+        the loop before running the arms is high-leverage. Two edits in `candidate_replay.py`
+        / `ch04_eval.py` / `ch05_eval.py`: (a) `multiprocessing.Pool(3)` across the
+        3 seeds inside a fold (each fit independent, different PAIR_SCORER_RANDOM_STATE,
+        ~3 GB resident for 3 concurrent design matrices — fine on a 16 GB laptop);
+        (b) cache the first seed''s RFECV-selected feature list and reuse for seeds
+        2-3 (final fit only) since RFECV on the canonical feature set is deterministic
+        given the training frame. Combined target: CH04 90 min → <30 min, CH05 240
+        min → <80 min, each CH06 arm proportional. **Determinism gate** (must pass
+        before the 4 arms start): rerun CH04 under the parallelised loop and confirm
+        aggregate AUC and Brier match the CH04 canonical (0.8083 AUC / 0.1751 Brier)
+        within 1e-4. If metrics drift, parallelism broke determinism — diagnose before
+        landing. Record the wall-clock comparison in devops.md. Fold-level parallelism
+        stays out of scope (4× memory footprint, separate optional follow-up if seed-level
+        parallelism leaves wall-clock as the bottleneck).'
+      - 'ORDERING: run the engineering pre-flight first (parallelism + determinism
+        check, ~1 hr), then ARM 1 (no retraining, testable on existing CH05 artifacts
+        in ~15 min), then the variance pre-flight below, then ARM 2, then ARMs 3 and
+        4 in whichever order their pre-flights allow. If a pre-flight kills an arm,
+        do not run it — report the pre-flight verdict in the notebook instead.'
       - 'VARIANCE PRE-FLIGHT (required before ARMs 2-4 per lyzortx/AGENTS.md Scientific
         Review Standards). For each candidate feature family, compute CV and Cohen''s
         d separately on three subsets: all Guelin phages (n=96), non-zero-projection
-        BASEL phages (n=39), and zero-vector BASEL phages (n=13). If CV < 0.1 or
-        Cohen''s d < 0.1 for discriminating lysed vs non-lysed pairs on any one of
-        those three subsets, stop and report — do not run the full training for that
-        arm. This gate exists because OMP HMM score homogeneity (CV 0.01-0.17) would
-        have been caught before GT02/GT06 burned hours if it had been applied then;
-        same pattern could kill any of ARMs 2-4 on BASEL specifically, and we want
-        that caught before a 3-hour rerun rather than after.'
-      - 'ARM 1 (architectural, calibration arm — NOT discrimination): OOD-aware
-        inference. Compute distance from each held-out phage to its nearest training
-        phage (proteome MMseqs2 bit-score or phage_projection Euclidean). Apply
-        post-hoc shrinkage toward base rate when distance exceeds a threshold fit on
-        Guelin inner-val. Measurable on existing CH05 prediction artifacts without
-        retraining the model — cheapest arm. Shrinkage is monotone so BASEL bacteria-
-        axis AUC stays at 0.7152; what moves is BASEL''s residual ECE (expected to
-        close most of the 0.11-0.12 Guelin-fitted-calibrator residual because
-        shrink-toward-base-rate on OOD phages is literally what their miscalibration
-        asks for). Report Arm 1 against BASEL ECE, not BASEL AUC.'
+        BASEL phages (n=39), and zero-vector BASEL phages (n=13). If CV < 0.1 or Cohen''s
+        d < 0.1 for discriminating lysed vs non-lysed pairs on any one of those three
+        subsets, stop and report — do not run the full training for that arm. This
+        gate exists because OMP HMM score homogeneity (CV 0.01-0.17) would have been
+        caught before GT02/GT06 burned hours if it had been applied then; same pattern
+        could kill any of ARMs 2-4 on BASEL specifically, and we want that caught
+        before a 3-hour rerun rather than after.'
+      - 'ARM 1 (architectural, calibration arm — NOT discrimination): OOD-aware inference.
+        Compute distance from each held-out phage to its nearest training phage (proteome
+        MMseqs2 bit-score or phage_projection Euclidean). Apply post-hoc shrinkage
+        toward base rate when distance exceeds a threshold fit on Guelin inner-val.
+        Measurable on existing CH05 prediction artifacts without retraining the model
+        — cheapest arm. Shrinkage is monotone so BASEL bacteria- axis AUC stays at
+        0.7152; what moves is BASEL''s residual ECE (expected to close most of the
+        0.11-0.12 Guelin-fitted-calibrator residual because shrink-toward-base-rate
+        on OOD phages is literally what their miscalibration asks for). Report Arm
+        1 against BASEL ECE, not BASEL AUC.'
       - 'ARM 2: pairwise proteome-similarity vector as replacement for TL17 categorical
         projection. Compute each phage''s MMseqs2 bit-score against every training
         phage. Use the resulting continuous vector (or a PCA/summary of it) as the
@@ -2405,19 +2405,18 @@ tracks:
         O-antigen, so polysaccharide-mediated specificity (the depo-capsule-validated
         Gate 1 mechanism, the only validated pairwise signal) is not represented.
         Probability-output vs thresholded-class is a small improvement over the k-mer
-        direct test, not enough to flip the verdict. Keep the arm because running it
-        closes the receptor-class thread cleanly — but flag "expected null" so the
-        result does not surprise anyone.'
-      - 'ARM 4: tail-protein-restricted TL17 BLAST (Shang 2025 benchmark motivation —
-        tail proteins alone match full-genome performance). Restrict the TL17 BLAST
+        direct test, not enough to flip the verdict. Keep the arm because running
+        it closes the receptor-class thread cleanly — but flag "expected null" so
+        the result does not surprise anyone.'
+      - 'ARM 4: tail-protein-restricted TL17 BLAST (Shang 2025 benchmark motivation
+        — tail proteins alone match full-genome performance). Restrict the TL17 BLAST
         input to RBP + baseplate + tail-fiber annotated proteins only, re-project.
         **BASEL pre-flight gate** (required before running this arm): count how many
         of the 52 BASEL phages have Pharokka-annotated tail/baseplate/RBP proteins.
         Restricting the BLAST input to a subset of each phage''s proteome can only
         increase the zero-vector fraction. If fewer than 50% of BASEL phages carry
         those annotations, skip this arm on the BASEL side (run Guelin-only) or skip
-        it entirely — the arm cannot rescue a phage whose tail region is not
-        annotated.'
+        it entirely — the arm cannot rescue a phage whose tail region is not annotated.'
       - 'EXPLICIT EXCLUSIONS (known nulls — listed so no future agent re-proposes):
         SaProt / ProstT5 structural PLM (plm-rbp-redundant — -1.22 pp cross-family
         nDCG, actively harmful); PHROG aggregate category counts (phage-functional-noise);
@@ -2427,9 +2426,9 @@ tracks:
         physicochemical RBP descriptors (physicochemical-rbp-insufficient). Panel
         expansion stays out of CH06 — it is a track-level strategic move per panel-size-ceiling,
         not a feature-experiment arm.'
-      - 'ORGANIZING PRINCIPLE: the user''s ask is "gradient/numeric proxies that
-        do not assume a closed vocabulary." Arms 1-3 honor that directly (distance-
-        based, continuous similarity, softmax output). Arm 4 keeps the closed-vocabulary
+      - 'ORGANIZING PRINCIPLE: the user''s ask is "gradient/numeric proxies that do
+        not assume a closed vocabulary." Arms 1-3 honor that directly (distance- based,
+        continuous similarity, softmax output). Arm 4 keeps the closed-vocabulary
         TL17 projection but shrinks its input scope to the proteins that matter (tail
         region). Arms that are just new closed-vocabulary banks (PHROGs, Pfam) do
         not honor the organizing principle.'
@@ -2446,10 +2445,10 @@ tracks:
       - Record per-arm AUC deltas (bacteria-axis and phage-axis, per-source), pre-flight
         verdicts for each skipped or constrained arm, and the verdict on panel-size-ceiling
         vs feature-level fixes in track_CHISEL.md. The notebook entry **must explicitly
-        name and reject each candidate on the exclusion list** (SaProt/ProstT5,
-        PHROG aggregates, dense PHROG categorical, receptor k-mers, physicochemical RBP)
-        with one-line justification per exclusion so no future ticket re-proposes them
-        without having seen the earlier verdicts.
+        name and reject each candidate on the exclusion list** (SaProt/ProstT5, PHROG
+        aggregates, dense PHROG categorical, receptor k-mers, physicochemical RBP)
+        with one-line justification per exclusion so no future ticket re-proposes
+        them without having seen the earlier verdicts.
     - id: CH07
       title: Both-axis holdout evaluation (10 x 10 double cross-validation)
       model: claude-opus-4-6
@@ -2539,42 +2538,41 @@ tracks:
       - CH05
       acceptance_criteria:
       - 'GOAL: turn the CH05 isotonic diagnostic into a deployable calibration layer.
-        CH05 empirically separated two calibration-failure mechanisms: (A) Guelin mid-P
-        miscalibration (ECE 0.12 → 0.008 post-isotonic, 78-89% decile-gap closure) =
-        training-label-vs-deployment-question mismatch (Gaborieau 2024 admits clearing
-        at high titer can be non-productive), fixable post-hoc without any feature or
-        model change; (B) BASEL residual post-isotonic miscalibration (ECE stays 0.11-
-        0.12, 34-37% closure only) = TL17-bias, addressed by CH06, not by calibration.
+        CH05 empirically separated two calibration-failure mechanisms: (A) Guelin
+        mid-P miscalibration (ECE 0.12 → 0.008 post-isotonic, 78-89% decile-gap closure)
+        = training-label-vs-deployment-question mismatch (Gaborieau 2024 admits clearing
+        at high titer can be non-productive), fixable post-hoc without any feature
+        or model change; (B) BASEL residual post-isotonic miscalibration (ECE stays
+        0.11- 0.12, 34-37% closure only) = TL17-bias, addressed by CH06, not by calibration.
         CH09 productionises the layer for (A), confirms it does not transfer to (B),
         and quantifies the label-threshold sensitivity that underlies (A).'
       - 'ARM 1 — Production calibration layer. Train a single isotonic regressor (or
         Platt-scaled logistic) on Guelin CHISEL training-fold predictions, leave-one-
-        fold-out to avoid in-sample overfitting. Persist the fitted calibrator as a
-        pipeline artifact. Apply at inference time to CHISEL prediction outputs.
+        fold-out to avoid in-sample overfitting. Persist the fitted calibrator as
+        a pipeline artifact. Apply at inference time to CHISEL prediction outputs.
         Acceptance: Guelin bacteria-axis ECE < 0.02 and phage-axis ECE < 0.02 on held-
-        out folds under the production layer. AUC within 0.5 pp of raw (ranking
-        preserved under monotone transform, up to isotonic tie-breaking at clipped
-        boundaries).'
-      - 'ARM 2 — Cross-panel transferability report. Apply the Guelin-fitted calibrator
-        to BASEL predictions (both axes) and report ECE closure vs raw. The CH05
-        diagnostic pre-registers ~34-37% closure; replicate on the production layer.
-        If closure drops below 30% or rises above 50%, the finding has shifted — flag
-        and investigate. Document cross-source calibration transferability as a named
-        limit of the deployed layer.'
-      - 'ARM 3 — Label-threshold sensitivity. Re-train CHISEL baseline excluding rows
-        where score=''1'' occurs only at the lowest-titer dilution (log_dilution ≤ -2)
+        out folds under the production layer. AUC within 0.5 pp of raw (ranking preserved
+        under monotone transform, up to isotonic tie-breaking at clipped boundaries).'
+      - ARM 2 — Cross-panel transferability report. Apply the Guelin-fitted calibrator
+        to BASEL predictions (both axes) and report ECE closure vs raw. The CH05 diagnostic
+        pre-registers ~34-37% closure; replicate on the production layer. If closure
+        drops below 30% or rises above 50%, the finding has shifted — flag and investigate.
+        Document cross-source calibration transferability as a named limit of the
+        deployed layer.
+      - ARM 3 — Label-threshold sensitivity. Re-train CHISEL baseline excluding rows
+        where score='1' occurs only at the lowest-titer dilution (log_dilution ≤ -2)
         as a proxy for "clearing-only at high titer, possibly non-productive". Compare
         aggregate AUC + Brier + ECE vs CHISEL baseline. This is the directly-testable
         version of the Gaborieau 2024 hypothesis. If excluding high-titer-only positives
-        lowers raw ECE by > 5 pp, the label-permissiveness mechanism is confirmed at
-        training-side (not just post-hoc calibration). Document findings even if
-        negative — a rule-out is also informative.'
+        lowers raw ECE by > 5 pp, the label-permissiveness mechanism is confirmed
+        at training-side (not just post-hoc calibration). Document findings even if
+        negative — a rule-out is also informative.
       - 'ARTIFACTS: ch09_calibrator.pkl (fitted isotonic), ch09_calibration_report.json
         (raw vs calibrated ECE / Brier / AUC for all source × axis combinations),
         ch09_label_threshold_sensitivity.json (Arm 3 deltas), ch09_summary.csv.'
       - 'KNOWLEDGE: add chisel-post-hoc-calibration-layer unit documenting the production
-        calibrator, its cross-panel transferability limit, and the retraining outcome of
-        Arm 3. Update chisel-unified-kfold-baseline to cross-reference the calibrator.
+        calibrator, its cross-panel transferability limit, and the retraining outcome
+        of Arm 3. Update chisel-unified-kfold-baseline to cross-reference the calibrator.
         If Arm 3 confirms, promote ambiguous-label-noise to a track-wide label-quality
         hypothesis spanning GT09 + CH09.'
       - Record the production calibration layer, its transfer limit, and the label-

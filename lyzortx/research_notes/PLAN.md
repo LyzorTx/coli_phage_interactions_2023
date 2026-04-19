@@ -1432,7 +1432,7 @@ graph LR
   - Record the first CHISEL baseline result, comparison vs CH02 revalidated SX10 (so the reader can see the net effect
     of the frame change on the aggregate number), and feature importance of the concentration feature in
     track_CHISEL.md.
-- [ ] **CH05** Phage-axis and cross-source evaluation under CHISEL frame. Model: `claude-opus-4-6`. CI image profile:
+- [x] **CH05** Phage-axis and cross-source evaluation under CHISEL frame. Model: `claude-opus-4-6`. CI image profile:
       `base`. Depends on tasks: `CH04`.
   - GOAL: SX15 successor under the CHISEL frame. Establishes the honest deployability number for unseen phages and
     verifies cross-source generalization under AUC.
