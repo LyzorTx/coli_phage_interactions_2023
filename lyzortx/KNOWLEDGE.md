@@ -1,9 +1,9 @@
 # Project Knowledge Model
 
-<!-- Last consolidated: 2026-04-19T08:30:00+02:00 -->
+<!-- Last consolidated: 2026-04-19T10:00:00+02:00 -->
 <!-- Source: lyzortx/research_notes/lab_notebooks -->
 
-**62 knowledge units** across 7 themes (44 active, 18 dead ends)
+**64 knowledge units** across 7 themes (45 active, 19 dead ends)
 
 ## Data & Labels
 
@@ -152,22 +152,50 @@ Architecture choices, calibration, and performance bounds.
 - **`tl18-flawed-baseline`**: TL18 model (0.823 AUC) is not a valid baseline: DefenseFinder version drift inflated 17.3%
   of feature importance, and 5 soft-leaky pairwise features contributed ~5.5%. [validated; source: TL18 audit; see also:
   autoresearch-baseline]
-- **`spandex-final-baseline`**: SPANDEX final baseline (Track SPANDEX closing configuration, 2026-04-13; 2026-04-18
-  re-headline under CHISEL frame): GT03 all_gates_rfe + AX02 per-phage blending on SX05-corrected MLC 0-3 labels,
-  10-fold CV bacteria-axis on the 369×96 panel: **AUC 0.8699 [0.8570, 0.8819], Brier 0.1248 [0.1187, 0.1309]**
-  (within-panel). Cross-panel Arm C (train Guelin → predict BASEL × ECOR): **AUC 0.7607 [0.6886, 0.8307], Brier 0.1844
-  [0.1426, 0.2213]**. Historical nDCG/mAP numbers (nDCG 0.7958, mAP 0.7111 within-panel; nDCG 0.7619, mAP 0.5186
-  cross-panel) are retained for SPANDEX-era comparison but are no longer the primary scorecard. SX07 and SX09 cancelled
-  (plm-rbp-redundant); SX08 null. Wave-2 (SX11–SX13) also null under AUC+Brier — see ordinal-regression-not-better,
-  kmer-receptor-expansion-neutral, and host-omp-variation-unpredictive for the per-family outcomes. [validated; source:
-  SX05, SX06, SX08, SX10; see also: autoresearch-baseline, mlc-dilution-potency, new-phage-generalization,
-  plm-rbp-redundant, panel-size-ceiling, label-policy-binary]
-  - *This is the SPANDEX-era within-panel reference. Superseded by chisel-baseline (established in CH04) as the active
-    canonical once CHISEL lands. The 10.9 pp AUC gap between within-panel (0.87) and cross-panel (0.76) is the
-    load-bearing generalization problem inherited by CHISEL; closing it still requires panel expansion rather than
-    richer phage-side features. MLC-derived label scoring and nDCG narratives are historical artifacts of the SPANDEX
-    scorecard and do not constrain CHISEL. Canonical artifacts: lyzortx/generated_outputs/sx05_sx01_eval/ (within-panel)
-    and lyzortx/generated_outputs/sx06_sx03_eval/ (cross-panel Arm C).*
+- **`chisel-baseline`**: CHISEL canonical baseline (CH04, 2026-04-19): per-row binary training on every interpretable
+  (bacterium, phage, log_dilution, replicate, X, Y) raw observation with `pair_concentration__log_dilution` as a numeric
+  feature, SX10 feature bundle otherwise unchanged (host_surface + host_typing + host_stats + host_defense +
+  phage_projection + phage_stats + pair_depo_capsule + pair_receptor_omp, RFE-selected), **all-pairs only** (AX02
+  per-phage blending retired, see per-phage-retired-under-chisel), 10-fold bacteria-axis CV under CH02 cv_group hashing,
+  369×96 panel. Evaluation: each held-out pair scored at its max observed log_dilution (all 35,266 pairs tested at
+  log_dilution=0, so evaluation is at neat concentration) with bacterium-level bootstrap CIs (1000 resamples). Result:
+  **AUC 0.8084 [0.7944, 0.8217], Brier 0.1750 [0.1677, 0.1824]**. This is the active reference point for all future
+  CHISEL arms. [validated; source: CH04, 2026-04-19 CHISEL baseline; see also: spandex-final-baseline,
+  cv-group-leakage-fixed, label-policy-binary, ranking-metrics-retired, per-phage-retired-under-chisel, deployment-goal]
+  - *CH04 drops substantially from the CH02 revalidated baseline (AUC 0.8521, Brier 0.1317): ΔAUC = −4.37 pp, ΔBrier =
+    +4.33 pp, with disjoint 95% CIs on both. Three changes compound between the two numbers: (a) per-row training
+    replaces pair-level any_lysis — every (bacterium, phage, log_dilution, replicate, X, Y) raw observation with score ∈
+    {0, 1} becomes its own training row (rows with score = "n" are dropped as missing, not negative); (b) log_dilution
+    enters as a numeric feature so the model must predict at a specific concentration rather than "does this pair ever
+    lyse?"; (c) AX02 per-phage blending is retired (see per-phage-retired-under-chisel), removing the bacterium-level
+    memorization head that contributed to CH02's AUC under the bacteria-axis setup. Diagnostic decomposition: evaluation
+    label distribution is nearly unchanged (27.4% positive at max-conc vs 27.6% pair-level any_lysis — ~47 pair labels
+    flip), so the drop is training-side, not evaluation-side. The concentration feature is the #4 ranked feature by mean
+    LightGBM importance (328.70, retained by RFE in all 30 fold × seed fits, above every receptor-OMP cross-term).
+    CHISEL takes the 4.4 pp aggregate-AUC cost in exchange for a deployable per-observation predictor aligned with
+    deployment-goal. Subsequent CHISEL tickets (CH05 phage-axis, CH06 both-axis, CH07 feature re-audit) are anchored to
+    this baseline, not to SPANDEX numbers. Canonical artifacts:
+    lyzortx/generated_outputs/ch04_chisel_baseline/ch04_aggregate_metrics.json, ch04_predictions.csv (pair-level),
+    ch04_per_row_predictions.csv (per-row), and ch04_feature_importance.csv.*
+- **`spandex-final-baseline`**: HISTORICAL (SPANDEX-era). Superseded as the active canonical by chisel-baseline (CH04).
+  SPANDEX final configuration — GT03 all_gates_rfe + AX02 per-phage blending on SX05-corrected MLC 0-3 labels, 10-fold
+  CV bacteria-axis on the 369×96 panel: **AUC 0.8699 [0.8570, 0.8819], Brier 0.1248 [0.1187, 0.1309]** within-panel,
+  inflated by the cv_group fold-hashing bug (see cv-group-leakage-fixed). CH02 revalidation under fixed folds lands at
+  **AUC 0.8521 [0.8381, 0.8649], Brier 0.1317 [0.1253, 0.1381]**. Cross-panel Arm C (train Guelin → predict BASEL ×
+  ECOR): AUC 0.7607 [0.6886, 0.8307], Brier 0.1844 [0.1426, 0.2213]. Historical nDCG/mAP numbers (nDCG 0.7958, mAP
+  0.7111 within-panel; nDCG 0.7619, mAP 0.5186 cross-panel) are retained for SPANDEX-era comparison but are no longer on
+  the scorecard. SX07 and SX09 cancelled (plm-rbp-redundant); SX08 null. Wave-2 (SX11–SX13) also null under AUC+Brier —
+  see ordinal-regression-not-better, kmer-receptor-expansion-neutral, and host-omp-variation-unpredictive. [validated;
+  source: SX05, SX06, SX08, SX10; see also: chisel-baseline, autoresearch-baseline, mlc-dilution-potency,
+  new-phage-generalization, plm-rbp-redundant, panel-size-ceiling, label-policy-binary, cv-group-leakage-fixed]
+  - *The 10.9 pp AUC gap between within-panel (0.87) and cross-panel (0.76) is the load-bearing generalization problem
+    inherited by CHISEL; closing it still requires panel expansion rather than richer phage-side features. MLC-derived
+    label scoring and nDCG narratives are historical artifacts of the SPANDEX scorecard and do not constrain CHISEL.
+    Per-family null conclusions remain valid — the leakage bug was a uniform inflation across arms, not an arm-selective
+    effect. CHISEL's per-row training (CH04) lands at 4.4 pp lower AUC than CH02 revalidated; the SPANDEX within-panel
+    number is not a ceiling CHISEL needs to re-hit, because the training unit and evaluation question are both
+    different. Canonical SPANDEX artifacts: lyzortx/generated_outputs/sx05_sx01_eval/ (within-panel) and
+    lyzortx/generated_outputs/sx06_sx03_eval/ (cross-panel Arm C).*
 - **`stratified-eval-framework`**: CHISEL rescope: per-stratum reporting is a narrow-host diagnostic, not a primary
   scorecard. Under AUC+Brier, aggregate and stratified metrics are more aligned than under nDCG — the SPANDEX marquee
   case (SX11 LambdaRank +3.5 pp within-family nDCG, null in aggregate) does not survive the metric change. CHISEL
@@ -210,14 +238,20 @@ Architecture choices, calibration, and performance bounds.
   - *Defense features help discrimination (AUC) but hurt ranking (top-3) due to lineage confounding. LightGBM's native
     feature selection is not aggressive enough to ignore noisy defense subtypes. GenoPHI found RFE is the optimal
     feature selection method.*
-- **`per-phage-blending-dominant`**: Per-phage LightGBM sub-models blended with all-pairs predictions are the dominant
+- **`per-phage-blending-dominant`**: HISTORICAL (SPANDEX-era, retired under CHISEL — see
+  per-phage-retired-under-chisel). Per-phage LightGBM sub-models blended with all-pairs predictions were the dominant
   AUTORESEARCH architectural gain: +2.0pp AUC (0.810->0.830) on ST03 holdout, +3.1pp top-3 (90.8%->93.8%), and -2.3pp
   Brier (0.167->0.144). Surpasses TL18 on AUC (+0.7pp) and matches top-3 (93.8% vs 93.7%). [validated; source:
-  2026-04-09 APEX ablation, 2026-04-09 APEX holdout; see also: adsorption-dominates-paper, family-bias-straboviridae,
-  autoresearch-baseline, per-phage-not-deployable, deployment-goal]
+  2026-04-09 APEX ablation, 2026-04-09 APEX holdout; see also: per-phage-retired-under-chisel, per-phage-not-deployable,
+  cv-group-leakage-fixed, chisel-baseline, deployment-goal]
   - *Each phage gets its own 32-tree LightGBM on host-only features (surface + typing + stats), blended 50/50 with
     all-pairs predictions. Bootstrap CIs overlap with TL18 — differences not statistically significant on 65-bacteria
-    holdout.*
+    holdout. The +2 pp gain was inflated by two confounders that are both closed under CHISEL: (1) the pre-CH02
+    fold-leakage bug (45 of 48 multi-bacterium cv_groups split across folds) let per-phage models memorize
+    bacterium-level priors and recognize near-duplicate bacteria in held-out folds; (2) CH04's per-row diagnostic showed
+    per-phage deflates positive predictions by ~5 pp under per-row training because the per-phage head sees 9 rows per
+    bacterium with identical host features but mixed labels (no visibility to log_dilution). Not to be re-enabled in
+    CHISEL or successor tracks.*
 - **`adsorption-first-strategy`**: Adsorption-first modeling (host surface + typing features) is the correct critical
   path; defense features contribute but are not gate-critical for first baseline. [validated; source: 2026-04-05 replan,
   antiphage-landscape reading; see also: autoresearch-baseline]
@@ -308,9 +342,21 @@ Feature derivation parity, raw-input pipeline, and pre-computation.
 - **`per-phage-not-deployable`**: Per-phage sub-models (0.830 AUC) are not deployable and not a valid comparison
   baseline: they require training-time interaction data for each phage and cannot produce predictions for unseen phages.
   [validated; source: 2026-04-09 APEX holdout, 2026-04-09 project direction; see also: per-phage-blending-dominant,
-  deployment-goal, autoresearch-baseline]
+  per-phage-retired-under-chisel, deployment-goal, autoresearch-baseline]
   - *The +2.0pp AUC gain over all-pairs is real on the fixed-panel holdout but non-transferable. All future track
     comparisons should use the all-pairs 0.810 baseline, not per-phage 0.830.*
+- **`per-phage-retired-under-chisel`**: CHISEL retires per-phage blending (AX02) entirely. Do not re-enable it in CHISEL
+  or successor tracks. Rationale: (1) `per-phage-not-deployable` — per-phage models memorize phage-specific
+  bacterium-level priors and cannot transfer to unseen phages, which contradicts the CHISEL `deployment-goal` of
+  generalization along both host and phage axes. (2) The SPANDEX +2 pp bacteria-axis gain was partly a leakage artifact
+  — `cv-group-leakage-fixed` closed a fold-hashing bug that let per-phage models recognize near-duplicate bacteria
+  across the train/test boundary; the post-fix per-phage gain was never cleanly measured. (3) CH04's per-row diagnostic
+  found per-phage deflates positive predictions by ~5 pp under per-row training (the per-phage head sees 9 rows per
+  bacterium with identical host features but mixed labels and no log_dilution visibility, collapsing to mean lysis rate
+  across dilutions). (4) The phage-axis generalization question per-phage was silently answering is measured directly by
+  CH05 (phage-axis k-fold) with held-out phages — a cleaner, deployment-aligned measurement. [validated; source: CH04,
+  2026-04-19 CHISEL design; see also: per-phage-blending-dominant, per-phage-not-deployable, chisel-baseline,
+  cv-group-leakage-fixed, deployment-goal]
 - **`picard-assemblies`**: Picard Figshare assemblies (403 FASTAs, 1.9GB, CC BY 4.0) are the authoritative source for
   raw-input feature derivation; not all 403 have interaction labels. [validated; source: DEPLOY01]
 

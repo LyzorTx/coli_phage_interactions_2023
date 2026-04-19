@@ -75,6 +75,45 @@ base rate uninformatively, 0.12–0.13 = our working range (informative but with
 be excellent, <0.05 = typical of much easier problems. Our SX10 Brier of 0.125 means we're
 materially better-calibrated than guessing the base rate.
 
+## Bootstrap confidence interval
+
+A non-parametric way to put a confidence interval on a statistic (like AUC or Brier) when there's
+no clean closed-form formula for its sampling distribution. The trick: treat your observed sample
+as if it were the full population, then simulate "another draw" by **sampling with replacement**
+from your own data. Compute the statistic on each resample. The 2.5th and 97.5th percentiles of
+the resulting 1,000 numbers are your 95% CI.
+
+**Why the bootstrap at all, instead of a classical formula?** AUC is a U-statistic — it's the
+rank of positives among negatives (see AUC entry), not a mean. Every (positive, negative) pair
+contributes interactively, so classical variance formulas (Hanley-McNeil, DeLong) require
+distributional assumptions that break under class imbalance, correlated predictions, or small
+samples. Bootstrap sidesteps all of it: you never have to write down a formula for the sampling
+distribution — you simulate it.
+
+**Why "with replacement"**: without replacement, every resample is just a permutation of the
+original — the statistic would never change. Replacement lets some observations appear multiple
+times and others not at all, which is what genuine sampling variability looks like. On any given
+resample, roughly 37% (1/*e*) of the original items are absent.
+
+**Why bacterium-level, not pair-level, for us**: pairs within a single bacterium share the host
+genome and host features. If the model's host encoding is wrong for bacterium X, all ~96 of X's
+pair predictions are miscalibrated together — they're correlated, not independent. Bootstrap
+theory requires independent resampling units. A pair-level bootstrap would hide this clustering
+and produce **falsely narrow CIs**, because it'd almost never leave all of X's pairs out at once.
+Effective sample size drops from pair-count (≈ 35,000) to bacterium-count (≈ 369) when you
+account for the correlation — orders of magnitude. We resample 369 bacteria with replacement,
+pull in all their pair predictions, compute AUC+Brier, repeat 1,000 times.
+
+**Which axis to resample depends on what's held out**: bacteria-axis CV (SX10/CH04) holds
+bacteria out, so bacteria are the independent unit — resample bacteria. Phage-axis CV (CH05)
+holds phages out — resample phages. Both-axis (CH06) held-out region — potentially resample
+both. The bootstrap unit tracks the generalization question the metric answers, not just the
+observation count. See `bootstrap_auc_brier_by_bacterium` (CH04),
+`bootstrap_spandex_cis` (SPANDEX era).
+
+See also: `error-buckets` and `st03-canonical-benchmark` for how small holdouts (65 bacteria)
+make CI width load-bearing for interpretation.
+
 ## Concentration-aware training unit
 
 The atomic training row from Track CHISEL onward: one observation = one `(bacterium, phage,

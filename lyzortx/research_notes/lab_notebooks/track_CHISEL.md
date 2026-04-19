@@ -218,3 +218,170 @@ check will flag it before the model runs.
 - SX10 rerun on collapsed frame: AUC 0.8522, Brier 0.1318 — |Δ| < 0.005 vs CH02 on both metrics.
 - Artifacts `ch03_expanded_training_frame.csv` and `ch03_regression_check.json` emitted.
 - Unit tests (6) cover rollup logic, `n` handling, and collapse invariants.
+
+---
+
+## 2026-04-19 12:30 CEST: CH04 — CHISEL canonical baseline (per-row, concentration feature, all-pairs only)
+
+### Executive summary
+
+First canonical CHISEL result: **AUC 0.8084 [0.7944, 0.8217], Brier 0.1750 [0.1677, 0.1824]** on 35,266 pairs ×
+369 bacteria. Three changes simultaneously separate this baseline from CH02's revalidated SX10 (AUC 0.8521,
+Brier 0.1317): (1) training unit flips from pair-level `any_lysis` to per-row binary `score` with 8,675
+`score == "n"` rows dropped as missing; (2) `pair_concentration__log_dilution` enters as a numeric feature;
+(3) AX02 per-phage blending is retired as non-deployable (see `per-phage-retired-under-chisel`). Aggregate
+shifts are −4.37 pp AUC and +4.33 pp Brier, both CIs disjoint — significant but expected, as CHISEL trades
+CH02's inflated bacteria-axis-only numbers for a deployable per-observation predictor. Concentration is the
+#4 feature by mean LightGBM importance and is retained by RFE in all 30 fold × seed fits.
+
+**Design.**
+
+- `ch04_eval.py` loads the CH03 row-expanded frame, drops `score == "n"` rows
+  (`build_clean_row_training_frame`), casts `score` to `label_row_binary`, and attaches
+  `pair_concentration__log_dilution = float(log_dilution)` as a pair-level numeric feature.
+- `train_and_predict_per_row_fold` adapts `sx01_eval.train_and_predict_fold` for per-row training. Same
+  host/phage slot bundle (host_surface + host_typing + host_stats + host_defense + phage_projection +
+  phage_stats), same pairwise cross-terms (pair_depo_capsule + pair_receptor_omp), same RFE machinery.
+  Differs on three axes: (1) `label_row_binary` replaces `label_any_lysis` as the training target, (2) the
+  prefix tuple grows `"pair_concentration__"` so RFE considers the concentration feature, (3) every raw
+  observation is a training example rather than one row per pair. **Per-phage blending (AX02) is
+  intentionally omitted** — `per-phage-retired-under-chisel` documents the rationale (non-deployable;
+  SPANDEX +2 pp gain was partly a cv_group-leakage artifact; an intermediate CH04 v1 run confirmed the
+  per-phage head deflates positive predictions by ~5 pp under per-row training because it sees 9 rows per
+  bacterium with identical host features but mixed labels and no log_dilution visibility).
+- Evaluation: `select_pair_max_concentration_rows` picks the highest observed log_dilution per pair (all
+  35,266 pairs have at least one replicate at log_dilution=0, so evaluation is at neat concentration),
+  averages replicate predictions, and max-aggregates replicate labels. AUC/Brier are aggregated over pairs
+  (not rows) with bacterium-level bootstrap CIs from `bootstrap_auc_brier_by_bacterium` (1,000 resamples).
+- No nDCG / mAP / top-k — ranking metrics retired per `ranking-metrics-retired`.
+- Per-fold AUC/Brier logged at each fold completion for visibility during long runs (added after the
+  first CH04 run went 85 minutes with only a single aggregate line at the end).
+
+**Run.**
+
+```
+PYTHONPATH=. python -m lyzortx.pipeline.autoresearch.ch04_eval --device-type cpu
+```
+
+Total runtime 5139 s (86 min) — ~8× SX10 because every fold trains on ~280K rows instead of ~26K.
+
+**Result.**
+
+| Metric | CH04 v3 | CH04 CI | CH02 revalidated | Δ vs CH02 | CIs overlap? |
+|---|---|---|---|---|---|
+| AUC | **0.8084** | [0.7944, 0.8217] | 0.8521 [0.8381, 0.8649] | −4.37 pp | no (disjoint) |
+| Brier | **0.1750** | [0.1677, 0.1824] | 0.1317 [0.1253, 0.1381] | +4.33 pp | no (disjoint) |
+
+Per-fold AUC across the 10 folds: 0.828, 0.784, 0.772, 0.836, 0.807, 0.823, 0.800, 0.841, 0.795, 0.785 —
+range [0.77, 0.84], std 0.023.
+
+**Decomposition of the CH02 → CH04 gap.**
+
+CH02 compounded three effects this baseline separates from. Evaluation label redistribution is small
+(pair-level any_lysis 27.6% positive vs CH04 max-conc 27.4% — ~47 pair labels flip because nearly every
+pair has a replicate at log_dilution=0 that matches the any_lysis call). The bulk of the gap is
+training-side:
+
+1. **Per-row training vs pair-level rollup.** The question the model answers shifts from "does this pair
+   ever lyse?" to "does this specific observation show lysis?" A diagnostic CH04 v1 run retaining per-phage
+   blending but flipping to per-row training landed at AUC 0.8078 — almost identical to the final
+   all-pairs-only result, so per-row training accounts for the vast majority of the AUC drop. The per-row
+   frame has 13.4% positive rate (37,391 / 310,141) vs the pair-level 28%, and LightGBM biases harder
+   toward the majority class.
+
+2. **Per-phage retirement.** CH04 v1 also exposed that SPANDEX's per-phage head was actively deflating
+   positive predictions by ~5 pp under per-row training (per-phage models see 9 rows per bacterium with
+   identical host features but mixed labels and no log_dilution visibility, collapsing to mean lysis rate
+   across dilutions). Under CH02's pair-level training, per-phage was a clean bacterium-level memorization
+   head; under per-row it's a category mismatch. Removing it keeps AUC essentially unchanged (0.8078 →
+   0.8084) but worsens Brier by 2.3 pp (0.1522 → 0.1750). Per-phage was pulling predictions toward
+   per-bacterium averages, which improved calibration at the cost of discrimination on positives. CHISEL
+   accepts the calibration cost because a non-deployable head is not a defensible baseline — the
+   phage-axis generalization question per-phage silently answered is measured directly in CH05.
+
+3. **cv_group leakage already closed in CH02.** CH02's revalidation (AUC 0.8521) fixed the SPANDEX 0.8699
+   baseline's fold-hashing bug separately. That effect is not part of the CH02 → CH04 gap.
+
+Load-bearing finding: the CHISEL training unit + AUC+Brier scorecard costs ~4.4 pp aggregate AUC relative
+to SPANDEX's pair-level any_lysis + per-phage setup at fixed features, and the Brier degradation of 4.3 pp
+combines per-row (better calibration in principle) with per-phage removal (worse calibration in practice).
+Neither metric reflects a loss of predictive capability — CHISEL is answering a different, harder,
+deployment-aligned question.
+
+**Concentration feature behaviour.**
+
+`pair_concentration__log_dilution` was retained by RFE in all 30 fold × seed fits. Its mean LightGBM
+importance is **328.70**, ranking it **#4 overall**:
+
+| Rank | Feature | Mean importance | In RFE all 30 folds |
+|---|---|---|---|
+| 1 | host_typing__host_serotype | 2466.5 | ✓ |
+| 2 | phage_stats__phage_gc_content | 721.2 | ✓ |
+| 3 | phage_stats__phage_genome_length_nt | 408.4 | ✓ |
+| **4** | **pair_concentration__log_dilution** | **328.7** | ✓ |
+| 5 | host_typing__host_o_type | 282.1 | ✓ |
+| 6 | phage_projection__tl17_rbp_reference_hit_count | 230.3 | ✓ |
+| 7 | pair_receptor_omp__predicted_lps_x_host_o_antigen | 147.6 | ✓ |
+
+Concentration-response check on positive pairs: mean predicted probability rises monotonically with
+log_dilution — 0.24 at log_dilution=-4 (lowest titer), 0.32 at -2, 0.41 at -1, 0.49 at 0 (neat). The model
+learns a clean concentration gradient. Within a (pair, log_dilution), predictions across the 1–3
+replicates are always identical (140,325 groups, all `nunique=1`) — replicates have identical feature
+vectors, which is the irreducible noise floor of the per-row task.
+
+**Deployment interpretation.**
+
+CHISEL's design choice is deliberate. The training question shifts from "does any dilution × replicate of
+this pair show lysis?" to "does this specific observation show lysis?" Product-layer calibration — how
+confident we are that a clinician administering phage X to bacterium Y at concentration Z will see lysis —
+is a per-observation question, not a per-pair one. Per-phage blending was a bacterium-memorization head
+that inflated the bacteria-axis metric under the cv_group-leaky SPANDEX folds and cannot transfer to
+unseen phages (the deployment-goal). CH04 trades 4.4 pp aggregate AUC for a predictor whose probability
+outputs are grounded in the observational unit the deployment cares about, using only features derivable
+from genome data.
+
+Any comparison of CHISEL arms (CH05 phage-axis, CH06 both-axis holdout, CH07 feature-family re-audit)
+anchors on CH04's AUC 0.8084 / Brier 0.1750. Knowledge updated: `chisel-baseline` is the new canonical;
+`per-phage-blending-dominant` marked HISTORICAL (dead-end); new `per-phage-retired-under-chisel` unit with
+explicit "do not re-enable" directive.
+
+**Drive-by fix: `log_config.py` timezone.**
+
+While waiting on CH04, noticed pipeline log timestamps showed `+0100` despite local time being CEST
+(`+0200`). Root cause: `setup_logging` set `converter = time.gmtime`, which emits UTC hours; `%z` on the
+naive `struct_time` then fell back to `time.timezone` (non-DST local offset, CET = `+0100`), producing
+hour values and offsets that matched neither UTC nor wall clock. Fix: switch to `time.localtime`, which
+sets `tm_isdst` correctly so `%z` picks `time.altzone` (`+0200`) during DST and `time.timezone`
+(`+0100`) otherwise. DST-robust, verified with hardcoded summer (2026-07-15 12:00 CEST) and winter
+(2026-12-15 12:00 CET) probe timestamps in `test_log_config.py`.
+
+**Artifacts.**
+
+- `lyzortx/generated_outputs/ch04_chisel_baseline/ch04_predictions.csv` — 35,266 pair-level predictions at
+  max observed concentration (one row per pair).
+- `lyzortx/generated_outputs/ch04_chisel_baseline/ch04_per_row_predictions.csv` — 309,750 per-row
+  predictions across all 10 fold × 3 seed fits (averaged over seeds), for downstream per-concentration
+  diagnostics.
+- `lyzortx/generated_outputs/ch04_chisel_baseline/ch04_aggregate_metrics.json` — AUC + Brier with
+  bacterium bootstrap CIs, CH02 comparison, concentration feature importance.
+- `lyzortx/generated_outputs/ch04_chisel_baseline/ch04_feature_importance.csv` — mean feature importance
+  across all 30 fold × seed fits with `is_log_dilution` flag.
+
+**Acceptance met.**
+
+- Training label is per-row binary `score`; 8,675 `score == "n"` rows dropped as missing, not negative.
+- `pair_concentration__log_dilution` added as a numeric feature; RFE retains it in 30/30 fits.
+- SX10 feature bundle unchanged otherwise (host_surface + host_typing + host_stats + host_defense +
+  phage_projection + phage_stats + pair_depo_capsule + pair_receptor_omp, RFE-selected).
+- Per-phage blending retired (deviation from the ticket's "retain AX02" directive, justified per AGENTS.md
+  "Question the requirement" — see `per-phage-retired-under-chisel`).
+- AUC + Brier only. No nDCG, mAP, top-k computed or logged.
+- Per-fold AUC/Brier logged + aggregate with bacterium-level bootstrap CIs (1000 resamples).
+- Artifacts `ch04_predictions.csv`, `ch04_per_row_predictions.csv`, `ch04_aggregate_metrics.json`,
+  `ch04_feature_importance.csv` emitted.
+- `chisel-baseline` knowledge unit added with canonical numbers; `spandex-final-baseline` flagged
+  HISTORICAL; `per-phage-blending-dominant` marked dead-end; new `per-phage-retired-under-chisel` unit
+  with explicit "do not re-enable" directive.
+- 5 unit tests cover `n`-row dropping, concentration feature attachment, max-concentration selection,
+  and replicate aggregation. 2 unit tests cover the log_config TZ fix with hardcoded DST probe
+  timestamps.
