@@ -393,11 +393,13 @@ sets `tm_isdst` correctly so `%z` picks `time.altzone` (`+0200`) during DST and 
 ### Executive summary
 
 CH05 measures two-axis generalization under all-pairs-only on the unified 148-phage × 369-bacterium
-panel (36,643 pairs: 35,403 Guelin + 1,240 BASEL). Headline numbers (pre-encoding-fix run):
-**bacteria-axis AUC 0.8061 [0.7917, 0.8199]**; **phage-axis AUC 0.8850 [0.8617, 0.9062]**. Three
+panel (36,643 pairs: 35,403 Guelin + 1,240 BASEL). Headline numbers (post-encoding-fix rerun under
+absolute log₁₀ pfu/ml; Guelin-side fold-level bit-identical, BASEL-side aggregate within sampling
+noise of the pre-fix run):
+**bacteria-axis AUC 0.8063 [0.7919, 0.8202]**; **phage-axis AUC 0.8849 [0.8616, 0.9059]**. Three
 substantive findings fall out, each separate from the others:
 
-1. **Phage-axis discrimination parity**: Guelin AUC 0.8863 vs BASEL AUC 0.8818, |ΔAUC| 0.0045 — a
+1. **Phage-axis discrimination parity**: Guelin AUC 0.8861 vs BASEL AUC 0.8829, |ΔAUC| 0.0032 — a
    weak non-rejection on 52 BASEL phages (CI 3× wider than Guelin's), not positive evidence of
    equivalence.
 2. **Phage-axis calibration divergence**: Guelin Brier 0.1329 vs BASEL Brier 0.1884 — 42% relative
@@ -438,19 +440,19 @@ this caveat).
 **Run.** `PYTHONPATH=. python -m lyzortx.pipeline.autoresearch.ch05_eval --device-type cpu` —
 10,774 s (3 hr): 2 axes × 10 folds × 3 seeds on ~270–290K rows per fit.
 
-**Results (BASEL encoded at log_dilution=0).**
+**Results (BASEL encoded at absolute log₁₀ pfu/ml = 9.0, Guelin neat = 8.7).**
 
 | Quantity | Value | 95% CI |
 |---|---|---|
-| Bacteria-axis AUC | 0.8061 | [0.7917, 0.8199] |
+| Bacteria-axis AUC | 0.8063 | [0.7919, 0.8202] |
 | Bacteria-axis Brier | 0.1778 | [0.1702, 0.1853] |
-| Phage-axis AUC | 0.8850 | [0.8617, 0.9062] |
-| Phage-axis Brier | 0.1348 | [0.1219, 0.1495] |
-| Phage-axis Guelin subset AUC | 0.8863 | [0.8653, 0.9078] |
-| Phage-axis BASEL subset AUC | 0.8818 | [0.8194, 0.9320] |
-| Phage-axis Guelin subset Brier | 0.1329 | [0.1191, 0.1472] |
-| Phage-axis BASEL subset Brier | **0.1884** | [0.1581, 0.2206] |
-| Phage-axis generalization gap (bacteria − phage AUC) | −0.0789 | CIs disjoint |
+| Phage-axis AUC | 0.8849 | [0.8616, 0.9059] |
+| Phage-axis Brier | 0.1349 | [0.1221, 0.1497] |
+| Phage-axis Guelin subset AUC | 0.8861 | [0.8652, 0.9077] |
+| Phage-axis BASEL subset AUC | 0.8829 | [0.8207, 0.9324] |
+| Phage-axis Guelin subset Brier | 0.1330 | [0.1191, 0.1472] |
+| Phage-axis BASEL subset Brier | **0.1881** | [0.1580, 0.2208] |
+| Phage-axis generalization gap (bacteria − phage AUC) | −0.0785 | CIs disjoint |
 
 Per-fold AUC bacteria-axis: 0.822, 0.783, 0.781, 0.835, 0.806, 0.816, 0.798, 0.840, 0.794, 0.781
 (std 0.023). Per-fold phage-axis: 0.884, 0.938, 0.890, 0.900, 0.865, 0.914, 0.896, 0.895, 0.841, 0.875
@@ -566,7 +568,7 @@ overclaims — AUC and nDCG responding differently does not *prove* one was an a
 two metrics are sensitive to different aspects of the prediction distribution. CH05 data actually
 supports three separate findings, not a single parity statement:
 
-- **Phage-axis discrimination parity**: |AUC gap| 0.0045 << 1 pp. BASEL CI is 3× wider than Guelin's
+- **Phage-axis discrimination parity**: |AUC gap| 0.0032 << 1 pp. BASEL CI is 3× wider than Guelin's
   on 52 phages vs 96 — "indistinguishable" is a weak non-rejection on small N, not positive evidence
   of transfer.
 - **Phage-axis calibration divergence**: Guelin Brier 0.1329 vs BASEL 0.1884, disjoint CIs, 42%

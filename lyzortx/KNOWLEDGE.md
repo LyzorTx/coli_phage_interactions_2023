@@ -216,7 +216,7 @@ Architecture choices, calibration, and performance bounds.
   StratifiedKFold by ICTV family + "other" <10-phage bucket + "UNKNOWN" no-family bucket — 40% of folds are
   pseudo-family catch-alls; calling it "ICTV-stratified" without that qualifier misleads). This unit replaces the
   earlier "cross-source AUC parity" headline with three separate findings: **(1) phage-axis discrimination parity**
-  (Guelin 0.8863 vs BASEL 0.8818, |ΔAUC| 0.0045 — a weak non-rejection on 52 BASEL phages with CI 3× wider than
+  (Guelin 0.8861 vs BASEL 0.8829, |ΔAUC| 0.0032 — a weak non-rejection on 52 BASEL phages with CI 3× wider than
   Guelin's, not positive evidence of transfer); **(2) phage-axis calibration divergence** (Guelin Brier 0.1329 vs BASEL
   0.1884, disjoint CIs, BASEL mid-P reliability gap 21-27 pp wider than Guelin's in the 0.5-0.9 predicted-probability
   bins); **(3) BASEL bacteria-axis deficit** (BASEL-only bacteria-axis AUC 0.7152 on the 1,240 BASEL pairs vs

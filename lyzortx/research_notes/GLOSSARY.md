@@ -322,7 +322,7 @@ deployability floor. See `per-phage-not-deployable`, `deployment-goal`.
 
 **Our canonical setup**: 10-fold CV over the 148 unified panel phages (CH05), stratified by ICTV
 family + "other" (<10 phages) + "UNKNOWN" (no family) catch-all. Result under CH05: aggregate AUC
-0.8850, Brier 0.1348. Cross-source AUC parity holds (Guelin 0.8863 vs BASEL 0.8818) **but**
+0.8850, Brier 0.1349. Cross-source AUC parity holds (Guelin 0.8861 vs BASEL 0.8829) **but**
 cross-source calibration diverges (Brier 0.1329 vs 0.1884) — the earlier SX15 claim "BASEL phages
 generalize as well as Guelin" was a discrimination-only finding, not deployment readiness. See
 `chisel-unified-kfold-baseline` for the three separate findings (discrimination parity, calibration
