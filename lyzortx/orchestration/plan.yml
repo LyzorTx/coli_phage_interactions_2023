@@ -2431,6 +2431,7 @@ tracks:
       status: pending
       depends_on_tasks:
       - CH04
+      - CH06
       acceptance_criteria:
       - 'GOAL: verify SPANDEX wave-2 feature-family nulls (SX12 Moriniere phage k-mers,
         SX13 host OMP k-mers) still hold under the CHISEL training frame. These were

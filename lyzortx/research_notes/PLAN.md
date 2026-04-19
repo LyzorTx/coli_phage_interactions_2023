@@ -1529,7 +1529,7 @@ graph LR
     feature/model choices, not panel size, may be the binding constraint.
   - Record both-axis methodology, per-cell distribution commentary, and critic-framing verdict in track_CHISEL.md.
 - [ ] **CH08** Wave-2 feature-family re-audit under CHISEL frame. Model: `claude-opus-4-6`. CI image profile: `base`.
-      Depends on tasks: `CH04`.
+      Depends on tasks: `CH04`, `CH06`.
   - GOAL: verify SPANDEX wave-2 feature-family nulls (SX12 Moriniere phage k-mers, SX13 host OMP k-mers) still hold
     under the CHISEL training frame. These were feature-family claims, not metric-artifact claims, so the expected
     result is "still null" — but the check is cheap and the verification lets us retire the wave-2 nulls cleanly under
