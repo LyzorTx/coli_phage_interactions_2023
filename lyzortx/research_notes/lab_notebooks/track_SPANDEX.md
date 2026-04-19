@@ -1446,3 +1446,39 @@ Add `spandex-unified-kfold-baseline` unit recording:
 - Phage-axis metrics: `lyzortx/generated_outputs/sx15_eval/sx15_phage_axis_stratified_metrics.csv`
 - Per-pair predictions with all stratum labels: `sx15_{bacteria,phage}_axis_predictions.csv`
 - Side-by-side comparison: `lyzortx/generated_outputs/sx15_eval/sx15_comparison_table.md`
+
+### 2026-04-19 07:30 CEST: SPANDEX closed — continuing in Track CHISEL
+
+#### Executive summary
+
+Wave-2 (SX11 potency losses, SX12 phage k-mers, SX13 host OMP k-mers) was the final SPANDEX wave.
+None of the three feature families lifted the AUC+Brier scorecard; SX11 LambdaRank regressed AUC
+by 3.4 pp. SX07/SX09 (BASEL PLM extension + per-functional-class PLM blocks) were cancelled rather
+than pursued — `plm-rbp-redundant` already showed PLM features add zero lift within-panel and hurt
+cross-family, and no metric change in this track reverses that. All continuing modeling work moves
+to Track CHISEL, which retires MLC as a training/evaluation label, drops ranking metrics
+(nDCG/mAP/top-3) from the scorecard, and switches the atomic training unit to the raw
+`(bacterium, phage, concentration, replicate) → {0, 1}` observation. See
+`lyzortx/research_notes/lab_notebooks/project.md` for the design rationale.
+
+#### What stays usable from SPANDEX
+
+- `spandex-final-baseline` (SX10 within-panel reference) and `spandex-unified-kfold-baseline`
+  (SX15 bacteria-axis + phage-axis reference) remain the numerical anchors until CHISEL
+  establishes `chisel-baseline` (CH04) and `chisel-unified-kfold-baseline` (CH05).
+- Four-stratum evaluation machinery (`sx14_eval.py`, stratum definitions, bootstrap) is retained
+  as a narrow-host diagnostic; it is no longer required reporting for every ticket.
+- `case-by-case/compare_predictions.py` is carried over unchanged for per-bacterium audit use.
+
+#### What SPANDEX closes as permanent nulls
+
+Under the SPANDEX MLC/nDCG scorecard these were each evaluated once and rejected; none should be
+re-pursued without a concrete mechanistic argument independent of their prior dead-end
+classification. CHISEL CH07 will re-audit the feature-family side under the new label frame:
+
+- SX04 + SX11: five ordinal/ranking loss formulations, all null under AUC (`ordinal-regression-not-better`).
+- SX12: Moriniere 815-kmer phage receptor-class features (`kmer-receptor-expansion-neutral`).
+- SX13: host OMP k-mer and cluster features, including the SX12×SX13 cross-term
+  (`host-omp-variation-unpredictive`).
+- AX07/AX08 and the retired SX07/SX09: ProstT5→SaProt RBP PLM embeddings, ESM-2 alternatives,
+  per-functional-class pooling — all covered by `plm-rbp-redundant`.
