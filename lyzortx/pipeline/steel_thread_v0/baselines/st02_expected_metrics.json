@@ -1,36 +1,34 @@
 {
-  "artifacts": {
-    "pair_table_csv_sha256": "40a16b5627ab4490d155243d513e00456a98544da7de3232d36f89545adad323"
+  "pair_table_summary": {
+    "row_count": 35424,
+    "distinct_bacteria_count": 369,
+    "distinct_phage_count": 96,
+    "strict_slice_fraction": 0.799966,
+    "matrix_available_fraction": 0.995596
   },
   "join_and_label_summary": {
-    "cv_group_unique_count": 283,
+    "join_missing_counts": {
+      "interaction_matrix": 156
+    },
     "hard_label_counts": {
       "negative_0": 25546,
       "positive_1": 9720,
       "unresolved": 158
     },
-    "join_missing_counts": {
-      "interaction_matrix": 156
+    "strict_tier_counts": {
+      "ambiguous": 7086,
+      "high_conf_neg": 24203,
+      "high_conf_pos": 4135
     },
     "strict_label_counts": {
       "ambiguous": 7086,
       "negative_0": 24203,
       "positive_1": 4135
     },
-    "strict_tier_counts": {
-      "ambiguous": 7086,
-      "high_conf_neg": 24203,
-      "high_conf_pos": 4135
-    }
-  },
-  "pair_table_summary": {
-    "distinct_bacteria_count": 369,
-    "distinct_phage_count": 96,
-    "matrix_available_fraction": 0.995596,
-    "row_count": 35424,
-    "strict_slice_fraction": 0.799966
+    "cv_group_unique_count": 283
   },
   "schema_summary": {
+    "output_column_count": 64,
     "column_group_sizes": {
       "auxiliary_outcome_reference": 4,
       "host_features": 16,
@@ -41,7 +39,9 @@
       "pair_features": 1,
       "phage_features": 11
     },
-    "output_column_count": 64,
     "step_name": "st02_build_pair_table"
+  },
+  "artifacts": {
+    "pair_table_csv_sha256": "1e536ac86163ea5fd6737adf6b1b0cb41746582b92c1fa893482a5ee1da69898"
   }
 }
