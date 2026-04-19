@@ -5,12 +5,14 @@ on:
     paths:
       - ".github/workflows/steel-thread-regression.yml"
       - "lyzortx/pipeline/steel_thread_v0/**"
-      - "data/interactions/raw/raw_interactions.csv"
+      - "data/interactions/**"
+      - "data/metadata/**"
   push:
     paths:
       - ".github/workflows/steel-thread-regression.yml"
       - "lyzortx/pipeline/steel_thread_v0/**"
-      - "data/interactions/raw/raw_interactions.csv"
+      - "data/interactions/**"
+      - "data/metadata/**"
 
 jobs:
   st-regression:
