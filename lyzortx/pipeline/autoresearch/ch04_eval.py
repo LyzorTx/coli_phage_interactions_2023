@@ -231,10 +231,13 @@ def select_pair_max_concentration_rows(per_row_predictions: pd.DataFrame) -> pd.
 
     The ticket defines "highest observed concentration" per pair — pick max log_dilution
     (log_dilution=0 is neat, -4 is 1:10000 dilution; higher numeric value = higher actual
-    concentration). Ties are broken by taking the mean prediction across replicate rows at
-    that top concentration and majority-voting the binary label (ties fall back to 0,
-    matching the SPANDEX any_lysis-style rollup applied only as a tie-breaker — CH04's
-    core training still operates per-row).
+    concentration). Replicate rows at that top concentration are collapsed by averaging
+    the predicted probability (replicates have identical feature vectors, so their
+    predictions are identical anyway — the mean is a no-op in practice but it documents
+    intent) and by max-aggregating the binary label (any positive replicate makes the
+    pair positive). This "any replicate positive" rule matches the deployment semantics
+    of the test strip read-out: a pair is declared positive if lysis is observed in at
+    least one replicate at the top titer. CH04's core training still operates per-row.
     """
     ranked = per_row_predictions.sort_values(["pair_id", "log_dilution", "replicate"], ascending=[True, False, True])
     max_conc = ranked.groupby("pair_id", as_index=False)["log_dilution"].max()
