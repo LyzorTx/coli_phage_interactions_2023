@@ -221,16 +221,29 @@ Architecture choices, calibration, and performance bounds.
   0.1884, disjoint CIs, BASEL mid-P reliability gap 21-27 pp wider than Guelin's in the 0.5-0.9 predicted-probability
   bins); **(3) BASEL bacteria-axis deficit** (BASEL-only bacteria-axis AUC 0.7152 on the 1,240 BASEL pairs vs
   Guelin-only 0.8098 on the same axis — a 9.5 pp BASEL-specific deficit invisible in the 96.6% Guelin-weighted
-  aggregate, a standalone deployability finding separate from the phage-axis parity story). Root-cause diagnostic
-  (post-hoc, no model rerun): the mid-P miscalibration localises to the 39/52 BASEL phages whose `phage_projection`
-  vectors are non-zero (Brier 0.31 bacteria-axis) — these phages map into Guelin-derived TL17 neighborhoods associated
-  with broad-host lysis but carry narrower actual host ranges; the 13/52 BASEL phages with zero-vector projection
-  calibrate correctly (Brier 0.12) because the model has no phage signal to misuse and falls back to the host-side
-  prior. Straboviridae exclusion closes only 1.5 pp of the 9.5 pp bacteria-axis BASEL deficit — family bias is not the
-  driver. This is the active CHISEL reference for two-axis generalization and cross-source behaviour. [validated;
-  source: CH05, 2026-04-19 CHISEL unified k-fold; see also: chisel-baseline, spandex-unified-kfold-baseline,
-  per-phage-retired-under-chisel, cv-group-leakage-fixed, new-phage-generalization, deployment-goal, plm-rbp-redundant,
-  panel-size-ceiling]
+  aggregate, a standalone deployability finding separate from the phage-axis parity story). Expected Calibration Error
+  (ECE, weighted mean of per-decile |observed−predicted| gaps) reported alongside AUC and Brier going forward:
+  **bacteria-axis Guelin ECE 0.120, BASEL ECE 0.272; phage-axis Guelin ECE 0.104, BASEL ECE 0.236** under the raw CH05
+  predictions. ECE separates calibration from discrimination more interpretably than Brier and is now part of the CHISEL
+  scorecard. Two separable root-cause mechanisms, each diagnostically distinct: **(A) Guelin mid-P miscalibration =
+  training-label-vs-deployment-question mismatch, post-hoc fixable**. Leave-one-fold-out isotonic regression on Guelin
+  predictions drops Guelin bacteria-axis ECE 0.120→0.008 and phage-axis ECE 0.104→0.008 (78-89% decile-gap closure), AUC
+  preserved within 0.5 pp. The model has the discrimination; it emits inflated probabilities in mid-P because the
+  training label (score='1' = plate clearing) is more permissive than the deployment target (productive lysis) —
+  Gaborieau 2024 Methods explicitly admits clearing events at high titer can be non-productive. No feature or data
+  change required; a post-hoc calibration layer (isotonic / Platt) is the fix. Connects to `ambiguous-label-noise`.
+  **(B) BASEL's additional miscalibration = TL17-bias on the phage-side feature slot, NOT threshold**. Applying the
+  Guelin-fitted isotonic calibrator to BASEL closes only 34-37% of BASEL's gaps (residual ECE 0.113 bacteria-axis /
+  0.122 phage-axis) — the threshold-mismatch remedy does NOT rescue BASEL's extra miscalibration, empirically separating
+  this mechanism from (A). Root cause isolated to the 39/52 BASEL phages whose `phage_projection` vectors are non-zero
+  (Brier 0.31 bacteria-axis): their projection vectors map into Guelin-derived TL17 neighborhoods associated with
+  broad-host lysis but carry narrower actual host ranges. The 13/52 BASEL phages with zero-vector projection calibrate
+  correctly (Brier 0.12) because the model has no phage signal to misuse and falls back to the host-side prior. Requires
+  panel-independent phage features (CH06 target), not calibration. Straboviridae exclusion closes only 1.5 pp of the 9.5
+  pp bacteria-axis BASEL deficit — family bias is not the driver. This is the active CHISEL reference for two-axis
+  generalization and cross-source behaviour. [validated; source: CH05, 2026-04-19 CHISEL unified k-fold; see also:
+  chisel-baseline, spandex-unified-kfold-baseline, per-phage-retired-under-chisel, cv-group-leakage-fixed,
+  new-phage-generalization, deployment-goal, plm-rbp-redundant, panel-size-ceiling]
   - *Phage-axis AUC exceeds bacteria-axis AUC by 7.9 pp (CIs disjoint). The gap is structural, not a deployment-value
     signal: phage-axis folds hold out entire phages but keep all 369 bacteria in training; bacteria-axis folds hold out
     bacteria and remove host-side signal for those test pairs. The SX15 "per-phage blending tax" framing (which

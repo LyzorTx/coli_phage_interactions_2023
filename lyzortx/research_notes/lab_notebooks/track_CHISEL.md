@@ -484,6 +484,62 @@ fine (+0.8 pp at 0.9–1.0), so the model *can* calibrate when features unambigu
 score; it miscalibrates specifically in the mid-P region where features push predictions upward
 but pairs don't actually lyse at the predicted rate.
 
+**Isotonic calibration diagnostic (two separable mechanisms, empirically confirmed).** The
+reviewer flagged that attributing all mid-P miscalibration to TL17-bias stretches the
+feature-failure-mode story to cover territory it doesn't explain — TL17-bias concerns
+cross-source generalization, but Guelin is also 28–30 pp off in mid-P despite the model being
+trained on these exact phages. Tested this via leave-one-fold-out isotonic regression on Guelin
+predictions (fold-aware, no leakage), then applied the Guelin-fitted calibrator to BASEL
+predictions as the discriminative test — Guelin/BASEL panels are disjoint so no leakage. Script:
+`ch05_isotonic_calibration_test.py`. Expected three outcomes (A: threshold story for both;
+B: threshold for Guelin, TL17-bias extra for BASEL; C: threshold wrong for both).
+
+| Subset | Raw ECE | Iso ECE | Raw max \|gap\| | Iso max \|gap\| | Closure |
+|---|---|---|---|---|---|
+| Guelin bacteria-axis | 0.120 | **0.008** | 30.4 pp | **6.6 pp** | 78% |
+| Guelin phage-axis | 0.104 | **0.008** | 26.3 pp | **2.9 pp** | 89% |
+| BASEL bacteria-axis | 0.272 | 0.113 | 51.6 pp | 32.6 pp | 37% |
+| BASEL phage-axis | 0.236 | 0.122 | 53.0 pp | 35.1 pp | 34% |
+
+**Outcome B confirmed.** Guelin mid-P is essentially fully fixable with an isotonic layer (ECE
+drops from 0.12 to 0.008, gap closure 78–89%). BASEL improves but retains a substantial residual
+(ECE stays at 0.11–0.12, gap closure only 34–37%) — the Guelin-fitted calibrator cannot rescue
+BASEL's full miscalibration because it comes from a different mechanism. AUC sanity: moves by ≤0.5
+pp on Guelin (isotonic produces ties that shift rank-based ordering slightly) and ≤0.001 pp on
+BASEL; the small Guelin movement is tie-breaking noise, not a bug — isotonic is monotone but not
+strictly monotone. Strict AUC invariance holds only for unclipped strictly-monotonic maps; under
+boundary clipping and ties in the fitted step function, ranking is preserved up to tie-breaking
+at the edges, which can produce sub-percent AUC movement. Worth flagging for transparency.
+
+**Two-driver story.** Guelin's mid-P gap is a training-label-vs-deployment-question mismatch.
+Gaborieau 2024 Methods (see `mlc-dilution-potency`) explicitly says clearing events at high titer
+"could result from productive lysis of the bacterial population by the phage, or from another
+mechanism such as lysis from without, or abortive infection." CHISEL's per-row binary training
+treats every score='1' row as a positive, including non-productive clearing. The deployment
+question — "will this phage productively lyse this strain at therapeutic dose?" — is stricter
+than the training label, and the model's inflated mid-P probabilities are the signature of that
+mismatch. This is fixable post-hoc without changing the underlying model (the discrimination is
+already there). Connected to `ambiguous-label-noise` (GT09 showed +3.1 pp top-3 from dropping 10%
+of noisy rows — same shape of mechanism, different regime).
+
+BASEL's residual after Guelin-fitted calibration (~12 pp ECE, ~33 pp max decile gap) is the part
+that threshold-mismatch cannot explain. It matches the `ch05_basel_zero_vector_split` diagnostic:
+miscalibration concentrates on the 39/52 non-zero-projection BASEL phages (Brier 0.31 bacteria-
+axis) whose phage_projection vectors map into Guelin-calibrated TL17 neighborhoods associated
+with broad-host lysis but whose actual host ranges are narrower. That is a feature-transfer
+problem that needs panel-independent phage features (CH06), not a calibration layer.
+
+**Implication for CH06 scope** (forward-looking, not a CH05 acceptance criterion): BASEL's
+bacteria-axis AUC 0.7152 vs Guelin 0.8098 is the 9.5 pp discrimination gap; no calibration layer
+can touch it (ranking is preserved under monotone transforms). CH06's acceptance criterion —
+"materially above 0.7152 on at least one arm" — still reads as written. The calibration component
+of BASEL's 0.1884 Brier vs Guelin's 0.1329 is now understood to be partially fixable post-hoc;
+the remaining discrimination gap is what CH06 must attack.
+
+**Follow-up** (deferred, out of CH05 scope): a dedicated CH-series ticket on "post-hoc
+calibration layer + label-threshold sensitivity" (likely CH09 after CH06 and CH07). Platt scaling
+or isotonic as a deployable calibration step is cheap and independent of CH06's feature work.
+
 **Per-family phage-axis breakdown (post-hoc).**
 
 | Family | Regime | Panel size | n_pairs | pos_rate | AUC | Brier |
