@@ -38,6 +38,7 @@ from lyzortx.pipeline.autoresearch.sx01_eval import (
     N_FOLDS,
     SEEDS,
     assign_bacteria_folds,
+    bacteria_to_cv_group_map,
     bootstrap_spandex_cis,
     enrich_rows_with_mlc,
     load_mlc_scores,
@@ -98,7 +99,7 @@ def run_within_panel_eval(
     output_dir: Path,
 ) -> None:
     """Mirrors SX01's 10-fold CV but injects the Moriniere slot into phage features."""
-    fold_assignments = assign_bacteria_folds(sorted(clean_frame["bacteria"].unique()))
+    fold_assignments = assign_bacteria_folds(bacteria_to_cv_group_map(clean_frame))
     all_predictions: list[dict[str, object]] = []
 
     for fold_id in range(N_FOLDS):

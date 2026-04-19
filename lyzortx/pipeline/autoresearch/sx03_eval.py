@@ -39,6 +39,7 @@ from lyzortx.pipeline.autoresearch.sx01_eval import (
     BOOTSTRAP_SAMPLES,
     SEEDS,
     assign_bacteria_folds,
+    bacteria_to_cv_group_map,
     bootstrap_spandex_cis,
     enrich_rows_with_mlc,
     load_mlc_scores,
@@ -155,8 +156,7 @@ def run_arm_a_baseline(
 ) -> list[dict[str, object]]:
     """Arm A: k-fold CV on our clean data only (SX01 replication)."""
     LOGGER.info("=== Arm A: Our clean data only (SX01 baseline replication) ===")
-    all_bacteria = sorted(clean_frame["bacteria"].unique())
-    fold_assignments = assign_bacteria_folds(all_bacteria)
+    fold_assignments = assign_bacteria_folds(bacteria_to_cv_group_map(clean_frame))
 
     all_predictions: list[dict[str, object]] = []
     for fold_id in range(N_FOLDS):
@@ -211,7 +211,7 @@ def run_arm_b_pooled(
     """Arm B: k-fold CV with BASEL added to training (same folds as Arm A)."""
     LOGGER.info("=== Arm B: Our clean data + BASEL training ===")
     all_bacteria = sorted(clean_frame["bacteria"].unique())
-    fold_assignments = assign_bacteria_folds(all_bacteria)
+    fold_assignments = assign_bacteria_folds(bacteria_to_cv_group_map(clean_frame))
 
     # BASEL bacteria that are also in our panel.
     basel_bacteria = set(basel_frame["bacteria"].unique())
