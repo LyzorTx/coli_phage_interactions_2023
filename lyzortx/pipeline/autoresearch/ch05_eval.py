@@ -126,6 +126,11 @@ def load_basel_as_row_frame(
     BASEL bacteria are a subset of Guelin bacteria (all 25 BASEL ECOR strains appear in
     the 369-bacterium Guelin panel), so `cv_group` is inherited from the Guelin mapping.
     Fails loudly if any BASEL bacterium is absent from the map — per AGENTS.md fail-fast.
+
+    Row count: 52 phages × 25 bacteria = 1300 potential pairs; 160 are missing from
+    the upstream matrix (not all phages were tested on all bacteria — see
+    `basel-binary-only` knowledge unit), so the function returns ~1240 observed rows,
+    not 1300.
     """
     basel = load_basel_interactions().copy()
     basel = basel.dropna(subset=["interaction"])

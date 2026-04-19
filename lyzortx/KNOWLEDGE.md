@@ -243,13 +243,16 @@ Architecture choices, calibration, and performance bounds.
     CH05's reliability analysis showed BASEL over-predicted in mid-P, the opposite direction an encoding mismatch
     predicts, so the pre-existing relative-log_dilution encoding of BASEL (at Guelin neat) was not the dominant driver;
     the encoding has been fixed track-wide to absolute log10_pfu_ml (Guelin {4.7, 6.7, 7.7, 8.7}; BASEL 9.0 per Maffei
-    2021 Fig. 12 + Maffei 2025 Fig. 13 `>10⁹ pfu/ml if possible`) for semantic correctness; CH04 rerun under the new
-    encoding is bit-identical at fold level (affine invariance confirmed). Full CH05 rerun under new encoding deferred
-    to a follow-up ticket. Connects to `plm-rbp-redundant`: same Guelin-bank-dependent-phage-features failure mode, here
-    on a genuine cross-panel split rather than cross-family within Guelin. Supports `panel-size-ceiling`: the fix is
-    panel expansion or panel-independent phage features (dispatched as new CH06 with four candidate arms including
-    OOD-aware inference, pairwise proteome similarity, Moriniere receptor-class probabilities, tail-protein-restricted
-    TL17 projection), not richer engineered features. Canonical artifacts:
+    2021 Fig. 12 + Maffei 2025 Fig. 13 `>10⁹ pfu/ml if possible`) for semantic correctness. CH04 rerun (Guelin-only
+    panel) is bit-identical at fold level because Guelin's change is a monotonic affine shift of one feature
+    (GUELIN_NEAT_LOG10_PFU_ML + log_dilution), which LightGBM's bin-then-split flow leaves invariant. BASEL-side
+    predictions may shift on the pending CH05 rerun — BASEL's encoding moves from log_dilution=0 to log10_pfu_ml=9.0,
+    which is not an affine shift of the Guelin encoding, so Guelin-side invariance does not extend to BASEL. Full CH05
+    rerun deferred to a follow-up ticket. Connects to `plm-rbp-redundant`: same Guelin-bank-dependent-phage-features
+    failure mode, here on a genuine cross-panel split rather than cross-family within Guelin. Supports
+    `panel-size-ceiling`: the fix is panel expansion or panel-independent phage features (dispatched as new CH06 with
+    four candidate arms including OOD-aware inference, pairwise proteome similarity, Moriniere receptor-class
+    probabilities, tail-protein-restricted TL17 projection), not richer engineered features. Canonical artifacts:
     lyzortx/generated_outputs/ch05_unified_kfold/ch05_combined_summary.json, ch05_{bacteria,phage}_axis_metrics.json,
     ch05_cross_source_breakdown.csv, ch05_{bacteria,phage}_axis_predictions.csv, ch05_per_family_breakdown.csv,
     ch05_straboviridae_exclusion.csv, ch05_reliability_tables.csv, ch05_basel_feature_variance.csv,

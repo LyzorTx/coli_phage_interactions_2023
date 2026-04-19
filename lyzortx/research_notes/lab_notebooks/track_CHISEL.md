@@ -474,11 +474,15 @@ Regenerable via `ad_hoc_analysis_code/ch05_reliability_diagrams.py`.
 | 0.8–0.9 | −27.6 pp | **−49.9 pp** | −17.0 pp | **−44.1 pp** |
 | 0.9–1.0 | −18.4 pp | −26.0 pp | −6.4 pp | +0.8 pp |
 
-Both sources over-predict in mid-P bins (the model is systematically too confident at 0.5–0.9), but
-BASEL's reliability gap is 21–27 pp wider than Guelin's in those bins. BASEL's top-decile phage-axis
-calibration is fine (+0.8 pp at 0.9–1.0), so the model *can* calibrate on BASEL when features
-unambiguously drive a high score; it miscalibrates specifically in the mid-P region where features
-are driving predictions upward but BASEL pairs don't actually lyse.
+**Guelin is also substantially miscalibrated in mid-P — not just BASEL.** Guelin bacteria-axis
+predicts 0.75 but observes 0.45 in the 0.7–0.8 bin (−30.4 pp gap), and predicts 0.65 but observes
+0.37 in the 0.6–0.7 bin (−28.1 pp). The "BASEL 21–27 pp wider than Guelin" framing is accurate in
+relative terms, but Guelin is 20–30 pp off in absolute terms; BASEL is another 20 pp worse on top
+of that. Read both together: the model is systematically too confident in mid-P on **both**
+sources; BASEL just amplifies the same failure mode. BASEL's top-decile phage-axis calibration is
+fine (+0.8 pp at 0.9–1.0), so the model *can* calibrate when features unambiguously drive a high
+score; it miscalibrates specifically in the mid-P region where features push predictions upward
+but pairs don't actually lyse at the predicted rate.
 
 **Per-family phage-axis breakdown (post-hoc).**
 
