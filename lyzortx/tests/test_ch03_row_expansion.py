@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from lyzortx.pipeline.autoresearch.ch03_eval import check_row_level_fold_integrity
 from lyzortx.pipeline.autoresearch.ch03_row_expansion import (
     ST01B_MIN_SCORE_0_COUNT_FOR_HARD_NEGATIVE,
     collapse_to_pair_level_for_training,
@@ -142,3 +143,62 @@ def test_collapse_rejects_pair_with_inconsistent_metadata() -> None:
     )
     with pytest.raises(ValueError, match="pair-level metadata varies"):
         collapse_to_pair_level_for_training(rows)
+
+
+def test_fold_integrity_catches_duplicate_observation_keys() -> None:
+    # Two rows share (pair_id, log_dilution, replicate) — a real row-expansion bug would
+    # produce this if the raw CSV were accidentally duplicated on merge.
+    rows = pd.DataFrame(
+        [
+            {
+                "bacteria": "bac_A",
+                "phage": "p",
+                "pair_id": "bac_A__p",
+                "cv_group": "1",
+                "log_dilution": 0,
+                "replicate": 1,
+                "score": "0",
+            },
+            {
+                "bacteria": "bac_A",
+                "phage": "p",
+                "pair_id": "bac_A__p",
+                "cv_group": "1",
+                "log_dilution": 0,
+                "replicate": 1,
+                "score": "1",
+            },
+        ]
+    )
+    pair_frame = pd.DataFrame([{"bacteria": "bac_A", "cv_group": "1"}])
+    with pytest.raises(ValueError, match="duplicate .+ rows"):
+        check_row_level_fold_integrity(rows, pair_frame)
+
+
+def test_fold_integrity_passes_when_observations_are_unique() -> None:
+    # Three bacteria × 3 dilutions × 2 replicates, each bacterium in a different cv_group.
+    rows_list = []
+    for bac, cvg in [("bac_A", "1"), ("bac_B", "2"), ("bac_C", "3")]:
+        for dilution in [0, -1, -2]:
+            for rep in [1, 2]:
+                rows_list.append(
+                    {
+                        "bacteria": bac,
+                        "phage": "p",
+                        "pair_id": f"{bac}__p",
+                        "cv_group": cvg,
+                        "log_dilution": dilution,
+                        "replicate": rep,
+                        "score": "0",
+                    }
+                )
+    rows = pd.DataFrame(rows_list)
+    pair_frame = pd.DataFrame(
+        [
+            {"bacteria": "bac_A", "cv_group": "1"},
+            {"bacteria": "bac_B", "cv_group": "2"},
+            {"bacteria": "bac_C", "cv_group": "3"},
+        ]
+    )
+    # No exception means pass.
+    check_row_level_fold_integrity(rows, pair_frame)

@@ -56,15 +56,15 @@ REGRESSION_TOLERANCE = 0.005
 
 
 def check_row_level_fold_integrity(row_frame: pd.DataFrame, pair_level_frame: pd.DataFrame) -> None:
-    """Assert the CH02 cv_group hash keeps every raw observation of a bacterium in one fold.
+    """Verify no (pair, log_dilution, replicate) row appears in both train and test of any fold.
 
-    The pair-level frame carries cv_group; the row-expanded frame inherits it via the
-    pair_id join. Because the fold-assignment function (CH02) hashes on cv_group, two
-    bacteria sharing a cv_group always share a fold. This function re-derives the
-    bacterium → fold mapping on the pair-level frame, then verifies that every row of
-    a given bacterium on the row-expanded frame routes to the same fold.
+    Partitions the row-expanded frame into per-fold train / test subsets using the CH02
+    cv_group hash and asserts disjointness on the raw-observation key. This is the
+    load-bearing CH03 invariant check: the acceptance criterion `no (pair, concentration,
+    replicate) row appears in both train and test` must hold for every fold, otherwise
+    CH04's per-row training would leak observations across the split.
     """
-    from lyzortx.pipeline.autoresearch.sx01_eval import assign_bacteria_folds
+    from lyzortx.pipeline.autoresearch.sx01_eval import N_FOLDS, assign_bacteria_folds
 
     mapping = bacteria_to_cv_group_map(pair_level_frame)
     fold_assignments = assign_bacteria_folds(mapping)
@@ -74,17 +74,34 @@ def check_row_level_fold_integrity(row_frame: pd.DataFrame, pair_level_frame: pd
         unassigned = rows_with_fold[rows_with_fold["fold_id"].isna()]["bacteria"].unique()
         raise ValueError(f"{len(unassigned)} bacteria missing fold assignment: {unassigned[:5].tolist()}")
 
-    # Every row with a given pair_id must route to exactly one fold_id.
-    per_pair_folds = rows_with_fold.groupby("pair_id")["fold_id"].nunique()
-    violating = per_pair_folds[per_pair_folds > 1]
-    if not violating.empty:
-        raise ValueError(f"{len(violating)} pair_ids routed to multiple folds — row-level leakage across splits")
+    observation_key_cols = ["pair_id", "log_dilution", "replicate"]
+    row_keys = pd.MultiIndex.from_frame(rows_with_fold[observation_key_cols])
+    if not row_keys.is_unique:
+        duplicates = rows_with_fold[row_keys.duplicated(keep=False)]
+        raise ValueError(
+            f"raw frame has duplicate (pair_id, log_dilution, replicate) rows — "
+            f"{len(duplicates)} rows with shared keys (example: {duplicates.head(3).to_dict(orient='records')})"
+        )
+
+    for fold_id in range(N_FOLDS):
+        fold_mask = rows_with_fold["fold_id"] == fold_id
+        train_keys = pd.MultiIndex.from_frame(rows_with_fold.loc[~fold_mask, observation_key_cols])
+        test_keys = pd.MultiIndex.from_frame(rows_with_fold.loc[fold_mask, observation_key_cols])
+        overlap = train_keys.intersection(test_keys)
+        if len(overlap) > 0:
+            raise ValueError(
+                f"fold {fold_id}: {len(overlap)} (pair, log_dilution, replicate) rows "
+                f"appear in both train and test partitions (example: {overlap[:3].tolist()})"
+            )
+
     LOGGER.info(
-        "Fold integrity verified: %d raw rows / %d pairs / %d bacteria route to %d folds",
+        "Fold integrity verified: %d raw rows / %d pairs / %d bacteria route to %d folds, "
+        "train and test disjoint on (pair_id, log_dilution, replicate) across all %d folds",
         len(row_frame),
         row_frame["pair_id"].nunique(),
         rows_with_fold["bacteria"].nunique(),
         rows_with_fold["fold_id"].nunique(),
+        N_FOLDS,
     )
 
 
