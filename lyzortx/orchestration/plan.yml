@@ -2142,7 +2142,7 @@ tracks:
         to chisel-baseline (to be established in CH04) as the active canonical.'
       - 'spandex-wave-2-baseline: remove the "hidden within-family +3.48 pp nDCG"
         claim (nDCG-specific; collapses to null under AUC). Rewrite as a clean three-null
-        wave. Flag for re-verification under CHISEL frame once CH07 completes.'
+        wave. Flag for re-verification under CHISEL frame once CH08 completes.'
       - 'spandex-unified-kfold-baseline: re-headline AUC numbers (bacteria-axis 0.8685,
         phage-axis 0.8988); drop the nDCG BASEL-vs-Guelin comparison entirely (metric
         artifact — BASEL binary labels have fewer nDCG rungs). Keep the AUC cross-source
@@ -2178,7 +2178,7 @@ tracks:
       - 'PROJECT.MD ENTRY: add a single cross-track entry to lyzortx/research_notes/lab_notebooks/project.md
         documenting (a) why MLC is retired as a training/evaluation label, (b) why
         AUC+Brier replace ranking metrics, (c) why (pair, concentration, binary) is
-        the training unit, (d) the sequencing of CH02-CH07, and (e) explicit acknowledgement
+        the training unit, (d) the sequencing of CH02-CH08, and (e) explicit acknowledgement
         that this is a framework pivot on top of the prior top-3 -> nDCG pivot; include
         the separation-of-concerns argument as the load-bearing rationale.'
     - id: CH02
@@ -2313,18 +2313,90 @@ tracks:
       - Record two-axis methodology, cross-source AUC comparison, and updated blending
         tax in track_CHISEL.md.
     - id: CH06
-      title: Both-axis holdout evaluation (10 x 10 double cross-validation)
+      title: Panel-independent phage-feature sweep (TL17-bias root-cause attack)
       model: claude-opus-4-6
       ci_image_profile: base
       status: pending
       depends_on_tasks:
       - CH05
       acceptance_criteria:
+      - 'GOAL: directly attack the cross-source failure mode surfaced by CH05 — phage
+        features derived from the Guelin-only TL17 reference bank actively hurt BASEL
+        calibration (non-zero-projection BASEL phages Brier 0.31 on bacteria-axis
+        vs zero-projection BASEL phages Brier 0.12, model applies Guelin-calibrated
+        host-range priors that do not fit BASEL''s narrower actual host ranges). Four-arm
+        ablation on CH05 unified panel with cross-source breakdown. Success criterion:
+        BASEL bacteria-axis AUC materially above 0.7152 on at least one arm, OR BASEL
+        mid-P (0.5-0.9 bins) reliability gap narrows by 10+ pp on at least one arm.'
+      - 'DESIGN: fixed CH05 unified panel (148 phages x 369 bacteria, 36,643 pairs),
+        fixed CH05 folds (bacteria-axis CH02 cv_group hash + phage-axis ICTV family/Other/UNKNOWN
+        StratifiedKFold). Feature bundle held constant except for the phage-side slot
+        under test. Each arm reports bacteria-axis AUC+Brier, phage-axis AUC+Brier,
+        and the per-source (Guelin/BASEL) subset breakdown — both aggregate and per-decile
+        reliability.'
+      - 'ARM 1 (architectural, no retraining): OOD-aware inference. Compute distance
+        from each held-out phage to its nearest training phage (proteome MMseqs2 bit-score
+        or phage_projection Euclidean). Apply post-hoc shrinkage toward base rate
+        when distance exceeds a threshold fit on Guelin inner-val. Measurable on existing
+        CH05 prediction artifacts without retraining the model — cheapest arm.'
+      - 'ARM 2: pairwise proteome-similarity vector as replacement for TL17 categorical
+        projection. Compute each phage''s MMseqs2 bit-score against every training
+        phage. Use the resulting continuous vector (or a PCA/summary of it) as the
+        phage-side feature slot. A new phage always produces a full similarity profile;
+        when it is uniformly low that is itself a meaningful signal, unlike the TL17
+        zero-vector failure mode.'
+      - 'ARM 3: Moriniere 2026 receptor-class probabilities. Run the Moriniere 19-dim
+        softmax classifier on each phage proteome; use the probability vector directly
+        as a phage-side feature (NOT the 815 k-mers — those were tested in GT06 and
+        SX12 and were null). Trained on 260 phages spanning non-Guelin panels so it
+        is not Guelin-biased at source. Upside capped by same-receptor-uncorrelated-hosts
+        (same-receptor phages can have uncorrelated host ranges, Jaccard 0.091 for
+        Tsx), so expect small lift at best — include anyway for completeness.'
+      - 'ARM 4: tail-protein-restricted TL17 BLAST (Shang 2025 benchmark motivation
+        — tail proteins alone match full-genome performance). Restrict the TL17 BLAST
+        input to RBP + baseplate + tail-fiber annotated proteins only, re-project.
+        Same feature structure as current phage_projection, cleaner input.'
+      - 'EXPLICIT EXCLUSIONS (known nulls — listed so no future agent re-proposes):
+        SaProt / ProstT5 structural PLM (plm-rbp-redundant — -1.22 pp cross-family
+        nDCG, actively harmful); PHROG aggregate category counts (phage-functional-noise);
+        dense PHROG categorical membership as a direct TL17 replacement (inherits
+        the same zero-vector failure mode — closed vocabulary, just cross-panel instead
+        of Guelin-specific); receptor k-mers as direct features (kmer-receptor-expansion-neutral);
+        physicochemical RBP descriptors (physicochemical-rbp-insufficient). Panel
+        expansion stays out of CH06 — it is a track-level strategic move per panel-size-ceiling,
+        not a feature-experiment arm.'
+      - 'ORGANIZING PRINCIPLE: the user''s ask is "gradient/numeric proxies that
+        do not assume a closed vocabulary." Arms 1-3 honor that directly (distance-
+        based, continuous similarity, softmax output). Arm 4 keeps the closed-vocabulary
+        TL17 projection but shrinks its input scope to the proteins that matter (tail
+        region). Arms that are just new closed-vocabulary banks (PHROGs, Pfam) do
+        not honor the organizing principle.'
+      - 'ARTIFACTS: ch06_arm{1,2,3,4}_predictions.csv, ch06_arm{1,2,3,4}_metrics.json,
+        ch06_summary.csv (one row per arm: bacteria-axis AUC + Brier + CIs, phage-axis
+        AUC + Brier + CIs, per-source breakdowns, delta vs chisel-unified-kfold-baseline,
+        BASEL mid-P reliability-gap closure). ch06_arm1_shrinkage_diagnostic.csv (threshold
+        sweep for the OOD-aware arm).'
+      - 'KNOWLEDGE: if any arm meets the acceptance criterion, add chisel-panel-independent-phage-features
+        unit with the winning arm as active canonical for phage-side features; update
+        chisel-unified-kfold-baseline to cross-reference the replacement. If all arms
+        null, harden panel-size-ceiling with "feature-level fixes exhausted; panel
+        expansion is the remaining lever."'
+      - Record per-arm deltas, BASEL reliability-gap closure, and the verdict on panel-size-ceiling
+        vs feature-level fixes in track_CHISEL.md.
+    - id: CH07
+      title: Both-axis holdout evaluation (10 x 10 double cross-validation)
+      model: claude-opus-4-6
+      ci_image_profile: base
+      status: pending
+      depends_on_tasks:
+      - CH06
+      acceptance_criteria:
       - 'GOAL: the strongest generalization test — bacterium AND phage held out simultaneously.
         Directly addresses the external-critic concern that the "panel-size ceiling"
         has only been probed on single-axis CV. If both-axis AUC holds above ~0.80,
         the model learned pair-level mechanism; if it crashes to 0.60-0.70, we''ve
-        been riding host-side + phage-side marginals.'
+        been riding host-side + phage-side marginals. Runs against the winning phage-side
+        feature bundle from CH06, not the TL17 baseline that CH05 diagnosed as broken.'
       - 'DESIGN: 10-fold bacteria x 10-fold phage = 100 train/test cells. For each
         cell, train on (all-but-this-bacterium-fold) x (all-but-this- phage-fold)
         observations; test on the held-out bacterium x held-out phage cell.'
@@ -2338,8 +2410,8 @@ tracks:
         is underpowered). Also report the per-cell distribution of AUCs as a diagnostic.'
       - 'COMPUTE: ~10x single-axis compute. Estimate before running and confirm wallclock
         is feasible on local laptop (caffeinate -dims -w <pid>) or available CI compute.'
-      - 'ARTIFACTS: ch06_cell_metrics.csv (per-cell AUC + Brier + observation count),
-        ch06_aggregate.json (pooled AUC + Brier with CIs), ch06_cell_distribution.png
+      - 'ARTIFACTS: ch07_cell_metrics.csv (per-cell AUC + Brier + observation count),
+        ch07_aggregate.json (pooled AUC + Brier with CIs), ch07_cell_distribution.png
         (histogram of per-cell AUC, to visualize variance).'
       - 'KNOWLEDGE: add chisel-both-axis-holdout knowledge unit. This is the honest
         cold-start deployability number. Must be distinguished in language from the
@@ -2352,7 +2424,7 @@ tracks:
         the binding constraint.'
       - Record both-axis methodology, per-cell distribution commentary, and critic-framing
         verdict in track_CHISEL.md.
-    - id: CH07
+    - id: CH08
       title: Wave-2 feature-family re-audit under CHISEL frame
       model: claude-opus-4-6
       ci_image_profile: base
@@ -2379,7 +2451,7 @@ tracks:
         chisel-baseline+omp_kmer with paired bacterium-level bootstrap. Headline:
         is the null stable, or did concentration-aware training surface a previously
         hidden feature-family signal?'
-      - 'ARTIFACTS: ch07_sx12_delta.json, ch07_sx13_delta.json, ch07_summary.csv (one
+      - 'ARTIFACTS: ch08_sx12_delta.json, ch08_sx13_delta.json, ch08_summary.csv (one
         table: baseline vs +moriniere vs +omp_kmer, AUC + Brier + CIs + delta).'
       - 'KNOWLEDGE: harden kmer-receptor-expansion-neutral and host-omp-variation-unpredictive
         units with the CHISEL-frame confirmation. These units were SX12/SX13 originals;
