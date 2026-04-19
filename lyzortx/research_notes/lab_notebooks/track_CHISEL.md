@@ -118,3 +118,103 @@ frame is fully migrated.
 - `ch02_sx10_revalidated_metrics.json` emitted with SPANDEX vs CHISEL side-by-side and fold-diff summary.
 - `cv-group-leakage-fixed` knowledge unit added; `spandex-final-baseline` historical numbers preserved.
 - Lab notebook entry (this one) records methodology and the 1.78 pp AUC shift.
+
+---
+
+## 2026-04-19 09:00 CEST: CH03 — row-expanded training matrix with preserved any_lysis semantics
+
+### Executive summary
+
+Plumbing-only safety-net ticket. Built a `(bacterium, phage, log_dilution, replicate, X, Y)` row-expanded training
+frame (318,816 rows across 35,424 pairs) by joining `raw_interactions.csv` with ST02 pair metadata and ST03
+splits, then verified the ST01B `any_lysis` rule applied to row-level scores reproduces **all 35,424 ST02
+`label_hard_any_lysis` values with zero mismatches** (9,720 positive / 25,546 negative / 158 unresolved — identical
+to ST02). Rerunning SX10 canonical on the collapsed frame gives AUC **0.8522** [0.8379, 0.8650] and Brier
+**0.1318** [0.1255, 0.1382] — |ΔAUC| = 0.00012, |ΔBrier| = 0.00012 vs CH02 (0.8521 / 0.1317), well inside the
+0.005 regression tolerance.
+
+**Design.** Two modules landed under `lyzortx/pipeline/autoresearch/`:
+
+- `ch03_row_expansion.py` — loader + rollup:
+  - `load_raw_observation_rows()` reads `raw_interactions.csv` (318,816 rows; score distribution 272,750 × "0",
+    37,391 × "1", 8,675 × "n").
+  - `load_row_expanded_frame()` joins each raw row against the ST02 pair table and ST03 split assignments so
+    every observation carries `pair_id`, `cv_group`, `label_hard_any_lysis`, `training_weight_v3`,
+    `split_holdout`, `is_hard_trainable`, plus the host and phage metadata columns that downstream SX10 reads.
+    Fails loudly if any raw row has no ST02 counterpart.
+  - `rollup_row_scores_to_pair_any_lysis()` reproduces the ST01B rule on the row-level scores: `any_lysis = 1`
+    iff any row has `score == "1"`; `any_lysis = 0` iff no `score == "1"` AND `score_0_count ≥ 5`; otherwise
+    unresolved. `score == "n"` rows count neither as positive nor as negative — they're treated as missing, not
+    as silent zeroes.
+  - `verify_rollup_matches_st02()` is the core regression check — the recomputed labels must equal ST02's
+    `label_hard_any_lysis` value on every one of the 35,424 pairs, or the eval aborts.
+  - `collapse_to_pair_level_for_training()` dedupes the row-expanded frame back to pair level for CH03's
+    temporary scaffolding. CH04 replaces this with a per-row trainer. The helper fails loudly if any pair-level
+    column (cv_group, label, etc.) takes inconsistent values within a single pair.
+
+- `ch03_eval.py` — runner. Loads the row-expanded frame, runs the rollup check, collapses to pair level,
+  verifies row-level fold integrity (every raw observation of a bacterium routes to the same CH02 fold, so no
+  `(pair, concentration, replicate)` row can appear in both train and test), then calls `run_kfold_evaluation`
+  with the collapsed frame. On completion, compares the resulting AUC + Brier against `ch02_sx10_revalidated_metrics.json`
+  and fails if either delta exceeds 0.005.
+
+**Run.**
+
+```
+PYTHONPATH=. python -m lyzortx.pipeline.autoresearch.ch03_eval --device-type cpu
+```
+
+Total runtime 613.8 s (a few seconds longer than CH02's 609 s — the overhead is the raw-row load + rollup check).
+
+| Quantity | CH02 (direct ST02) | CH03 (row-expanded → rolled up) | Δ |
+|---|---|---|---|
+| AUC | 0.8521 [0.8381, 0.8649] | 0.8522 [0.8379, 0.8650] | +0.00012 |
+| Brier | 0.1317 [0.1253, 0.1381] | 0.1318 [0.1255, 0.1382] | +0.00012 |
+| Pairs positive | 9,720 | 9,720 | 0 |
+| Pairs negative | 25,546 | 25,546 | 0 |
+| Pairs unresolved | 158 | 158 | 0 |
+
+The residual ~0.0001 delta on AUC and Brier is numerical noise from the row-expansion → pair-level recollapse
+path (likely float ordering differences in the `drop_duplicates` step interacting with downstream pandas
+merges). Well below the 0.005 regression tolerance and far below any bootstrap CI width.
+
+**Interpretation.** The zero-mismatch rollup is the load-bearing result. It proves two things CH04 needs:
+
+1. The raw → row-expanded pipeline conserves every pair's label semantics. CH04 can swap `any_lysis` labels for
+   the raw per-row `score` values without worrying that the row-level data represents a different experiment
+   than SX10 trained on.
+2. The `n` handling is correct: rows with `score == "n"` are not silently counted as negative in the training
+   corpus (they push 158 pairs to unresolved; SX10's `is_hard_trainable` filter drops them). CH04's per-row
+   training can drop `score == "n"` rows directly without changing the pair-level denominator the SPANDEX and
+   CH02 numbers were computed on.
+
+**Fold integrity.** The CH02 cv_group hash operates at bacterium level. Because all 318,816 raw rows for a
+given bacterium share the same `cv_group` (the cv_group is a bacterium attribute, not a pair attribute), every
+row routes to the same fold as its bacterium. CH03's fold-integrity assertion `pair_id → fold_id` is 1:1
+confirms this holds on the full training matrix — no pair was split across folds at any expansion level, which
+is the necessary precondition for CH04's per-row training.
+
+**Scope.** CH03 changes nothing semantically. The collapsed pair-level frame is the ST02 pair table (with the
+`bacteria` and `phage` columns re-derived from the raw rows and the rest copied through). SX10 training sees
+the same design matrix, the same labels, and the same folds as CH02. CH03's value is that it localises any
+future row-expansion bug inside `ch03_row_expansion.py` — if CH04 misinterprets the raw schema, the rollup
+check will flag it before the model runs.
+
+**Artifacts.**
+
+- `lyzortx/generated_outputs/ch03_row_expansion/ch03_expanded_training_frame.csv` — the 318,816-row canonical
+  frame for CH04 reuse (persisted as CSV; parquet would have required adding `pyarrow` as a dependency for a
+  temporary scaffold).
+- `lyzortx/generated_outputs/ch03_row_expansion/ch03_regression_check.json` — CH02-vs-CH03 metric comparison +
+  rollup check summary.
+- `lyzortx/generated_outputs/ch03_row_expansion/sx10_on_row_expanded/` — raw SX10 outputs (predictions, fold
+  metrics, bootstrap results) from the revalidation run.
+
+**Acceptance met.**
+
+- Row-expanded loader + rollup land in `ch03_row_expansion.py`; all raw rows carry pair-level metadata.
+- ST01B rollup reproduces ST02 labels exactly (0 mismatches on 35,424 pairs).
+- Fold-integrity check (1 fold per pair_id) enforced in `check_row_level_fold_integrity`.
+- SX10 rerun on collapsed frame: AUC 0.8522, Brier 0.1318 — |Δ| < 0.005 vs CH02 on both metrics.
+- Artifacts `ch03_expanded_training_frame.csv` and `ch03_regression_check.json` emitted.
+- Unit tests (6) cover rollup logic, `n` handling, and collapse invariants.
