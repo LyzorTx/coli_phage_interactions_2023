@@ -2340,28 +2340,63 @@ tracks:
         under test. Each arm reports bacteria-axis AUC+Brier, phage-axis AUC+Brier,
         and the per-source (Guelin/BASEL) subset breakdown — both aggregate and per-decile
         reliability.'
-      - 'ARM 1 (architectural, no retraining): OOD-aware inference. Compute distance
-        from each held-out phage to its nearest training phage (proteome MMseqs2 bit-score
-        or phage_projection Euclidean). Apply post-hoc shrinkage toward base rate
-        when distance exceeds a threshold fit on Guelin inner-val. Measurable on existing
-        CH05 prediction artifacts without retraining the model — cheapest arm.'
+      - 'ORDERING: run ARM 1 first (no retraining, testable on existing CH05 artifacts
+        in ~15 min), then the variance pre-flight below, then ARM 2, then ARMs 3 and 4
+        in whichever order their pre-flights allow. If a pre-flight kills an arm, do
+        not run it — report the pre-flight verdict in the notebook instead.'
+      - 'VARIANCE PRE-FLIGHT (required before ARMs 2-4 per lyzortx/AGENTS.md Scientific
+        Review Standards). For each candidate feature family, compute CV and Cohen''s
+        d separately on three subsets: all Guelin phages (n=96), non-zero-projection
+        BASEL phages (n=39), and zero-vector BASEL phages (n=13). If CV < 0.1 or
+        Cohen''s d < 0.1 for discriminating lysed vs non-lysed pairs on any one of
+        those three subsets, stop and report — do not run the full training for that
+        arm. This gate exists because OMP HMM score homogeneity (CV 0.01-0.17) would
+        have been caught before GT02/GT06 burned hours if it had been applied then;
+        same pattern could kill any of ARMs 2-4 on BASEL specifically, and we want
+        that caught before a 3-hour rerun rather than after.'
+      - 'ARM 1 (architectural, calibration arm — NOT discrimination): OOD-aware
+        inference. Compute distance from each held-out phage to its nearest training
+        phage (proteome MMseqs2 bit-score or phage_projection Euclidean). Apply
+        post-hoc shrinkage toward base rate when distance exceeds a threshold fit on
+        Guelin inner-val. Measurable on existing CH05 prediction artifacts without
+        retraining the model — cheapest arm. Shrinkage is monotone so BASEL bacteria-
+        axis AUC stays at 0.7152; what moves is BASEL''s residual ECE (expected to
+        close most of the 0.11-0.12 Guelin-fitted-calibrator residual because
+        shrink-toward-base-rate on OOD phages is literally what their miscalibration
+        asks for). Report Arm 1 against BASEL ECE, not BASEL AUC.'
       - 'ARM 2: pairwise proteome-similarity vector as replacement for TL17 categorical
         projection. Compute each phage''s MMseqs2 bit-score against every training
         phage. Use the resulting continuous vector (or a PCA/summary of it) as the
         phage-side feature slot. A new phage always produces a full similarity profile;
         when it is uniformly low that is itself a meaningful signal, unlike the TL17
-        zero-vector failure mode.'
+        zero-vector failure mode. Strongest structural candidate for closing BASEL
+        discrimination AUC. Risk: may cannibalize TL17 (both encode "is this phage
+        similar to known phages"), RFE keeps the better one, net ≈ wash. Still the
+        most honest test of categorical-vs-continuous encoding.'
       - 'ARM 3: Moriniere 2026 receptor-class probabilities. Run the Moriniere 19-dim
         softmax classifier on each phage proteome; use the probability vector directly
         as a phage-side feature (NOT the 815 k-mers — those were tested in GT06 and
         SX12 and were null). Trained on 260 phages spanning non-Guelin panels so it
-        is not Guelin-biased at source. Upside capped by same-receptor-uncorrelated-hosts
-        (same-receptor phages can have uncorrelated host ranges, Jaccard 0.091 for
-        Tsx), so expect small lift at best — include anyway for completeness.'
-      - 'ARM 4: tail-protein-restricted TL17 BLAST (Shang 2025 benchmark motivation
-        — tail proteins alone match full-genome performance). Restrict the TL17 BLAST
+        is not Guelin-biased at source. **Expected null.** Two knowledge units predict
+        it will fail: (a) same-receptor-uncorrelated-hosts (Tsx phages Jaccard 0.091
+        on host ranges — receptor class is far from sufficient for predicting lysis);
+        (b) Moriniere''s classifier was trained on BW25113/BL21 which lack capsule/
+        O-antigen, so polysaccharide-mediated specificity (the depo-capsule-validated
+        Gate 1 mechanism, the only validated pairwise signal) is not represented.
+        Probability-output vs thresholded-class is a small improvement over the k-mer
+        direct test, not enough to flip the verdict. Keep the arm because running it
+        closes the receptor-class thread cleanly — but flag "expected null" so the
+        result does not surprise anyone.'
+      - 'ARM 4: tail-protein-restricted TL17 BLAST (Shang 2025 benchmark motivation —
+        tail proteins alone match full-genome performance). Restrict the TL17 BLAST
         input to RBP + baseplate + tail-fiber annotated proteins only, re-project.
-        Same feature structure as current phage_projection, cleaner input.'
+        **BASEL pre-flight gate** (required before running this arm): count how many
+        of the 52 BASEL phages have Pharokka-annotated tail/baseplate/RBP proteins.
+        Restricting the BLAST input to a subset of each phage''s proteome can only
+        increase the zero-vector fraction. If fewer than 50% of BASEL phages carry
+        those annotations, skip this arm on the BASEL side (run Guelin-only) or skip
+        it entirely — the arm cannot rescue a phage whose tail region is not
+        annotated.'
       - 'EXPLICIT EXCLUSIONS (known nulls — listed so no future agent re-proposes):
         SaProt / ProstT5 structural PLM (plm-rbp-redundant — -1.22 pp cross-family
         nDCG, actively harmful); PHROG aggregate category counts (phage-functional-noise);
@@ -2387,8 +2422,13 @@ tracks:
         chisel-unified-kfold-baseline to cross-reference the replacement. If all arms
         null, harden panel-size-ceiling with "feature-level fixes exhausted; panel
         expansion is the remaining lever."'
-      - Record per-arm AUC deltas (bacteria-axis and phage-axis, per-source) and the
-        verdict on panel-size-ceiling vs feature-level fixes in track_CHISEL.md.
+      - Record per-arm AUC deltas (bacteria-axis and phage-axis, per-source), pre-flight
+        verdicts for each skipped or constrained arm, and the verdict on panel-size-ceiling
+        vs feature-level fixes in track_CHISEL.md. The notebook entry **must explicitly
+        name and reject each candidate on the exclusion list** (SaProt/ProstT5,
+        PHROG aggregates, dense PHROG categorical, receptor k-mers, physicochemical RBP)
+        with one-line justification per exclusion so no future ticket re-proposes them
+        without having seen the earlier verdicts.
     - id: CH07
       title: Both-axis holdout evaluation (10 x 10 double cross-validation)
       model: claude-opus-4-6
