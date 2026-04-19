@@ -1,59 +1,38 @@
 # Project Knowledge Model
 
-<!-- Last consolidated: 2026-04-13T01:40:00+02:00 -->
+<!-- Last consolidated: 2026-04-19T07:30:00+02:00 -->
 <!-- Source: lyzortx/research_notes/lab_notebooks -->
 
-**62 knowledge units** across 7 themes (47 active, 15 dead ends)
+**61 knowledge units** across 7 themes (43 active, 18 dead ends)
 
 ## Data & Labels
 
 Labeling policy, data quality, split contracts, and training corpus.
 
-- **`label-policy-binary`**: Binary lysis labels use any_lysis rule (matrix_score > 0); ~7% of positives are single-hit
-  noise with matrix_score=0 despite positive labels. [validated; source: ST0.1]
+- **`label-policy-binary`**: CHISEL label frame: the atomic training unit is (bacterium, phage, concentration,
+  replicate) → {0, 1} — each raw observation in raw_interactions.csv stands on its own. Concentration enters the model
+  as a numeric feature (log_dilution ∈ {0, -1, -2, -4}); rows with score='n' are dropped from training, not silently
+  treated as negative. This supersedes the SPANDEX-era any_lysis rollup, which collapsed all concentrations and
+  replicates for a pair into a single binary label and absorbed ~7% single-hit noise (matrix_score=0 despite positive
+  any_lysis) and ~10% 'n'-as-negative ambiguity into the training set. [validated; source: ST0.1, 2026-04-18 CHISEL
+  design; see also: raw-interactions-authority, mlc-dilution-potency, ambiguous-label-noise]
+  - *Rationale: the any_lysis rollup was a derived summary imposed on top of the raw data. Training on the raw
+    observations naturally integrates BASEL (single concentration → one row) and any future dilution-series panels
+    without a rollup convention. The SPANDEX label-policy-binary statement (any_lysis + matrix_score noise) describes
+    how SX10 and earlier models were trained and stays valid for historical comparison; CH02 keeps any_lysis semantics
+    as a regression safety-net before the CH04 behavioral flip.*
 - **`split-contract`**: ST02 defines 294 training bacteria; ST03 reserves 65 cv_group-disjoint bacteria for sealed
   holdout. Deterministic cv_group hashing with salt ensures reproducibility. [validated; source: ST0.2, ST0.3, AR01; see
   also: raw-interactions-authority]
 - **`raw-interactions-authority`**: raw_interactions.csv is the authoritative training corpus; all derived training
   cohorts and evaluation splits trace back to this file. [validated; source: ST0.2, AR01, DEPLOY01]
-- **`mlc-dilution-potency`**: MLC (minimum lytic concentration) is a derived score, not a raw feature —
-  raw_interactions.csv contains only binary scores (0/1/n) at four tested log_dilutions (0, -1, -2, -4). The paper
-  defines MLC over three replicated concentrations (5x10^8, 5x10^7, 5x10^6 pfu/ml) and explicitly excludes the
-  unreplicated 5x10^4 (log_dilution=-4) data. Paper's MLC=3 vs MLC=4 is a morphological distinction at 5x10^6
-  (individual plaques vs entire lawn lysis) that our binary spot data cannot reproduce. SX05 applied the fix:
-  DILUTION_WEIGHT_MAP = {0: 1, -1: 2, -2: 3} with EXCLUDED_LOG_DILUTIONS = {-4}; interaction_matrix.csv was regenerated
-  by capping MLC=4 cells to MLC=3 (1288 pairs collapsed, MLC=0/1/2 counts preserved). Our MLC range is now {0, 1, 2, 3}.
-  MLC=1 is a standard low-potency interaction — not a problem despite the paper's LFW/Abi caveat on lawn clearing at
-  high phage concentration. [validated; source: Gaborieau 2024 Methods "Evaluating phage-bacteria interaction outcomes
-  by plaque assay experiments", Gaborieau 2024 Fig 2b legend, 2026-04-13 raw CSV verification; see also:
-  label-policy-binary, raw-interactions-authority, ambiguous-label-noise, top3-metric-retired]
-  - *EXACT PAPER QUOTES (Methods, "Evaluating phage-bacteria interaction outcomes by plaque assay experiments" section):
-    - MLC definition: "We encoded each phage-bacteria interaction using the MLC   score, which corresponds to the lowest
-    concentration of the phage at which   a lytic interaction is observed." - What counts as lytic: "We considered an
-    interaction to be lytic when we   observed individual lysis plaques or full clearing at any phage   concentration.
-    Individual lysis plaques ascertain the lysis of the   bacterial population with production of new virions. Clearing
-    of the   bacterial lawn at high phage concentration could result from productive   lysis of the bacterial population
-    by the phage, or from another mechanism   such as lysis from without, or abortive infection." - Guelin MLC range:
-    "The MLC score is null in the case of non-lytic   interaction and ranges from 1 (lytic interaction at the highest
-    phage   titre) to 4 (uncountable number of lysis plaques at 5 x 10^6 pfu/ml)." - Replicate structure: "5 x 10^8
-    pfu/ml (replicates R1, R2 and R3),   5 x 10^7 pfu/ml (replicates R2 and R3), 5 x 10^6 pfu/ml (replicates R1, R2
-    and R3) and 5 x 10^4 pfu/ml (replicate R1)." - Exclusion of 5x10^4: "The outcome of interaction at 5 x 10^4 pfu/ml
-    was   not taken into account in the calculation of the MLC score because it was   not verified by a replicate."
-    EXACT PAPER QUOTE (Fig 2b legend): "0, no lytic interaction was observed; 1, lytic interaction at the highest phage
-    titre (5 x 10^8 pfu/ml); 2, lytic interaction at the middle phage concentration (5 x 10^7 pfu/ml); interactions
-    observed at the lowest phage concentration (5 x 10^6 pfu/ml) are distinguished between 3 (individualized lysis
-    plaque) and 4 (entire lysis of the bacterial lawn)." RAW DATA SHAPE (raw_interactions.csv, verified 2026-04-13):
-    columns are bacteria, phage, image, replicate, plate, log_dilution, X, Y, score. Only binary scores {0, 1, n} and
-    only four log_dilutions {0, -1, -2, -4} — no -3 (5x10^5 was never tested). No plaque-morphology column, so the
-    paper's MLC=3 vs MLC=4 morphological split cannot be reconstructed. SX05 IMPLEMENTATION (2026-04-13):
-    DILUTION_WEIGHT_MAP reduced to {0: 1, -1: 2, -2: 3}; EXCLUDED_LOG_DILUTIONS = {-4} added to
-    build_track_a_foundation.py and applied at raw-row ingestion in both track_a and build_contract (autoresearch). The
-    paper's matrix values at MLC=4 cannot be reconstructed from binary raw data, so regenerate_interaction_matrix.py
-    caps MLC=4 cells at MLC=3 in data/interactions/interaction_matrix.csv (1288 pairs collapsed; MLC=0/1/2 counts
-    preserved exactly; total pair count 38592 unchanged). MLC=1 stays as-is (NOT suspect — standard low-potency
-    interaction; the paper's LFW/Abi caveat is a biological note, not an exclusion criterion). USE: MLC 0-3 provides
-    graded relevance weights for nDCG evaluation (SX01). Training labels remain binary (any_lysis) per
-    label-policy-binary.*
+- **`mlc-dilution-potency`**: HISTORICAL (SPANDEX-era). MLC is a rule-based rollup over the raw (bacterium, phage,
+  concentration, replicate) → {0, 1} observations, not a raw field in raw_interactions.csv. The paper's MLC ∈ {0..4}
+  distinguishes plaque morphology at 5x10^6 pfu/ml (individual plaques vs lawn lysis); our binary spot data cannot
+  reconstruct that split, so SX05 capped the SPANDEX label at {0..3}. CHISEL abandons MLC as a training/evaluation label
+  (see label-policy-binary); this unit remains only to document the SPANDEX-era convention. [validated; source:
+  Gaborieau 2024 Methods, Gaborieau 2024 Fig 2b legend, 2026-04-13 raw CSV verification; see also: label-policy-binary,
+  raw-interactions-authority, ambiguous-label-noise]
 - **`basel-binary-only`**: BASEL × ECOR interaction data (52 phages × 25 ECOR bacteria from GenoPHI) is confirmed binary
   only — no graded upstream data exists. BASEL used a single high-titer spot test (>10^9 pfu/ml), not a dilution series.
   BASEL EOP data on Zenodo covers K-12 defense experiments only, not the ECOR host range panel. [validated; source:
@@ -153,60 +132,48 @@ Architecture choices, calibration, and performance bounds.
 - **`tl18-flawed-baseline`**: TL18 model (0.823 AUC) is not a valid baseline: DefenseFinder version drift inflated 17.3%
   of feature importance, and 5 soft-leaky pairwise features contributed ~5.5%. [validated; source: TL18 audit; see also:
   autoresearch-baseline]
-- **`spandex-final-baseline`**: SPANDEX final baseline (Track SPANDEX closing configuration, 2026-04-13): GT03
-  all_gates_rfe + AX02 per-phage blending, trained on SX05-corrected MLC 0-3 labels, with SX06 real TL17 family
-  projection for BASEL phages. 10-fold CV on our 369×96 panel: nDCG 0.7958 [0.7877, 0.8124], mAP 0.7111 [0.6925,
-  0.7290], AUC 0.8699 [0.8570, 0.8819], Brier 0.1248 [0.1187, 0.1309]. Cross-panel Arm C (train Guelin → predict BASEL ×
-  ECOR): nDCG 0.7619 [0.7219, 0.8207], mAP 0.5186 [0.4591, 0.5780], AUC 0.7607 [0.6886, 0.8307], Brier 0.1844 [0.1426,
-  0.2213]. SX07 and SX09 skipped (plm-rbp-redundant); SX08 continuous depolymerase bitscore validated as null
-  (bit-identical Arm C metrics). Wave-2 (SX11–SX13) did not displace this baseline — see spandex-wave-2-baseline.
-  [validated; source: SX05, SX06, SX08, SX10; see also: autoresearch-baseline, mlc-dilution-potency,
-  new-phage-generalization, plm-rbp-redundant, panel-size-ceiling, spandex-wave-2-baseline]
-  - *The 10.9 pp within-panel AUC (0.87) vs cross-panel AUC (0.76) gap is the main SPANDEX-era unresolved item. Closing
-    it requires panel expansion rather than richer phage-side features. Use this record as the reference point for
-    future tracks; the canonical artifacts live at lyzortx/generated_outputs/sx05_sx01_eval/ (within-panel) and
-    lyzortx/generated_outputs/sx06_sx03_eval/ (cross-panel Arm C).*
-- **`spandex-wave-2-baseline`**: SPANDEX wave-2 final (SX14, 2026-04-15): identical to wave-1 `spandex-final-baseline`
-  because all wave-2 tickets (SX11 potency losses, SX12 phage k-mers, SX13 host OMP k-mers) failed the aggregate +2 pp
-  gate. Stratified evaluation across four strata (within-family / cross-family / narrow-host-phage / phylogroup-orphan)
-  reveals the wave was not all null: SX11 LambdaRank, ordinal all-threshold, and hurdle two-stage deliver +2.7 to +3.5
-  pp within-family nDCG (LambdaRank CI disjoint from baseline), but cross-family (69% of pairs) dilutes to zero
-  aggregate delta. SX12 and SX13 are null across all four strata. [validated; source: SX14; see also:
-  spandex-final-baseline, ordinal-regression-not-better, kmer-receptor-expansion-neutral,
-  host-omp-variation-unpredictive, narrow-host-prior-collapse, stratified-eval-framework]
-  - *Within-family defined as phage's family having ≥3 training-positive pairs on this bacterium's cv_group.
-    Cross-family = 0 training-positive pairs same constraint. Narrow-host-phage = phage panel-wide lysis rate <30%.
-    Phylogroup-orphan = holdout bacterium has ≤2 training-phylogroup-siblings in its CV fold. Stratum counts per pair:
-    within_family ~28%, cross_family ~69%, narrow_host_phage ~72%, phylogroup_orphan ~1.6% (too small for reliable
-    bootstrap). Narrow-host nDCG ceiling is ~0.71 across all 10 tested arms — no feature family tested in wave 2 breaks
-    the narrow-host-prior-collapse. Future within-family follow-up: integrate SX11 ordinal or LambdaRank loss with
-    per-phage blending (SX11 arms ran without blending) and evaluate whether the within-family gain persists; if so,
-    investigate stratum-aware inference. Canonical artifacts:
-    lyzortx/generated_outputs/sx14_eval/stratified_metrics.csv.*
-- **`stratified-eval-framework`**: Aggregate metrics (nDCG/mAP/AUC/Brier on full panel) can hide stratum-specific wins
-  and losses. SX14 demonstrated a +3.5 pp within-family nDCG gain that was invisible in aggregate because cross-family
-  pairs (69% of the panel) diluted the signal to zero. Every ticket from SX14 onward should report metrics stratified by
-  within-family / cross-family / narrow-host-phage / phylogroup-orphan alongside aggregate. [validated; source: SX14;
-  see also: spandex-wave-2-baseline, panel-size-ceiling, spandex-unified-kfold-baseline]
-  - *Stratum routing at inference requires computing training-positive family overlap and phylogroup sibling counts from
-    the training fold — these are cheap to compute per-pair and do not leak test information. Future tracks evaluating a
-    single candidate arm can reuse `.agents/skills/case-by-case/compare_predictions.py` for per-bacterium audit and the
-    sx14_eval.py pipeline for full four-stratum decomposition.*
-- **`spandex-unified-kfold-baseline`**: SX15 unified Guelin+BASEL k-fold baseline (2026-04-15, default BASEL+→MLC=2):
-  bacteria-axis with per-phage blending is essentially identical to SX10 (aggregate nDCG 0.7965 [0.789, 0.814] vs SX10
-  0.7958; AUC 0.8685 vs 0.8699). Phage-axis (all-pairs only; held-out phages unseen) gives the first honest
-  deployability estimate for unseen phages — aggregate AUC 0.8988 [0.892, 0.906] but nDCG 0.7229 [0.714, 0.743] (7 pp
-  lower). BASEL phages generalize as well as Guelin phages on phage-axis (holdout_phage_basel nDCG 0.8332 vs
-  holdout_phage_guelin 0.7193; AUCs essentially identical at 0.896 vs 0.899). [validated; source: SX15; see also:
-  spandex-final-baseline, spandex-wave-2-baseline, stratified-eval-framework, new-phage-generalization,
-  external-data-neutral]
+- **`spandex-final-baseline`**: SPANDEX final baseline (Track SPANDEX closing configuration, 2026-04-13; 2026-04-18
+  re-headline under CHISEL frame): GT03 all_gates_rfe + AX02 per-phage blending on SX05-corrected MLC 0-3 labels,
+  10-fold CV bacteria-axis on the 369×96 panel: **AUC 0.8699 [0.8570, 0.8819], Brier 0.1248 [0.1187, 0.1309]**
+  (within-panel). Cross-panel Arm C (train Guelin → predict BASEL × ECOR): **AUC 0.7607 [0.6886, 0.8307], Brier 0.1844
+  [0.1426, 0.2213]**. Historical nDCG/mAP numbers (nDCG 0.7958, mAP 0.7111 within-panel; nDCG 0.7619, mAP 0.5186
+  cross-panel) are retained for SPANDEX-era comparison but are no longer the primary scorecard. SX07 and SX09 cancelled
+  (plm-rbp-redundant); SX08 null. Wave-2 (SX11–SX13) also null under AUC+Brier — see ordinal-regression-not-better,
+  kmer-receptor-expansion-neutral, and host-omp-variation-unpredictive for the per-family outcomes. [validated; source:
+  SX05, SX06, SX08, SX10; see also: autoresearch-baseline, mlc-dilution-potency, new-phage-generalization,
+  plm-rbp-redundant, panel-size-ceiling, label-policy-binary]
+  - *This is the SPANDEX-era within-panel reference. Superseded by chisel-baseline (established in CH04) as the active
+    canonical once CHISEL lands. The 10.9 pp AUC gap between within-panel (0.87) and cross-panel (0.76) is the
+    load-bearing generalization problem inherited by CHISEL; closing it still requires panel expansion rather than
+    richer phage-side features. MLC-derived label scoring and nDCG narratives are historical artifacts of the SPANDEX
+    scorecard and do not constrain CHISEL. Canonical artifacts: lyzortx/generated_outputs/sx05_sx01_eval/ (within-panel)
+    and lyzortx/generated_outputs/sx06_sx03_eval/ (cross-panel Arm C).*
+- **`stratified-eval-framework`**: CHISEL rescope: per-stratum reporting is a narrow-host diagnostic, not a primary
+  scorecard. Under AUC+Brier, aggregate and stratified metrics are more aligned than under nDCG — the SPANDEX marquee
+  case (SX11 LambdaRank +3.5 pp within-family nDCG, null in aggregate) does not survive the metric change. CHISEL
+  retains the four-stratum decomposition (within-family / cross-family / narrow-host-phage / phylogroup-orphan) for
+  error-bucket diagnosis, especially the narrow-host-phage stratum where broad-phage priors dominate the panel and
+  rescue is the deployment question. It is no longer required reporting for every ticket. [validated; source: SX14,
+  2026-04-18 CHISEL design; see also: panel-size-ceiling, spandex-unified-kfold-baseline, narrow-host-prior-collapse]
+  - *The stratum definitions and bootstrap machinery are still useful diagnostics. Stratum routing at inference still
+    requires computing training-positive family overlap and phylogroup sibling counts from the training fold (no test
+    leakage). Future CHISEL tickets evaluating a single candidate arm can reuse
+    `.agents/skills/case-by-case/compare_predictions.py` for per-bacterium audit and the sx14_eval.py pipeline for full
+    four-stratum decomposition when narrow-host behaviour is specifically under investigation.*
+- **`spandex-unified-kfold-baseline`**: SX15 unified Guelin+BASEL k-fold baseline (2026-04-15, default BASEL+→MLC=2;
+  2026-04-18 re-headline under CHISEL frame): **bacteria-axis AUC 0.8685, phage-axis AUC 0.8988, cross-source
+  near-parity AUC 0.896 (BASEL) vs 0.899 (Guelin)**. Phage-axis (all-pairs only; held-out phages unseen) is the first
+  honest deployability estimate for unseen phages. The BASEL-vs-Guelin nDCG comparison (0.8332 vs 0.7193) is dropped —
+  it is a metric artifact because BASEL binary labels have fewer nDCG rungs than Guelin's MLC grades, so direct nDCG
+  comparison is not interpretable. AUC is comparable across sources and shows BASEL phages generalize essentially
+  identically to Guelin phages. [validated; source: SX15; see also: spandex-final-baseline, stratified-eval-framework,
+  new-phage-generalization, external-data-neutral]
   - *Panel: 369 bacteria (all 25 BASEL ECOR overlap with Guelin; no new bacteria) × 148 phages (96 Guelin + 52 BASEL) =
-    33,202 observed pairs. The AUC-vs-nDCG divergence on phage-axis reflects the "per-phage blending tax" — AUC stays
-    high because all-pairs features preserve global lysis/no-lysis ranking, but per-bacterium top-k ranking suffers when
-    held-out phages have no per-phage model. ~7 pp nDCG is the cost of the cold-start-phage scenario. Ran under default
-    Option B (BASEL+→MLC=2) only; A/C sensitivity (BASEL+→{1,3}) deferred since SX14 adopted no wave-2 arm (invariance
-    is vacuously satisfied on singleton {SX10}). Cross-family phage-axis nDCG 0.6673, AUC 0.7862 are the honest floor
-    for new phage × new family cold-start. Artifact paths:
+    33,202 observed pairs. The 3 pp bacteria-axis vs phage-axis AUC gap (0.8685 → 0.8988) looks like a "phage-axis is
+    easier" effect but really reflects the deployment mix — phage-axis folds hold out entire phages so each test pair
+    has more host-side signal available per training positive. Under CHISEL, this baseline is superseded by
+    chisel-unified-kfold-baseline (established in CH05) after the cv_group leakage fix (CH02) and concentration-feature
+    flip (CH04). Until then, SX15 remains the reference point for cross-source generalization. Artifact paths:
     lyzortx/generated_outputs/sx15_eval/sx15_{bacteria,phage}_axis_stratified_metrics.csv and
     sx15_{bacteria,phage}_axis_predictions.csv.*
 - **`autoresearch-baseline`**: AUTORESEARCH all-pairs model (0.810 AUC, 90.8% top-3 on ST03 holdout) is the canonical
@@ -285,18 +252,20 @@ Holdout protocol, benchmark methodology, and error analysis.
   improved). [validated; source: 2026-04-09 APEX holdout; see also: st03-canonical-benchmark, bootstrap-strain-level]
   - *On 65-74 bacteria evaluation sets, 1 strain flip = 1.4-1.5pp top-3. Inner-val bacteria overlap with training
     distribution; holdout bacteria are cv_group-disjoint. Holdout is the only honest top-3 test.*
-- **`top3-metric-retired`**: Top-3 hit rate is retired as an evaluation metric starting with Track SPANDEX. It collapses
-  the entire ranking into a binary signal, discards potency information, and cannot handle sparse ground truth from
-  multi-source panels. Replaced by nDCG (graded relevance using MLC 0-3 post-SX05) and mAP (binary retrieval quality).
-  [validated; source: 2026-04-12 SPANDEX design; see also: mlc-dilution-potency, st03-canonical-benchmark,
-  bootstrap-strain-level]
-  - *Top-3 assigns identical scores to a model ranking a true positive 4th vs 148th. With mixed-source data (our MLC 0-3
-    post-SX05 + BASEL binary), nDCG naturally handles graded relevance while mAP handles partial ground truth (score
-    only observed pairs per bacterium). AUC and Brier retained as secondary metrics.*
+- **`ranking-metrics-retired`**: Top-3 hit rate, nDCG, and mAP are all retired from the scorecard starting with Track
+  CHISEL (2026-04-18). Ranking is a product-layer concern — how many phages to administer, what selection policy to
+  apply — not a property of the biological model. The biological model predicts P(lysis | bacterium, phage,
+  concentration); downstream product code turns that calibrated probability into rankings or recommendations. The CHISEL
+  scorecard is AUC + Brier only: AUC measures pairwise discrimination (does the model rank a true positive above a true
+  negative?), Brier measures calibration (are the predicted probabilities honest?). Those are the two questions a
+  pairwise lysis predictor can answer. Top-3 specifically was retired earlier in SPANDEX for separate reasons (collapses
+  to binary signal, can't handle mixed-source panels) — CHISEL generalises that argument to all ranking metrics.
+  [validated; source: 2026-04-12 SPANDEX design, 2026-04-18 CHISEL design; see also: st03-canonical-benchmark,
+  bootstrap-strain-level, label-policy-binary]
 - **`kfold-cv-replaces-fixed-holdout`**: 10-fold bacteria-stratified cross-validation replaces the single fixed ST03
   holdout (65 bacteria) as the primary evaluation protocol in Track SPANDEX. Every bacterium is evaluated exactly once;
   performance estimates are robust to holdout composition. [preliminary; source: 2026-04-12 SPANDEX design; see also:
-  st03-canonical-benchmark, split-contract, top3-metric-retired]
+  st03-canonical-benchmark, split-contract, ranking-metrics-retired]
   - *ST03 remains available as a single-fold comparison column for backwards compatibility with GIANTS results. The 10x
     model fitting cost is acceptable with LightGBM (minutes, not hours). k-fold also enables cross-source evaluation
     when BASEL bacteria overlap with different folds.*
@@ -335,17 +304,13 @@ Compressed lessons from approaches that didn't work.
   - *TK02 was invalidated (zero joined rows). SX03 is the first proper BASEL test with full feature computation
     (Pharokka + DepoScope on 52 genomes): Arm B (our data + BASEL training) gave nDCG +0.3pp with overlapping CIs vs
     baseline — confirmed neutral. 1,240 BASEL pairs (3.8% of training) is too small to move the needle.*
-- **`ordinal-regression-not-better`**: Five loss formulations for ordinal potency prediction (vanilla regression/SX04,
-  hurdle two-stage, LambdaRank, ordinal all-threshold/SX11) all fail the +2 pp nDCG gate over binary classification. The
-  binary model's implicit potency signal (Spearman 0.246 among positives) captures most of the available signal. Best
-  alternative is ordinal all-threshold at +1.33 pp nDCG — detectable but sub-threshold, with a trade-off: MLC=1 pairs
-  get demoted. [validated; source: SX04, SX11; see also: mlc-dilution-potency, top3-metric-retired]
-  - *79% zero-inflation (MLC=0) dominates all metrics. Binary P(lysis) implicitly ranks potency because MLC=3 pairs have
-    3 concordant positive training rows vs MLC=1 pairs with 1 positive and 2 negatives. SX11 ordinal all-threshold shows
-    a real within-positive reranking effect (Kendall tau 0.208→0.290, 62% of bacteria improve) but equal-weighted
-    threshold combination suppresses MLC=1 pairs relative to binary — 55% of MLC=1 pairs drop in rank. The mechanism is
-    sound; the data's potency resolution (3 dilution levels) cannot support enough signal to clear the 2 pp gate. Richer
-    potency labels (quantitative EOP) could revisit.*
+- **`ordinal-regression-not-better`**: Five loss formulations for ordinal potency prediction — vanilla regression
+  (SX04), hurdle two-stage, LambdaRank, ordinal all-threshold (SX11), plus the SX11 binary control — are all null under
+  AUC. SX11 ordinal all-threshold was -0.2 pp AUC vs binary baseline; LambdaRank was a -3.4 pp AUC regression. Every
+  loss formulation tested so far fails to improve discrimination over a plain binary LightGBM on the panel. The
+  within-positive reranking effect SX11 captures (Kendall tau 0.208→0.290 among positives) is a product-layer ranking
+  concern that does not translate to discrimination or calibration gains. [validated; source: SX04, SX11; see also:
+  mlc-dilution-potency, ranking-metrics-retired, label-policy-binary]
 - **`label-derived-features-leaky`**: Label-derived features (legacy_label_breadth_count, defense_evasion_*,
   receptor_variant_ seen_in_training_positives) caused severe leakage and were removed entirely from TL18. [validated;
   source: TG04, TG05, TG06, TG08, TG12; see also: pairwise-block-leaky]

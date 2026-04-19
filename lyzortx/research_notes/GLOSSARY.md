@@ -75,6 +75,27 @@ base rate uninformatively, 0.12–0.13 = our working range (informative but with
 be excellent, <0.05 = typical of much easier problems. Our SX10 Brier of 0.125 means we're
 materially better-calibrated than guessing the base rate.
 
+## Concentration-aware training unit
+
+The atomic training row from Track CHISEL onward: one observation = one `(bacterium, phage,
+log_dilution, replicate) → {0, 1}` tuple from `raw_interactions.csv`. Each row is a physically
+observed plaque assay outcome; concentration enters the model as a plain numeric feature
+(`log_dilution ∈ {0, -1, -2, -4}`), letting LightGBM learn its own interaction with host and phage
+features rather than baking in a dose-response shape.
+
+**Contrast with the SPANDEX frame**: SPANDEX rolled up all concentrations and replicates for a
+(bacterium, phage) pair into a single `any_lysis` label and then sometimes used a derived MLC
+grade (0–3) on top. CHISEL drops the rollup. The consequences:
+
+- rows with `score='n'` are excluded from training instead of silently counted as negatives
+- BASEL (single-concentration) observations fit the training frame natively — one row per pair
+- each Guelin pair now contributes up to 9 rows (3 replicates at 5×10⁸ pfu/ml, 2 at 5×10⁷,
+  3 at 5×10⁶, 1 at 5×10⁴), giving the model more signal per pair than a single rollup label
+
+**Evaluation** is scored at each pair's highest observed concentration so within-panel and
+cross-source results share a comparable operating point. See `label-policy-binary` for the
+authoritative definition and CH02–CH04 in the plan for the migration sequence.
+
 ## Hurdle two-stage loss
 
 A two-model composition for zero-inflated ordinal data (our MLC is 79% zeros).
@@ -101,27 +122,37 @@ That weight is the "lambda."
 
 **Why we tried it:** our eval metric is per-bacterium nDCG; train for the metric you want to win.
 
-**What we learned (SX11):** aggregate null (-1 pp mAP, AUC -3.4 pp because per-query scores aren't
-cross-calibrated), but **within-family nDCG +3.48 pp with CI disjoint from baseline** — the
-strongest stratum-specific signal in wave-2. The loss is sound; aggregate dilution by 69%
-cross-family pairs hides it. Integrating with per-phage blending is a wave-3 candidate. See
-`spandex-wave-2-baseline`, `stratified-eval-framework`.
+**What we learned (SX11):** aggregate null on AUC (-3.4 pp regression, because per-query scores
+aren't cross-calibrated). The stratum-specific within-family nDCG gain (+3.48 pp) does not survive
+the CHISEL metric change — ranking metrics are retired, so this is no longer a live arm. See
+`ordinal-regression-not-better`, `ranking-metrics-retired`.
 
 ## MLC (minimum lytic concentration)
 
-Our potency label: integer 0–3 where 0 = no lysis observed, 3 = lysis observed at the lowest phage
-concentration tested (5×10⁶ pfu/ml = most potent). Higher MLC = more potent phage–host interaction.
-Derived from binary spot-test scores at three replicated dilutions (5×10⁸, 5×10⁷, 5×10⁶); the
-unreplicated 5×10⁴ dilution is excluded. Post-SX05, MLC=4 from the paper's matrix is capped to
-MLC=3 because our binary data cannot reconstruct the paper's plaque-morphology split at 5×10⁶. See
-`mlc-dilution-potency`.
+**DEPRECATED as training/evaluation label from Track CHISEL onward.** CHISEL switches to the
+(bacterium, phage, concentration, replicate) → {0, 1} atomic unit; MLC is retained only as
+shorthand when summarising raw observations by eye. See `label-policy-binary` and
+`Concentration-aware training unit` below.
+
+Historical definition (SPANDEX and earlier): integer 0–3 potency label where 0 = no lysis observed,
+3 = lysis observed at the lowest phage concentration tested (5×10⁶ pfu/ml = most potent). Higher
+MLC = more potent phage–host interaction. Derived from binary spot-test scores at three replicated
+dilutions (5×10⁸, 5×10⁷, 5×10⁶); the unreplicated 5×10⁴ dilution is excluded. Post-SX05, MLC=4 from
+the paper's matrix is capped to MLC=3 because our binary data cannot reconstruct the paper's
+plaque-morphology split at 5×10⁶. See `mlc-dilution-potency`.
 
 MLC is **ordinal**, not metric: 3 > 2 > 1 > 0 is meaningful, but "distance from 1 to 2" is not
 guaranteed to equal "distance from 2 to 3."
 
 ## nDCG (Normalized Discounted Cumulative Gain)
 
-A ranking metric for graded relevance. For one bacterium's ranked list of phages:
+**DEPRECATED from Track CHISEL onward.** Ranking metrics (nDCG, mAP, top-3) are retired from the
+scorecard — the CHISEL biological model predicts P(lysis | bacterium, phage, concentration); any
+ranking or cocktail-selection policy lives in a downstream product layer. Scored on AUC + Brier
+only. See `ranking-metrics-retired`.
+
+Historical definition: a ranking metric for graded relevance. For one bacterium's ranked list of
+phages:
 
 - **Gain**: the true MLC of each phage (0, 1, 2, or 3).
 - **Discounted**: gain at rank k is divided by log₂(k+1) — hits at the top count more than hits
@@ -129,9 +160,6 @@ A ranking metric for graded relevance. For one bacterium's ranked list of phages
 - **Cumulative**: sum the discounted gains across the list.
 - **Normalized**: divide by the DCG of the ideal ranking (all true positives sorted by MLC
   descending). Result ∈ [0, 1], where 1 = perfect ranking.
-
-Why we use it: naturally handles **graded** relevance (MLC=3 is "more relevant" than MLC=1), unlike
-top-3 hit rate which treats all positives identically. See `top3-metric-retired`.
 
 ## Ordinal all-threshold loss
 
@@ -251,9 +279,11 @@ nDCG can hide real stratum-specific signals. Four strata, each a per-pair boolea
 - **phylogroup_orphan**: holdout bacterium has ≤2 phylogroup siblings in its CV fold. Rare; often
   too small for reliable bootstrap (~1.6%).
 
-**Why we care**: SX11 LambdaRank's +3.48 pp within-family nDCG was invisible in aggregate because
-cross-family pairs diluted it to zero. Every ticket from SX14 onward reports stratified metrics
-alongside aggregate. See `stratified-eval-framework`, `spandex-wave-2-baseline`.
+**Why we kept them**: under the CHISEL AUC+Brier scorecard the strata are rescoped to a narrow-host
+diagnostic rather than mandatory reporting — aggregate and stratified metrics are much more aligned
+once ranking metrics are retired. The four-stratum decomposition still helps diagnose where a
+feature is moving predictions and is especially useful for investigating narrow-host-phage rescue.
+See `stratified-eval-framework`.
 
 Not to be confused with **lysis-rate deciles** used by the `case-by-case` skill (10 buckets of
 phage panel-wide lysis rate, 0-10%, 10-20%, …, 90-100%) — those are a separate tool for

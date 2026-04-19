@@ -2028,3 +2028,86 @@ The prescription for future tracks: **lead with stratified-eval-first design.** 
 experiments. Treat the +2 pp gate as one signal among several; stratum-specific significance (CI
 disjoint) is more meaningful than aggregate point-estimate lift. And accept that the 0.82 AUC ceiling is
 probably panel-bound, not feature-bound — closing it means expanding the panel, not adding more features.
+
+### 2026-04-19 07:30 CEST: CHISEL framework pivot — MLC retired, AUC+Brier scorecard, concentration-aware training
+
+#### Executive summary
+
+Track CHISEL replaces SPANDEX as the active modeling track. Three coordinated changes: (1) the
+atomic training unit switches from pair-level `any_lysis` rollup to the raw
+`(bacterium, phage, concentration, replicate) → {0, 1}` row, with concentration entering the model
+as a plain numeric feature; (2) MLC is retired as a training and evaluation label — it is a derived
+rule-based rollup on top of the raw observations and forced a metric change at SX05 that we no
+longer need; (3) the scorecard collapses to AUC and Brier only. Ranking metrics (top-3, nDCG, mAP)
+are dropped because ranking is a product-layer concern rather than a property of a pairwise
+biological model. This is a framework pivot on top of the earlier top-3 → nDCG pivot; both were
+driven by separation-of-concerns reasoning but only CHISEL commits to it fully.
+
+#### Why MLC is retired as a training/evaluation label
+
+MLC is a derived rollup with two problems. First, its definition depends on the measurement
+panel — the Guelin protocol records three replicated dilutions so MLC runs 0–3 (post-SX05 cap)
+while BASEL has a single high-titer spot that maps to "≥1 or 0", so MLC arithmetic is panel-
+specific. Second, every integration decision (BASEL+→MLC=1/2/3 in SX15) became a label-convention
+knob rather than a data-structure choice. Training on the raw observations sidesteps both: each
+source contributes the rows it actually produced. MLC survives only as a reporting shorthand in
+glossaries and lab notebooks, not as a field in training data.
+
+#### Why AUC+Brier replace ranking metrics
+
+The biological question the model can answer is "given this bacterium, this phage, and this
+applied concentration, what is P(lysis)?" That's a discrimination question (AUC) plus a
+calibration question (Brier). Everything else — how many phages to administer as a cocktail, what
+threshold to apply, how to bias toward narrow-host specialists — is a downstream product-layer
+decision that depends on operational constraints the biological model has no view of. Ranking
+metrics bake product-layer policy into the scientific scorecard and reward the model for optimising
+a decision it doesn't own. Dropping them also resolves the BASEL-vs-Guelin nDCG comparison artifact
+(fewer nDCG rungs on binary BASEL labels → cosmetically different nDCG numbers for equal
+discrimination).
+
+#### Why (pair, concentration, binary) is the training unit
+
+Three reasons. One, it's the data's own atomic unit — `raw_interactions.csv` is keyed on
+`(bacteria, phage, image, replicate, plate, log_dilution, X, Y, score)`; collapsing it imposes a
+convention the raw data does not. Two, it integrates BASEL natively (single concentration = one
+row) without a label-convention knob. Three, it gives each Guelin pair up to nine training rows
+(3 replicates at 5×10⁸ pfu/ml, 2 at 5×10⁷, 3 at 5×10⁶, 1 at 5×10⁴) instead of one rolled-up
+label, which should help calibration. Concentration enters as `log_dilution ∈
+{0, -1, -2, -4}` — a plain numeric feature, not a dose-response functional form. Rows with
+`score='n'` are dropped from training (not silently treated as negatives). Evaluation is scored at
+each pair's highest observed concentration so within-panel and cross-source comparisons share a
+comparable operating point.
+
+#### Sequencing (CH02 through CH07)
+
+CH01 is documentation only — this entry, the SPANDEX closure note, glossary deprecations, and
+knowledge-unit rewrites. The actual work is seven tickets:
+
+- **CH02**: cv_group leakage fix. `assign_bacteria_folds` currently hashes on bacterium name, not
+  `cv_group`; 52 of 301 cv_groups split across folds. Fix and revalidate the SX10 canonical
+  configuration under the corrected fold design — expected small shift, not a headline change.
+  Establishes the baseline the rest of CHISEL builds on.
+- **CH03**: row-expanded training matrix with `any_lysis` semantics preserved — a regression
+  safety-net. Should give |ΔAUC| < 0.005 vs CH02 (same labels, same features, same model;
+  different row layout).
+- **CH04**: the behavioral flip. Per-row binary labels, concentration as a numeric feature,
+  AUC+Brier scorecard. Establishes `chisel-baseline` and supersedes `spandex-final-baseline`.
+- **CH05**: phage-axis + cross-source under CHISEL (SX15 successor). Establishes
+  `chisel-unified-kfold-baseline`.
+- **CH06**: both-axis 10×10 double-CV holdout — addresses the critic framing that SPANDEX
+  closed prematurely on the panel-size-ceiling claim without actually evaluating unseen bacteria
+  × unseen phages simultaneously. If AUC crashes to marginal-riding range, that's a new dead-end
+  knowledge unit.
+- **CH07**: SX12/SX13 feature-family null re-audit under the CHISEL frame. SX11 retires entirely
+  because MLC-graded losses no longer apply.
+
+#### The load-bearing argument: separation of concerns
+
+This pivot is not about picking better metrics. It is about drawing a clean line between the
+biological model (what the physics of phage infection determines) and the product layer (what to
+do with those predictions operationally). SPANDEX blurred them — the scorecard rewarded the model
+for making cocktail-composition-aware decisions that belong to a downstream system. CHISEL
+commits to predicting calibrated pairwise lysis probabilities and delegating policy to a separate
+component. Both the previous top-3 → nDCG pivot and this pivot trace back to that same argument,
+and it was implicit in the CHISEL design from the start: training on raw observations, scoring on
+AUC+Brier, and leaving ranking to the product layer all express the same decomposition.
