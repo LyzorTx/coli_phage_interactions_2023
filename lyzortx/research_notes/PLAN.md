@@ -1387,7 +1387,7 @@ graph LR
     numbers — they are historical under the old fold design.
   - Record CV fix methodology and the magnitude of the AUC/Brier shift in a new CHISEL lab notebook (create
     lyzortx/research_notes/lab_notebooks/track_CHISEL.md).
-- [ ] **CH03** Row-expanded training matrix with preserved any_lysis semantics. Model: `claude-opus-4-6`. CI image
+- [x] **CH03** Row-expanded training matrix with preserved any_lysis semantics. Model: `claude-opus-4-6`. CI image
       profile: `base`. Depends on tasks: `CH02`.
   - GOAL: safety-net ticket. Restructure the training matrix from pair-level to (bacterium, phage, concentration,
     replicate)-level, but keep the any_lysis label rollup so behavior is unchanged. Verify this restructure reproduces

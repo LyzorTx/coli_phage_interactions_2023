@@ -2214,7 +2214,7 @@ tracks:
       title: Row-expanded training matrix with preserved any_lysis semantics
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - CH02
       acceptance_criteria:
