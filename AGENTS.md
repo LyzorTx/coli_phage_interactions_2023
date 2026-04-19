@@ -52,9 +52,12 @@ Detailed coding, testing, scientific review, CI, and orchestration policies live
 # Git and PR Policies
 
 - Committing directly to main is allowed. Use feature branches for orchestrator tasks or changes needing review.
-- **Commit freely, ask before pushing.** In interactive sessions, commit local changes without asking, but always
-  confirm with the user before `git push`. A premature push can trigger CI, auto-merge, or reviews before the work is
-  ready (as happened with PR #366 merging before review fixes were pushed).
+- **On-ticket orchestrator work: push and open PRs without asking.** Implementing a dispatched orchestrator ticket is
+  pre-authorised to push the feature branch, open the PR, run a fresh-context reviewer subagent, and merge if the
+  subagent approves. This is the standard batch-ticket flow (one PR per ticket, sequential merges).
+- **Off-ticket work on main: ask before pushing.** Opportunistic cleanup, refactors, or fixes that are not part of a
+  dispatched orchestrator ticket require explicit confirmation before `git push`, because a premature push can trigger
+  CI or auto-merge before the work is ready (as happened with PR #366).
 - Always rebase on main before starting work and before every push:
   `git fetch origin main && git rebase origin/main` (or `gt sync` for Graphite stacks).
 - Never use `git add -f`, `git add .`, or `git add -A`. Stage files by explicit path.
