@@ -1130,7 +1130,7 @@ graph LR
     the TL17 gap alone
   - Record results in track_SPANDEX.md; note whether this closes the generalization gap alone or whether SX07 (PLM) is
     still needed
-- [ ] **SX07** BASEL PLM embeddings + SX03 re-evaluation. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on
+- [~] **SX07** BASEL PLM embeddings + SX03 re-evaluation. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on
       tasks: `SX06`.
   - CONDITIONAL: If SX06 alone closes the Arm C generalization gap to within 3pp AUC of within-panel performance,
     consider skipping this ticket — known knowledge plm-rbp-redundant indicates PLM features showed zero lift on ST03
@@ -1158,7 +1158,7 @@ graph LR
   - Evaluate via k-fold CV (within-panel) and SX06 Arm C (cross-panel). Compare nDCG, mAP, AUC against SX06 baseline.
   - If cross-panel AUC improves by >2pp, adopt as Gate 1 default and flag SX09 as lower priority
   - Record results and bitscore-vs-cluster analysis in track_SPANDEX.md
-- [ ] **SX09** Per-functional-class PLM blocks (minimal mean-pooling). Model: `claude-opus-4-6`. CI image profile:
+- [~] **SX09** Per-functional-class PLM blocks (minimal mean-pooling). Model: `claude-opus-4-6`. CI image profile:
       `base`. Depends on tasks: `SX07`.
   - MOTIVATION: The current phage_rbp_struct slot double-pools PLM embeddings (mean-pool within protein, then mean-pool
     across all RBPs of the phage). This blurs tail fiber + depolymerase + baseplate signals into one vector. Keep

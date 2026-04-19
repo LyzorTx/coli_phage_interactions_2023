@@ -1805,7 +1805,7 @@ tracks:
       title: BASEL PLM embeddings + SX03 re-evaluation
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: cancelled
       depends_on_tasks:
       - SX06
       acceptance_criteria:
@@ -1852,7 +1852,7 @@ tracks:
       title: Per-functional-class PLM blocks (minimal mean-pooling)
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: cancelled
       depends_on_tasks:
       - SX07
       acceptance_criteria:
