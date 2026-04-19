@@ -1467,9 +1467,24 @@ graph LR
     cv_group hash + phage-axis ICTV family/Other/UNKNOWN StratifiedKFold). Feature bundle held constant except for the
     phage-side slot under test. Each arm reports bacteria-axis AUC+Brier, phage-axis AUC+Brier, and the per-source
     (Guelin/BASEL) subset breakdown — both aggregate and per-decile reliability.
-  - ORDERING: run ARM 1 first (no retraining, testable on existing CH05 artifacts in ~15 min), then the variance
-    pre-flight below, then ARM 2, then ARMs 3 and 4 in whichever order their pre-flights allow. If a pre-flight kills an
-    arm, do not run it — report the pre-flight verdict in the notebook instead.
+  - ENGINEERING PRE-FLIGHT (required, before any feature-arm retraining): parallelise the training loop before burning
+    4× more CPU on serial feature-arm reruns. CH05's 4-hour wall-clock surfaced that the training loop is strictly
+    serial across seeds and folds — each LightGBM fit uses all cores internally but the 3 seeds per fold and 10 folds
+    per axis run sequentially. CH06's 4-arm sweep would inherit and multiply that cost (~16 hours of CPU serial), so
+    fixing the loop before running the arms is high-leverage. Two edits in `candidate_replay.py` / `ch04_eval.py` /
+    `ch05_eval.py`: (a) `multiprocessing.Pool(3)` across the 3 seeds inside a fold (each fit independent, different
+    PAIR_SCORER_RANDOM_STATE, ~3 GB resident for 3 concurrent design matrices — fine on a 16 GB laptop); (b) cache the
+    first seed's RFECV-selected feature list and reuse for seeds 2-3 (final fit only) since RFECV on the canonical
+    feature set is deterministic given the training frame. Combined target: CH04 90 min → <30 min, CH05 240 min → <80
+    min, each CH06 arm proportional. **Determinism gate** (must pass before the 4 arms start): rerun CH04 under the
+    parallelised loop and confirm aggregate AUC and Brier match the CH04 canonical (0.8083 AUC / 0.1751 Brier) within
+    1e-4. If metrics drift, parallelism broke determinism — diagnose before landing. Record the wall-clock comparison in
+    devops.md. Fold-level parallelism stays out of scope (4× memory footprint, separate optional follow-up if seed-level
+    parallelism leaves wall-clock as the bottleneck).
+  - ORDERING: run the engineering pre-flight first (parallelism + determinism check, ~1 hr), then ARM 1 (no retraining,
+    testable on existing CH05 artifacts in ~15 min), then the variance pre-flight below, then ARM 2, then ARMs 3 and 4
+    in whichever order their pre-flights allow. If a pre-flight kills an arm, do not run it — report the pre-flight
+    verdict in the notebook instead.
   - VARIANCE PRE-FLIGHT (required before ARMs 2-4 per lyzortx/AGENTS.md Scientific Review Standards). For each candidate
     feature family, compute CV and Cohen's d separately on three subsets: all Guelin phages (n=96), non-zero-projection
     BASEL phages (n=39), and zero-vector BASEL phages (n=13). If CV < 0.1 or Cohen's d < 0.1 for discriminating lysed vs
@@ -1616,34 +1631,3 @@ graph LR
     GT09 + CH09.
   - Record the production calibration layer, its transfer limit, and the label- threshold sensitivity verdict in
     track_CHISEL.md.
-- [ ] **CH10** Training-loop parallelism — per-seed pool and cached RFE across seeds. Model: `claude-opus-4-6`. CI image
-      profile: `base`. Depends on tasks: `CH05`.
-  - GOAL: cut CHISEL rerun wall-clock by 2-3x with no change to predictions or metrics. Current CHISEL training loop
-    (candidate_replay / ch04_eval / ch05_eval) is structurally serial: for each (axis, fold, seed) one LightGBM fit runs
-    with full multi-core usage internally, but the three seeds per fold and the ten folds per axis are sequential. CH05
-    rerun takes ~4 hours on CPU for this reason. CH06's four-arm sweep will cost ~4x CH05 wall clock if run serially, so
-    fixing the training loop before CH06 is high-leverage.
-  - ARM 1 (per-seed pool): run the 3 seeds inside a fold in parallel via `multiprocessing.Pool(3)` (or
-    `ProcessPoolExecutor`). Each seed fit is independent — same training frame, different `PAIR_SCORER_RANDOM_STATE`.
-    LightGBM fits release the GIL so even a `ThreadPoolExecutor` works; processes are simpler (no GIL worry, clean
-    memory separation). Memory budget: three concurrent ~280K-row × ~500-feature design matrices ≈ 3 GB resident on a 16
-    GB laptop — comfortable.
-  - ARM 2 (RFE caching across seeds): the current pipeline runs RFECV independently per seed, which is wasteful — RFE is
-    the dominant per-fold cost (~80% of fold time based on log cadence) and selects ~158 features from 508 using
-    deterministic cross-validated gain. Cache the first seed's selected feature list and reuse it for seeds 2 and 3,
-    running only the final fit for those seeds. Expected additional 40-60% per-fold savings on top of Arm 1.
-  - DETERMINISM REQUIREMENT: Arms 1 and 2 must produce bit-identical metrics (|ΔAUC| < 1e-6) compared to the current
-    serial implementation when run under identical seeds. Acceptance: rerun CH04 under the parallelised path and confirm
-    aggregate AUC / Brier match the current CH04 baseline (0.8083 / 0.1751) within 1e-4. If metrics shift, determinism
-    is broken — investigate before landing.
-  - OUT OF SCOPE for this ticket: fold-level parallelism (each fold would need its own feature-cache copy, and running 4
-    folds in parallel would require ~16 GB resident; treat as a separate optional ticket if wall-clock is still the
-    bottleneck after Arms 1-2 land).
-  - ARTIFACTS: ch10_parallelism_benchmark.json reporting wall-clock of CH04 under (current serial, Arm 1 only, Arm 1 +
-    Arm 2), plus the |Δ| aggregate AUC/Brier per configuration. ch10_determinism_check.csv confirming bit-identical
-    predictions across serial and parallel paths.
-  - KNOWLEDGE: no new knowledge unit required (this is engineering, not science). Update chisel-baseline context field
-    to note that the canonical training loop is now parallelised per-seed with cached RFE, if Arms 1-2 land. Document
-    wall-clock savings in devops.md.
-  - Record parallelism choice, wall-clock savings, and the determinism- verification outcome in devops.md (not
-    track_CHISEL.md — this is infrastructure, not a CHISEL-science finding).
