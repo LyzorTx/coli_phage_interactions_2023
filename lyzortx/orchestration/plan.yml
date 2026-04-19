@@ -2245,7 +2245,7 @@ tracks:
       title: CHISEL baseline — per-row binary, concentration feature, AUC/Brier
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - CH03
       acceptance_criteria:

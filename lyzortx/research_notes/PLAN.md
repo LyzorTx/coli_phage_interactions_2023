@@ -1405,7 +1405,7 @@ graph LR
   - ARTIFACTS: ch03_expanded_training_frame.parquet (the new row-level frame, for reuse by CH04+),
     ch03_regression_check.json (SX10 metrics under expanded frame vs CH02 baseline, delta reported).
   - Record the row-expansion design and regression-check outcome in track_CHISEL.md.
-- [ ] **CH04** CHISEL baseline — per-row binary, concentration feature, AUC/Brier. Model: `claude-opus-4-6`. CI image
+- [x] **CH04** CHISEL baseline — per-row binary, concentration feature, AUC/Brier. Model: `claude-opus-4-6`. CI image
       profile: `base`. Depends on tasks: `CH03`.
   - GOAL: establish chisel-baseline. The first canonical CHISEL result.
   - TRAINING LABEL: the row's own binary score. No any_lysis rollup. Drop rows with score == "n" from training (treated
