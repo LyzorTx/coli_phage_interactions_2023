@@ -65,6 +65,9 @@ Detailed coding, testing, scientific review, CI, and orchestration policies live
 - The user may have multiple sessions open. Never claim changes are uncommitted without running `git status` first.
 - After every push to a PR branch, update the PR title and body to reflect all commits.
 - Any PR addressing a tracked issue must include `Closes #<issue_number>` in the description.
+- Create worktrees under `.claude/worktrees/<descriptive-name>` (the canonical location). Never place worktrees in
+  sibling directories like `../foo` or `../<repo-name>-<branch>` — they end up next to the repo and are easy to lose
+  track of. If you find an existing worktree outside this path, move it with `git worktree move` before continuing.
 - Do not remove a worktree until its PR is merged or the user explicitly abandons it. After creating a worktree and
   pushing a PR, tell the user where it is.
 - The Edit tool succeeds silently when `old_string` already equals `new_string`. Your edit appearing to succeed does
