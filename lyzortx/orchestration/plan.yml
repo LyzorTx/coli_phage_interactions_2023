@@ -2185,7 +2185,7 @@ tracks:
       title: cv_group leakage fix and SX10 baseline revalidation
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - CH01
       acceptance_criteria:

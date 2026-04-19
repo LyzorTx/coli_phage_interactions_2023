@@ -1369,7 +1369,7 @@ graph LR
     concentration, binary) is the training unit, (d) the sequencing of CH02-CH07, and (e) explicit acknowledgement that
     this is a framework pivot on top of the prior top-3 -> nDCG pivot; include the separation-of-concerns argument as
     the load-bearing rationale.
-- [ ] **CH02** cv_group leakage fix and SX10 baseline revalidation. Model: `claude-opus-4-6`. CI image profile: `base`.
+- [x] **CH02** cv_group leakage fix and SX10 baseline revalidation. Model: `claude-opus-4-6`. CI image profile: `base`.
       Depends on tasks: `CH01`.
   - PROBLEM: the current fold-assignment logic (assign_bacteria_folds in sx01_eval and related callers) hashes folds on
     bacterium name, not on cv_group. 52 of 301 cv_groups span multiple bacteria; those groups split across folds, which
