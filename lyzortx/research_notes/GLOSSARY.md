@@ -75,6 +75,59 @@ base rate uninformatively, 0.12–0.13 = our working range (informative but with
 be excellent, <0.05 = typical of much easier problems. Our SX10 Brier of 0.125 means we're
 materially better-calibrated than guessing the base rate.
 
+## Calibration, post-hoc (isotonic, Platt, ECE, reliability diagram)
+
+Umbrella entry for four terms that appear together whenever we ask "are our predicted
+probabilities actually trustworthy?" If the model says 0.7, do 70% of those cases lyse? A model
+can have great AUC (correct ranking) and terrible calibration (wrong absolute probabilities) —
+see the Brier entry for the AUC-vs-calibration distinction.
+
+**Reliability diagram**: the diagnostic picture. Bin predictions into 10 equal-width deciles
+(0.0-0.1, 0.1-0.2, ..., 0.9-1.0). In each bin, plot *mean predicted probability* (x-axis) against
+*observed frequency* (y-axis, the fraction of positives in that bin). Perfect calibration = the
+points sit on the y=x diagonal. "Over-prediction in mid-P" means the model says 0.7 but only 45%
+of those cases actually lyse — the point sits below the diagonal. "Under-prediction" means the
+opposite.
+
+**Expected Calibration Error (ECE)**: the numeric summary of a reliability diagram. Weighted mean
+of per-bin `|observed_rate − mean_predicted|` gaps, weighted by bin population. Range [0, 1];
+lower is better. Perfect calibration = 0. CHISEL's bacteria-axis Guelin raw ECE is 0.12 (i.e.,
+predicted probabilities are off by ~12 percentage points on average when weighted by how many
+pairs land in each bin). We added ECE to the scorecard in CH05 because Brier mixes calibration
+with discrimination, while ECE is purely about calibration and is more interpretable in
+percentage-point terms.
+
+**Platt scaling**: fits a logistic regression `P_calibrated = sigmoid(A · P_raw + B)` on
+(predicted_probability, observed_label) pairs from held-out data. Two-parameter, parametric,
+assumes a sigmoid shape. Works well when the raw predictions are already roughly sigmoidal and
+just need a sharpness/offset correction. Most effective for SVMs and neural nets whose raw
+outputs aren't probabilities.
+
+**Isotonic regression**: non-parametric, monotonic step function. Fits a step function that
+best maps raw predictions to observed frequencies under the constraint that higher raw =
+higher calibrated. No sigmoid assumption. More flexible than Platt, more data-hungry (hundreds
+of samples minimum), and only approximately preserves AUC because the step function introduces
+ties — two raw predictions that were 0.71 and 0.73 can both map to the same calibrated 0.65,
+and under ties AUC ranking can shift by sub-percent amounts. CHISEL CH05's isotonic diagnostic
+used this for Guelin (30K+ samples, plenty of headroom) and found it closes 78-89% of Guelin's
+decile gaps.
+
+**When to use which**: Platt for a quick two-parameter fit when you have <1000 labeled
+predictions. Isotonic when you have thousands and the raw distribution isn't clearly sigmoidal.
+Both are "post-hoc" — fit after the model is trained, applied to the model's outputs at
+inference. They fix calibration without changing discrimination (up to isotonic tie noise) and
+without retraining the model.
+
+**Practical limit surfaced by CH05**: a calibrator fit on one panel does not fully transfer to
+another. The Guelin-fitted calibrator closes 78-89% of Guelin's gaps but only 34-37% of BASEL's
+— because BASEL's miscalibration is partly a different mechanism (TL17-bias, see `phage
+projection`) that calibration can't rescue. Cross-panel calibration transferability is a real
+limit, not just an implementation detail.
+
+See: `chisel-unified-kfold-baseline` (two-mechanism story + ECE as scorecard addition), CH05
+entry in track_CHISEL.md, `ch05_isotonic_calibration_test.py` ad-hoc script, and the pending
+CH09 ticket that productionises the calibration layer.
+
 ## Bootstrap confidence interval
 
 A non-parametric way to put a confidence interval on a statistic (like AUC or Brier) when there's
@@ -267,10 +320,13 @@ to its all-pairs component, relying entirely on phage-side features (TL17 family
 cross-terms, phage_stats) to represent the unseen phage. That's why phage-axis is the honest
 deployability floor. See `per-phage-not-deployable`, `deployment-goal`.
 
-**Our canonical setup**: 10-fold CV over the 148 unified panel phages (SX15), stratified by ICTV
-family so each family appears in both train and test. Result: aggregate AUC 0.8988 (higher than
-bacteria-axis!) but nDCG 0.7229 (7 pp lower). Reassuring sub-finding: BASEL phages generalize as
-well as Guelin phages (AUC 0.896 vs 0.899) — feature engineering transfers across phage collections.
+**Our canonical setup**: 10-fold CV over the 148 unified panel phages (CH05), stratified by ICTV
+family + "other" (<10 phages) + "UNKNOWN" (no family) catch-all. Result under CH05: aggregate AUC
+0.8850, Brier 0.1349. Cross-source AUC parity holds (Guelin 0.8861 vs BASEL 0.8829) **but**
+cross-source calibration diverges (Brier 0.1329 vs 0.1884) — the earlier SX15 claim "BASEL phages
+generalize as well as Guelin" was a discrimination-only finding, not deployment readiness. See
+`chisel-unified-kfold-baseline` for the three separate findings (discrimination parity, calibration
+divergence, BASEL bacteria-axis deficit).
 
 **Why AUC goes up but nDCG goes down vs bacteria-axis**: AUC pools all pairs globally and the
 all-pairs features preserve lysis/no-lysis discrimination cleanly. nDCG is per-bacterium; each
@@ -283,6 +339,31 @@ observed pairs per cell, enough for pair-level bootstrap. Not prioritized becaus
 cost vs single-axis, (b) the deployment scenarios of interest are single-axis (new phage against
 catalogued hosts, or new host against catalogued phages), and (c) per-bacterium ranking gets
 tight (~3 positives per held-out bacterium in each cell).
+
+## Phage projection (TL17 BLAST features, "zero-vector projection")
+
+`phage_projection` is a slot of ~33 phage-side features derived by BLASTing each phage's protein
+complement against TL17, a Guelin-derived reference bank of protein families. Each feature reports
+whether the phage has a protein hit in a specific TL17 family (thresholded bit-score or
+presence-absence). It is the dominant phage-side feature family — roughly the phage analogue of
+the host_surface slot.
+
+**Zero-vector projection** (or "zero projection") describes a phage whose full `phage_projection`
+feature vector is identically zero: none of its proteins matched any TL17 family above threshold.
+The BLAST ran and produced no hits — this is a finding about the phage's genomic novelty relative
+to the Guelin reference bank, not a missing-data bug.
+
+**Why it's load-bearing**: under the phage-axis split, zero-vector phages calibrate *correctly*
+because the model has no phage signal to misuse and falls back to the host-side prior. Non-zero
+phages whose projection vectors map into Guelin-calibrated TL17 neighborhoods can be actively
+*worse* calibrated than zero-vector phages when their actual host ranges don't match their
+Guelin-neighbor priors. CH05 documented this for BASEL: 13 zero-vector BASEL phages (Brier 0.12)
+vs 39 non-zero BASEL phages (Brier 0.31) on bacteria-axis. See the CH05 entry under
+`chisel-unified-kfold-baseline` and `plm-rbp-redundant` (the same mechanism at cross-family scale).
+
+**Practical consequence for future work**: more phages in TL17-underpopulated neighborhoods would
+help more than engineering new phage features — the deficiency is reference-bank coverage, not
+feature representation.
 
 ## Spearman correlation (Spearman's ρ)
 

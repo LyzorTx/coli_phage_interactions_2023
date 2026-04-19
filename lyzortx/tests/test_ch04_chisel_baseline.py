@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from lyzortx.pipeline.autoresearch.ch03_row_expansion import GUELIN_NEAT_LOG10_PFU_ML
 from lyzortx.pipeline.autoresearch.ch04_eval import (
     CONCENTRATION_FEATURE_COLUMN,
     build_clean_row_training_frame,
@@ -21,6 +22,7 @@ def _raw_row(pair_id: str, score: str, log_dilution: int, replicate: int = 1) ->
         "phage": phage,
         "pair_id": pair_id,
         "log_dilution": log_dilution,
+        "log10_pfu_ml": GUELIN_NEAT_LOG10_PFU_ML + float(log_dilution),
         "replicate": replicate,
         "score": score,
         "split_holdout": "train_non_holdout",
@@ -42,7 +44,10 @@ def test_build_clean_row_training_frame_drops_n_rows() -> None:
     assert set(clean["score"]) == {"0", "1"}
     assert set(clean["label_row_binary"]) == {0, 1}
     assert CONCENTRATION_FEATURE_COLUMN in clean.columns
-    assert (clean[CONCENTRATION_FEATURE_COLUMN] == clean["log_dilution"].astype(float)).all()
+    assert (clean[CONCENTRATION_FEATURE_COLUMN] == clean["log10_pfu_ml"].astype(float)).all()
+    # Guelin encoding: neat (log_dilution=0) → 8.7; -1 → 7.7 under GUELIN_NEAT_LOG10_PFU_ML + log_dilution.
+    assert (clean[CONCENTRATION_FEATURE_COLUMN] >= 4.0).all()
+    assert (clean[CONCENTRATION_FEATURE_COLUMN] <= 9.0).all()
 
 
 def test_build_clean_row_training_frame_preserves_all_clean_rows() -> None:
@@ -51,85 +56,48 @@ def test_build_clean_row_training_frame_preserves_all_clean_rows() -> None:
     assert len(clean) == len(rows)
 
 
+def _pred_row(pair_id: str, log_dilution: int, replicate: int, label: int, proba: float) -> dict:
+    bacteria, phage = pair_id.split("__")
+    return {
+        "pair_id": pair_id,
+        "bacteria": bacteria,
+        "phage": phage,
+        "log_dilution": log_dilution,
+        "log10_pfu_ml": GUELIN_NEAT_LOG10_PFU_ML + float(log_dilution),
+        "replicate": replicate,
+        "label_row_binary": label,
+        "predicted_probability": proba,
+    }
+
+
 def test_select_pair_max_concentration_keeps_highest_log_dilution_per_pair() -> None:
-    # For a pair with observations at log_dilution ∈ {0, -1, -2}, log_dilution=0 is the
-    # highest actual concentration (5×10⁸ pfu/ml) — the evaluator should pick that row.
+    # For a pair with observations at log_dilution ∈ {0, -1, -2}, log_dilution=0 (log10_pfu_ml=8.7)
+    # is the highest actual concentration — the evaluator should pick that row.
     predictions = pd.DataFrame(
         [
-            {
-                "pair_id": "bac_A__phage_X",
-                "bacteria": "bac_A",
-                "phage": "phage_X",
-                "log_dilution": 0,
-                "replicate": 1,
-                "label_row_binary": 1,
-                "predicted_probability": 0.9,
-            },
-            {
-                "pair_id": "bac_A__phage_X",
-                "bacteria": "bac_A",
-                "phage": "phage_X",
-                "log_dilution": -1,
-                "replicate": 1,
-                "label_row_binary": 0,
-                "predicted_probability": 0.4,
-            },
-            {
-                "pair_id": "bac_A__phage_X",
-                "bacteria": "bac_A",
-                "phage": "phage_X",
-                "log_dilution": -2,
-                "replicate": 1,
-                "label_row_binary": 0,
-                "predicted_probability": 0.1,
-            },
-            {
-                "pair_id": "bac_B__phage_X",
-                "bacteria": "bac_B",
-                "phage": "phage_X",
-                "log_dilution": -2,
-                "replicate": 1,
-                "label_row_binary": 0,
-                "predicted_probability": 0.2,
-            },
-            {
-                "pair_id": "bac_B__phage_X",
-                "bacteria": "bac_B",
-                "phage": "phage_X",
-                "log_dilution": -4,
-                "replicate": 1,
-                "label_row_binary": 0,
-                "predicted_probability": 0.05,
-            },
+            _pred_row("bac_A__phage_X", 0, 1, 1, 0.9),
+            _pred_row("bac_A__phage_X", -1, 1, 0, 0.4),
+            _pred_row("bac_A__phage_X", -2, 1, 0, 0.1),
+            _pred_row("bac_B__phage_X", -2, 1, 0, 0.2),
+            _pred_row("bac_B__phage_X", -4, 1, 0, 0.05),
         ]
     )
     pair_rows = select_pair_max_concentration_rows(predictions)
     assert len(pair_rows) == 2
     pair_a = pair_rows[pair_rows["pair_id"] == "bac_A__phage_X"].iloc[0]
     pair_b = pair_rows[pair_rows["pair_id"] == "bac_B__phage_X"].iloc[0]
-    assert pair_a["log_dilution"] == 0
+    assert pair_a["log10_pfu_ml"] == pytest.approx(GUELIN_NEAT_LOG10_PFU_ML)
     assert pair_a["predicted_probability"] == pytest.approx(0.9)
     assert pair_a["label_row_binary"] == 1
     # bac_B's highest observed concentration is log_dilution=-2 (not every pair is tested at 0).
-    assert pair_b["log_dilution"] == -2
+    assert pair_b["log10_pfu_ml"] == pytest.approx(GUELIN_NEAT_LOG10_PFU_ML - 2.0)
     assert pair_b["predicted_probability"] == pytest.approx(0.2)
 
 
 def test_select_pair_max_concentration_averages_replicates_at_top() -> None:
     # Three replicates at log_dilution=0 — averaged; any replicate with label=1 wins the label.
     predictions = pd.DataFrame(
-        [
-            {
-                "pair_id": "bac_A__phage_X",
-                "bacteria": "bac_A",
-                "phage": "phage_X",
-                "log_dilution": 0,
-                "replicate": r,
-                "label_row_binary": label,
-                "predicted_probability": p,
-            }
-            for r, label, p in [(1, 0, 0.6), (2, 1, 0.8), (3, 0, 0.7)]
-        ]
+        [_pred_row("bac_A__phage_X", 0, r, label, p) for r, label, p in [(1, 0, 0.6), (2, 1, 0.8), (3, 0, 0.7)]]
     )
     pair_rows = select_pair_max_concentration_rows(predictions)
     assert len(pair_rows) == 1

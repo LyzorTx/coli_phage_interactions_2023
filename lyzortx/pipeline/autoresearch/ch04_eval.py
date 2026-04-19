@@ -7,12 +7,20 @@ Establishes the first canonical CHISEL baseline. Training unit flips from pair-l
 is its own training row. Rows with score == "n" are dropped as missing (not negative),
 matching the ST01B rule.
 
-The `log_dilution` value enters the model as a numeric pair-level feature
-(`pair_concentration__log_dilution`). No binning, no conditioning, no per-concentration
-sub-models — LightGBM learns the concentration effect as part of training. All other
-feature engineering is identical to the SX10 baseline (host_surface + host_typing +
-host_stats + host_defense + phage_projection + phage_stats + pair_depo_capsule +
-pair_receptor_omp, RFE-selected), so the CH04-vs-CH02 delta isolates the frame change.
+Concentration enters the model as a numeric pair-level feature encoded as absolute
+log₁₀ pfu/ml (`pair_concentration__log10_pfu_ml`). Guelin's {0, -1, -2, -4} relative
+log_dilution steps map to {8.7, 7.7, 6.7, 4.7} absolute log₁₀ pfu/ml (Guelin neat at
+5×10⁸ pfu/ml ≈ 10⁸·⁷). This encoding is chosen so CH05's unified Guelin+BASEL panel
+can express BASEL's >10⁹ pfu/ml spot test as log₁₀ = 9.0 on the same feature axis
+without the relative-log_dilution ambiguity (BASEL is not a dilution step). For
+CH04 Guelin-only, the encoding is an affine shift of the prior `log_dilution`
+feature — tree splits are threshold-equivalent and metrics are bit-identical to
+pre-encoding runs under the same seeds. No binning, no conditioning, no
+per-concentration sub-models — LightGBM learns the effect as part of training. All
+other feature engineering is identical to the SX10 baseline (host_surface +
+host_typing + host_stats + host_defense + phage_projection + phage_stats +
+pair_depo_capsule + pair_receptor_omp, RFE-selected), so the CH04-vs-CH02 delta
+isolates the frame change.
 
 Per-phage blending (AX02) is dropped. SPANDEX's per-phage models added ~2 pp AUC to
 bacteria-axis evaluation but are `per-phage-not-deployable` — they require training
@@ -26,9 +34,9 @@ measures the cross-phage generalization cost directly and is the honest successo
 Evaluation uses AUC + Brier only. No nDCG, mAP, or top-k: ranking is a product-layer
 concern and retired from the CHISEL scorecard (see ranking-metrics-retired). Each
 held-out (bacterium, phage) pair is scored at its highest-observed concentration
-(max log_dilution = neat, typically 0) to match the deployment question "would this
-phage lyse this bacterium at the maximum testable titer?" — that single prediction
-per pair is aggregated with bacterium-level bootstrap CIs.
+(max log10_pfu_ml = Guelin neat 8.7 or BASEL 9.0) to match the deployment question
+"would this phage lyse this bacterium at the maximum testable titer?" — that single
+prediction per pair is aggregated with bacterium-level bootstrap CIs.
 
 Usage:
     PYTHONPATH=. python -m lyzortx.pipeline.autoresearch.ch04_eval --device-type cpu
@@ -80,7 +88,7 @@ DEFAULT_CANDIDATE_DIR = Path("lyzortx/autoresearch")
 DEFAULT_OUTPUT_DIR = Path("lyzortx/generated_outputs/ch04_chisel_baseline")
 
 CH02_REVALIDATED_METRICS_PATH = Path("lyzortx/generated_outputs/ch02_cv_group_fix/ch02_sx10_revalidated_metrics.json")
-CONCENTRATION_FEATURE_COLUMN = "pair_concentration__log_dilution"
+CONCENTRATION_FEATURE_COLUMN = "pair_concentration__log10_pfu_ml"
 BOOTSTRAP_SAMPLES = 1000
 BOOTSTRAP_RANDOM_STATE = 42
 
@@ -90,19 +98,39 @@ def build_clean_row_training_frame(row_frame: pd.DataFrame) -> pd.DataFrame:
 
     `score == "n"` rows are dropped from training (they're missing observations, not
     negative). The remaining rows get two derived columns: `label_row_binary` (int 0/1)
-    for the training target and `pair_concentration__log_dilution` (float) for the
-    concentration feature LightGBM ingests.
+    for the training target and `pair_concentration__log10_pfu_ml` (float) for the
+    concentration feature LightGBM ingests. The row frame is expected to carry a
+    pre-computed `log10_pfu_ml` column (added at the row-frame source: CH03 for Guelin,
+    CH05 for BASEL) — CH04 does not derive it here, so each source owns its encoding.
+
+    Also logs pair-level bookkeeping: pairs whose every observation is `n` (no
+    interpretable lysis observations) lose all their rows in this filter, so the
+    surviving pair count is below the input pair count. Log lets callers notice when
+    that number shifts across dataset revisions.
     """
     clean = row_frame.loc[row_frame["score"].isin([RAW_SCORE_POSITIVE, RAW_SCORE_NEGATIVE])].copy()
-    dropped = len(row_frame) - len(clean)
+    dropped_rows = len(row_frame) - len(clean)
+    input_pairs = row_frame["pair_id"].nunique() if "pair_id" in row_frame.columns else None
+    output_pairs = clean["pair_id"].nunique() if "pair_id" in clean.columns else None
+    pair_drop_detail = ""
+    if input_pairs is not None and output_pairs is not None:
+        pairs_dropped = input_pairs - output_pairs
+        pair_drop_detail = f"; {pairs_dropped} pairs lost all interpretable rows ({input_pairs} → {output_pairs} pairs)"
     LOGGER.info(
-        "Dropped %d score='%s' rows (missing observations); %d interpretable rows remain",
-        dropped,
+        "Dropped %d score='%s' rows (missing observations); %d interpretable rows remain%s",
+        dropped_rows,
         RAW_SCORE_UNINTERPRETABLE,
         len(clean),
+        pair_drop_detail,
     )
+    if "log10_pfu_ml" not in clean.columns:
+        raise ValueError(
+            "Row frame missing required 'log10_pfu_ml' column. Guelin rows get it from "
+            "`ch03_row_expansion.load_row_expanded_frame`; BASEL rows get it from "
+            "`ch05_eval.load_basel_as_row_frame`."
+        )
     clean["label_row_binary"] = clean["score"].astype(int)
-    clean[CONCENTRATION_FEATURE_COLUMN] = clean["log_dilution"].astype(float)
+    clean[CONCENTRATION_FEATURE_COLUMN] = clean["log10_pfu_ml"].astype(float)
     return clean
 
 
@@ -119,7 +147,7 @@ def train_and_predict_per_row_fold(
 
     Same host/phage slot bundle as SX10, same pairwise cross-terms, same RFE. Differs
     from SPANDEX/CH02 on three axes: (1) `label_row_binary` replaces `label_any_lysis`
-    as the training target, (2) `pair_concentration__log_dilution` is added as a
+    as the training target, (2) `pair_concentration__log10_pfu_ml` is added as a
     feature column before RFE, and (3) every row is a training example rather than
     one row per pair. Per-phage blending (AX02) is intentionally omitted — see module
     docstring for rationale.
@@ -161,6 +189,8 @@ def train_and_predict_per_row_fold(
     holdout_design[CONCENTRATION_FEATURE_COLUMN] = holdout_frame[CONCENTRATION_FEATURE_COLUMN].to_numpy()
     train_design["label_row_binary"] = training_frame["label_row_binary"].to_numpy()
     holdout_design["label_row_binary"] = holdout_frame["label_row_binary"].to_numpy()
+    train_design["log10_pfu_ml"] = training_frame["log10_pfu_ml"].to_numpy()
+    holdout_design["log10_pfu_ml"] = holdout_frame["log10_pfu_ml"].to_numpy()
     train_design["log_dilution"] = training_frame["log_dilution"].to_numpy()
     holdout_design["log_dilution"] = holdout_frame["log_dilution"].to_numpy()
     train_design["replicate"] = training_frame["replicate"].to_numpy()
@@ -199,7 +229,9 @@ def train_and_predict_per_row_fold(
 
     rows = []
     for (_, row), probability in zip(
-        holdout_design[["pair_id", "bacteria", "phage", "label_row_binary", "log_dilution", "replicate"]].iterrows(),
+        holdout_design[
+            ["pair_id", "bacteria", "phage", "label_row_binary", "log_dilution", "log10_pfu_ml", "replicate"]
+        ].iterrows(),
         predictions,
     ):
         rows.append(
@@ -210,6 +242,7 @@ def train_and_predict_per_row_fold(
                 "bacteria": str(row["bacteria"]),
                 "phage": str(row["phage"]),
                 "log_dilution": int(row["log_dilution"]),
+                "log10_pfu_ml": float(row["log10_pfu_ml"]),
                 "replicate": int(row["replicate"]),
                 "label_row_binary": int(row["label_row_binary"]),
                 "predicted_probability": safe_round(float(probability)),
@@ -222,27 +255,31 @@ def train_and_predict_per_row_fold(
             "importance": estimator.feature_importances_,
         }
     )
-    feature_importance["is_log_dilution"] = feature_importance["feature"] == CONCENTRATION_FEATURE_COLUMN
+    feature_importance["is_concentration_feature"] = feature_importance["feature"] == CONCENTRATION_FEATURE_COLUMN
     return rows, feature_importance
 
 
 def select_pair_max_concentration_rows(per_row_predictions: pd.DataFrame) -> pd.DataFrame:
-    """Keep one prediction row per held-out (bacterium, phage) pair, at max log_dilution.
+    """Keep one prediction row per held-out (bacterium, phage) pair, at max log10_pfu_ml.
 
-    The ticket defines "highest observed concentration" per pair — pick max log_dilution
-    (log_dilution=0 is neat, -4 is 1:10000 dilution; higher numeric value = higher actual
-    concentration). Replicate rows at that top concentration are collapsed by averaging
-    the predicted probability (replicates have identical feature vectors, so their
-    predictions are identical anyway — the mean is a no-op in practice but it documents
-    intent) and by max-aggregating the binary label (any positive replicate makes the
-    pair positive). This "any replicate positive" rule matches the deployment semantics
-    of the test strip read-out: a pair is declared positive if lysis is observed in at
-    least one replicate at the top titer. CH04's core training still operates per-row.
+    "Highest observed concentration" per pair is picked by max `log10_pfu_ml` — the
+    absolute-titer feature the model actually sees. For Guelin-only inputs this is
+    equivalent to max log_dilution (values {8.7, 7.7, 6.7, 4.7} order-preserve {0, -1,
+    -2, -4}). For the unified Guelin+BASEL frame, BASEL's single row per pair always
+    wins at log10_pfu_ml = 9.0, so the aggregation trivially surfaces it. Replicate
+    rows at that top concentration are collapsed by averaging the predicted
+    probability (replicates have identical feature vectors, so their predictions are
+    identical anyway — the mean is a no-op in practice but it documents intent) and
+    by max-aggregating the binary label (any positive replicate makes the pair
+    positive). This "any replicate positive" rule matches the deployment semantics
+    of the test strip read-out: a pair is declared positive if lysis is observed in
+    at least one replicate at the top titer. CH04's core training still operates
+    per-row.
     """
-    ranked = per_row_predictions.sort_values(["pair_id", "log_dilution", "replicate"], ascending=[True, False, True])
-    max_conc = ranked.groupby("pair_id", as_index=False)["log_dilution"].max()
-    top_rows = ranked.merge(max_conc, on=["pair_id", "log_dilution"], how="inner")
-    aggregated = top_rows.groupby(["pair_id", "bacteria", "phage", "log_dilution"], as_index=False).agg(
+    ranked = per_row_predictions.sort_values(["pair_id", "log10_pfu_ml", "replicate"], ascending=[True, False, True])
+    max_conc = ranked.groupby("pair_id", as_index=False)["log10_pfu_ml"].max()
+    top_rows = ranked.merge(max_conc, on=["pair_id", "log10_pfu_ml"], how="inner")
+    aggregated = top_rows.groupby(["pair_id", "bacteria", "phage", "log10_pfu_ml"], as_index=False).agg(
         predicted_probability=("predicted_probability", "mean"),
         label_row_binary=("label_row_binary", "max"),
         n_replicates_at_max=("replicate", "count"),
@@ -396,11 +433,20 @@ def run_ch04_eval(
         per_row_df = pd.DataFrame(fold_seed_rows)
         aggregated = (
             per_row_df.groupby(
-                ["fold_id", "pair_id", "bacteria", "phage", "log_dilution", "replicate", "label_row_binary"],
+                [
+                    "fold_id",
+                    "pair_id",
+                    "bacteria",
+                    "phage",
+                    "log_dilution",
+                    "log10_pfu_ml",
+                    "replicate",
+                    "label_row_binary",
+                ],
                 as_index=False,
             )["predicted_probability"]
             .mean()
-            .sort_values(["bacteria", "phage", "log_dilution", "replicate"])
+            .sort_values(["bacteria", "phage", "log10_pfu_ml", "replicate"])
         )
         all_per_row_predictions.extend(aggregated.to_dict(orient="records"))
 
@@ -440,12 +486,12 @@ def run_ch04_eval(
 
     feature_importance_df = pd.concat(all_feature_importance, ignore_index=True)
     fi_agg = (
-        feature_importance_df.groupby(["feature", "is_log_dilution"], as_index=False)
+        feature_importance_df.groupby(["feature", "is_concentration_feature"], as_index=False)
         .agg(mean_importance=("importance", "mean"), n_folds_selected=("importance", "count"))
         .sort_values("mean_importance", ascending=False)
     )
     fi_agg.to_csv(output_dir / "ch04_feature_importance.csv", index=False)
-    concentration_rows = fi_agg[fi_agg["is_log_dilution"]]
+    concentration_rows = fi_agg[fi_agg["is_concentration_feature"]]
     concentration_importance = (
         float(concentration_rows["mean_importance"].iloc[0]) if not concentration_rows.empty else 0.0
     )
@@ -459,7 +505,7 @@ def run_ch04_eval(
         "task_id": "CH04",
         "scorecard": "AUC + Brier (nDCG/mAP/top-k retired; see ranking-metrics-retired)",
         "training_unit": "per-row (bacterium, phage, log_dilution, replicate, X, Y) with score ∈ {0, 1}",
-        "evaluation_unit": "per-pair at max observed log_dilution (one prediction per held-out pair)",
+        "evaluation_unit": "per-pair at max observed log10_pfu_ml (one prediction per held-out pair)",
         "n_bacteria_total": int(pair_predictions["bacteria"].nunique()),
         "n_pairs_evaluated": int(len(pair_predictions)),
         "n_training_rows_dropped_as_n": int(len(row_frame) - len(clean_rows)),
