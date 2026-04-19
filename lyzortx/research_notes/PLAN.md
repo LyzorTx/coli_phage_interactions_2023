@@ -1453,12 +1453,16 @@ graph LR
   - Record two-axis methodology, cross-source AUC comparison, and updated blending tax in track_CHISEL.md.
 - [ ] **CH06** Panel-independent phage-feature sweep (TL17-bias root-cause attack). Model: `claude-opus-4-6`. CI image
       profile: `base`. Depends on tasks: `CH05`.
-  - GOAL: directly attack the cross-source failure mode surfaced by CH05 — phage features derived from the Guelin-only
-    TL17 reference bank actively hurt BASEL calibration (non-zero-projection BASEL phages Brier 0.31 on bacteria-axis vs
-    zero-projection BASEL phages Brier 0.12, model applies Guelin-calibrated host-range priors that do not fit BASEL's
-    narrower actual host ranges). Four-arm ablation on CH05 unified panel with cross-source breakdown. Success
-    criterion: BASEL bacteria-axis AUC materially above 0.7152 on at least one arm, OR BASEL mid-P (0.5-0.9 bins)
-    reliability gap narrows by 10+ pp on at least one arm.
+  - GOAL: directly attack the discrimination half of the cross-source failure mode surfaced by CH05 — phage features
+    derived from the Guelin-only TL17 reference bank actively hurt BASEL discrimination (non-zero-projection BASEL
+    phages Brier 0.31 on bacteria-axis vs zero-projection BASEL phages Brier 0.12, model applies Guelin-calibrated
+    host-range priors that do not fit BASEL's narrower actual host ranges). Four-arm ablation on CH05 unified panel with
+    cross-source breakdown. Success criterion: **BASEL bacteria-axis AUC materially above 0.7152 on at least one arm**
+    (discrimination-only target). The calibration component of BASEL's miscalibration is a separate layer — CH05's
+    isotonic diagnostic showed Guelin-fitted calibration closes 78-89% of Guelin decile gaps but only 34-37% of BASEL's
+    (outcome B), so calibration transfer across panels is a distinct problem that a dedicated post-hoc calibration
+    ticket will handle (see CH09 candidate). CH06 should not be judged on mid-P reliability closure — that is a
+    calibration- layer question, not a phage-feature-set question.
   - DESIGN: fixed CH05 unified panel (148 phages x 369 bacteria, 36,643 pairs), fixed CH05 folds (bacteria-axis CH02
     cv_group hash + phage-axis ICTV family/Other/UNKNOWN StratifiedKFold). Feature bundle held constant except for the
     phage-side slot under test. Each arm reports bacteria-axis AUC+Brier, phage-axis AUC+Brier, and the per-source
@@ -1498,8 +1502,8 @@ graph LR
     winning arm as active canonical for phage-side features; update chisel-unified-kfold-baseline to cross-reference the
     replacement. If all arms null, harden panel-size-ceiling with "feature-level fixes exhausted; panel expansion is the
     remaining lever."
-  - Record per-arm deltas, BASEL reliability-gap closure, and the verdict on panel-size-ceiling vs feature-level fixes
-    in track_CHISEL.md.
+  - Record per-arm AUC deltas (bacteria-axis and phage-axis, per-source) and the verdict on panel-size-ceiling vs
+    feature-level fixes in track_CHISEL.md.
 - [ ] **CH07** Both-axis holdout evaluation (10 x 10 double cross-validation). Model: `claude-opus-4-6`. CI image
       profile: `base`. Depends on tasks: `CH06`.
   - GOAL: the strongest generalization test — bacterium AND phage held out simultaneously. Directly addresses the
@@ -1553,3 +1557,35 @@ graph LR
     feature-family conclusions and the corresponding knowledge units must be reverted from null to open. Do not suppress
     unexpected positives.
   - Record the re-audit outcomes and null-stability conclusions in track_CHISEL.md.
+- [ ] **CH09** Post-hoc calibration layer + label-threshold sensitivity. Model: `claude-opus-4-6`. CI image profile:
+      `base`. Depends on tasks: `CH05`.
+  - GOAL: turn the CH05 isotonic diagnostic into a deployable calibration layer. CH05 empirically separated two
+    calibration-failure mechanisms: (A) Guelin mid-P miscalibration (ECE 0.12 → 0.008 post-isotonic, 78-89% decile-gap
+    closure) = training-label-vs-deployment-question mismatch (Gaborieau 2024 admits clearing at high titer can be
+    non-productive), fixable post-hoc without any feature or model change; (B) BASEL residual post-isotonic
+    miscalibration (ECE stays 0.11- 0.12, 34-37% closure only) = TL17-bias, addressed by CH06, not by calibration. CH09
+    productionises the layer for (A), confirms it does not transfer to (B), and quantifies the label-threshold
+    sensitivity that underlies (A).
+  - ARM 1 — Production calibration layer. Train a single isotonic regressor (or Platt-scaled logistic) on Guelin CHISEL
+    training-fold predictions, leave-one- fold-out to avoid in-sample overfitting. Persist the fitted calibrator as a
+    pipeline artifact. Apply at inference time to CHISEL prediction outputs. Acceptance: Guelin bacteria-axis ECE < 0.02
+    and phage-axis ECE < 0.02 on held- out folds under the production layer. AUC within 0.5 pp of raw (ranking preserved
+    under monotone transform, up to isotonic tie-breaking at clipped boundaries).
+  - ARM 2 — Cross-panel transferability report. Apply the Guelin-fitted calibrator to BASEL predictions (both axes) and
+    report ECE closure vs raw. The CH05 diagnostic pre-registers ~34-37% closure; replicate on the production layer. If
+    closure drops below 30% or rises above 50%, the finding has shifted — flag and investigate. Document cross-source
+    calibration transferability as a named limit of the deployed layer.
+  - ARM 3 — Label-threshold sensitivity. Re-train CHISEL baseline excluding rows where score='1' occurs only at the
+    lowest-titer dilution (log_dilution ≤ -2) as a proxy for "clearing-only at high titer, possibly non-productive".
+    Compare aggregate AUC + Brier + ECE vs CHISEL baseline. This is the directly-testable version of the Gaborieau 2024
+    hypothesis. If excluding high-titer-only positives lowers raw ECE by > 5 pp, the label-permissiveness mechanism is
+    confirmed at training-side (not just post-hoc calibration). Document findings even if negative — a rule-out is also
+    informative.
+  - ARTIFACTS: ch09_calibrator.pkl (fitted isotonic), ch09_calibration_report.json (raw vs calibrated ECE / Brier / AUC
+    for all source × axis combinations), ch09_label_threshold_sensitivity.json (Arm 3 deltas), ch09_summary.csv.
+  - KNOWLEDGE: add chisel-post-hoc-calibration-layer unit documenting the production calibrator, its cross-panel
+    transferability limit, and the retraining outcome of Arm 3. Update chisel-unified-kfold-baseline to cross-reference
+    the calibrator. If Arm 3 confirms, promote ambiguous-label-noise to a track-wide label-quality hypothesis spanning
+    GT09 + CH09.
+  - Record the production calibration layer, its transfer limit, and the label- threshold sensitivity verdict in
+    track_CHISEL.md.
