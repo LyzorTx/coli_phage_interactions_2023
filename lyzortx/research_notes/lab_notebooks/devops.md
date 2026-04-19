@@ -1139,3 +1139,55 @@ YAML knowledge model. Follows the `plan.yml` → `PLAN.md` pattern: `knowledge.y
 - Knowledge units carry: `id`, `statement`, `sources`, `status`, `confidence`, `context`, `relates_to`.
 - `relates_to` provides lightweight cross-references between units without requiring a full graph database.
 - Merge-conflict strategy: YAML is append-mostly; after merging, re-run the renderer to regenerate KNOWLEDGE.md.
+
+### 2026-04-19 19:25 CEST: Added `review-ml-pr` skill; self-review subagent now required to run it on ML PRs
+
+#### Executive summary
+
+New skill `.agents/skills/review-ml-pr/` captures the verification protocol for ML PRs that produce prediction or
+metric artifacts. The reviewer subagent spawned per `lyzortx/orchestration/AGENTS.md` now MUST invoke this skill as
+part of priority (2) scientific correctness whenever the PR writes under `lyzortx/generated_outputs/` or cites AUC /
+Brier / bootstrap CI numbers. A read-only review of an ML results PR is no longer acceptable. The skill was distilled
+from an audit of the CH05 PR (#437) that surfaced per-stratum calibration and stratification issues a read-review had
+missed. Companion edit: `case-by-case` SKILL.md de-tracked and de-ranked (removed SPANDEX/autoresearch track
+references, purged nDCG / top-3 from the described output since `ranking-metrics-retired` is active under CHISEL).
+
+#### What the skill enforces
+
+Eleven checks the reviewer subagent must work through on every qualifying PR:
+
+1. Recompute headline AUC / Brier from predictions CSV, match to 6 decimal places
+2. Verify fold disjointness empirically on per-row predictions (not from reading fold-assignment code)
+3. NaN / out-of-[0,1] / duplicate-key scan on predictions
+4. Check every "invariant" the PR prose asserts — is it enforced as an assert or a warn+drop?
+5. Decompose aggregate metrics per source / family / fold; report spread, not just mean
+6. Reliability diagram is mandatory whenever Brier is claimed (deciles: mean P vs actual rate)
+7. Never conflate AUC (discrimination) with Brier (calibration) in findings
+8. Direction check on every explanatory hypothesis — wrong direction rejects the hypothesis
+9. Stratification semantics vs name — flag catch-all buckets misnamed as named strata
+10. Bootstrap output completeness — `bootstrap_samples_used` alongside `requested`
+11. Decompose PR deltas against prior baseline into scientific change vs confounder
+
+#### Why now
+
+The CH05 audit (worktree `../audit-ch05`) recomputed the headline AUCs and found they matched exactly, but also
+surfaced: BASEL reliability is 30–55 pp off in mid-P buckets while AUC parity holds, per-family AUC spread is
+0.73–0.96 while the headline is 0.88, "ICTV family" stratification puts 40% of the panel in catch-all buckets, and
+the earlier "BASEL encoded at wrong log_dilution" hypothesis is direction-wrong. None of those were in the PR body or
+the self-review. Codifying the protocol as a skill means the next ML PR picks up the same checks automatically rather
+than depending on a human reviewer repeating the audit by hand.
+
+#### Scope of changes
+
+- `.agents/skills/review-ml-pr/SKILL.md` — new skill, ~4 KB, concise checklist + snapshot discipline + related-skills
+  cross-reference to `case-by-case`.
+- `.agents/skills/case-by-case/SKILL.md` — de-tracked (removed SPANDEX / SX10-13 / autoresearch references), de-ranked
+  (removed nDCG / top-3 / MLC as primary outputs), added a Pre-CHISEL note flagging that `compare_predictions.py`
+  still computes retired metrics internally and needs a follow-up refactor.
+- `lyzortx/orchestration/AGENTS.md` — Self-Review via Subagent section amended to make the skill invocation
+  MANDATORY (not advisory) for ML artifact PRs.
+
+#### Follow-up tracked
+
+- `compare_predictions.py` needs an AUC + Brier + reliability-diff rewrite to match the case-by-case SKILL.md
+  description. The SKILL.md currently carries a Pre-CHISEL note acknowledging the lag.
