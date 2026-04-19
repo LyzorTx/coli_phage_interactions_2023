@@ -1,9 +1,9 @@
 # Project Knowledge Model
 
-<!-- Last consolidated: 2026-04-19T07:30:00+02:00 -->
+<!-- Last consolidated: 2026-04-19T08:30:00+02:00 -->
 <!-- Source: lyzortx/research_notes/lab_notebooks -->
 
-**61 knowledge units** across 7 themes (43 active, 18 dead ends)
+**62 knowledge units** across 7 themes (44 active, 18 dead ends)
 
 ## Data & Labels
 
@@ -23,7 +23,27 @@ Labeling policy, data quality, split contracts, and training corpus.
     as a regression safety-net before the CH04 behavioral flip.*
 - **`split-contract`**: ST02 defines 294 training bacteria; ST03 reserves 65 cv_group-disjoint bacteria for sealed
   holdout. Deterministic cv_group hashing with salt ensures reproducibility. [validated; source: ST0.2, ST0.3, AR01; see
-  also: raw-interactions-authority]
+  also: raw-interactions-authority, cv-group-leakage-fixed]
+- **`cv-group-leakage-fixed`**: CHISEL CH02 fixed a cross-validation fold-hashing bug in
+  lyzortx/pipeline/autoresearch/sx01_eval.assign_bacteria_folds. Folds were hashed on bacterium name instead of
+  cv_group, so 45 of 48 multi-bacterium cv_groups (≤1e-4 ANI clusters) split across folds — near-duplicate bacteria
+  appeared on both sides of the train/test boundary. The fix hashes on cv_group: all bacteria in a cv_group land in the
+  same fold. Revalidating SX10 canonical (GT03 all_gates_rfe + AX02 per-phage blending, any_lysis labels, SX10 feature
+  bundle, 10-fold bacteria-axis CV, 369×96 panel) under the corrected scheme gave AUC 0.8521 [0.8381, 0.8649] and Brier
+  0.1317 [0.1253, 0.1381] — a −1.78 pp AUC and +0.69 pp Brier shift vs the SPANDEX SX10 numbers (AUC 0.8699, Brier
+  0.1248). All SPANDEX-era aggregates that went through assign_bacteria_folds (SX03/SX04/SX10/SX11/SX12/SX13/SX14/SX15)
+  inherit a comparable small positive bias; their per-arm null conclusions remain valid because the leakage was uniform
+  across arms, but headline numbers are subject to this shift. [validated; source: CH02, 2026-04-19 CHISEL CV fix; see
+  also: split-contract, spandex-final-baseline, spandex-unified-kfold-baseline]
+  - *The AUC drop is larger than the 17%-of-bacteria leakage footprint alone would predict because changing the hash
+    input from bacterium name to cv_group id reshuffles every singleton cv_group's fold too (323 / 369 bacteria change
+    fold, not just the ~70 in split cv_groups). The shift therefore captures both leakage correction and
+    fold-composition variance on singletons. The Brier deterioration with disjoint CIs is the cleanest signal:
+    calibration is genuinely worse once near-duplicates are prevented from leaking. The new numbers are not yet
+    canonical — CH03 must first verify row-expansion preserves any_lysis semantics (safety-net) before CH04 flips to
+    per-row binary training. Canonical artifacts: lyzortx/generated_outputs/ch02_cv_group_fix/sx10_revalidated/
+    (predictions + bootstrap), ch02_sx10_revalidated_metrics.json (summary + fold diff), ch02_fixed_folds.csv (bacterium
+    → fold mapping under CHISEL hashing).*
 - **`raw-interactions-authority`**: raw_interactions.csv is the authoritative training corpus; all derived training
   cohorts and evaluation splits trace back to this file. [validated; source: ST0.2, AR01, DEPLOY01]
 - **`mlc-dilution-potency`**: HISTORICAL (SPANDEX-era). MLC is a rule-based rollup over the raw (bacterium, phage,

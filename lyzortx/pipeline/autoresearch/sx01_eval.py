@@ -26,7 +26,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -56,6 +56,7 @@ INTERACTION_MATRIX_PATH = Path("data/interactions/interaction_matrix.csv")
 
 N_FOLDS = 10
 FOLD_SALT = "spandex_v1"
+FOLD_HASH_NAMESPACE = "cv_group"
 SEEDS = [7, 42, 123]
 BOOTSTRAP_SAMPLES = 1000
 BOOTSTRAP_RANDOM_STATE = 42
@@ -78,14 +79,47 @@ def load_mlc_scores() -> pd.DataFrame:
 
 
 def assign_bacteria_folds(
-    bacteria_list: Sequence[str], n_folds: int = N_FOLDS, salt: str = FOLD_SALT
+    bacteria_to_cv_group: Mapping[str, str],
+    n_folds: int = N_FOLDS,
+    salt: str = FOLD_SALT,
 ) -> dict[str, int]:
-    """Deterministic fold assignment via hashing."""
-    assignments = {}
-    for bacteria in bacteria_list:
-        h = hashlib.sha256(f"{salt}:{bacteria}".encode()).hexdigest()
+    """Deterministic fold assignment by cv_group hashing.
+
+    All bacteria sharing a cv_group land in the same fold — prevents leakage
+    across the 1e-4 ANI genomic-similarity clusters defined in
+    data/metadata/370+host_cross_validation_groups_1e-4.csv. Hashing on the
+    bacterium name (SPANDEX-era behaviour) split 52/301 cv_groups across folds,
+    letting near-identical bacteria (≤1e-4 ANI) appear on both sides of the CV
+    boundary.
+    """
+    if not bacteria_to_cv_group:
+        raise ValueError("bacteria_to_cv_group mapping is empty")
+    assignments: dict[str, int] = {}
+    for bacteria, cv_group in bacteria_to_cv_group.items():
+        if cv_group in ("", None):
+            raise ValueError(
+                f"bacterium {bacteria!r} has no cv_group assignment; "
+                "ensure load_cv_groups() covers every training bacterium"
+            )
+        h = hashlib.sha256(f"{salt}:{FOLD_HASH_NAMESPACE}:{cv_group}".encode()).hexdigest()
         assignments[bacteria] = int(h, 16) % n_folds
     return assignments
+
+
+def bacteria_to_cv_group_map(frame: pd.DataFrame) -> dict[str, str]:
+    """Extract bacterium -> cv_group mapping from a frame carrying a `cv_group` column.
+
+    Fails loudly if a bacterium has multiple cv_group values (should never happen —
+    cv_group is a bacterium-level label in ST02).
+    """
+    if "cv_group" not in frame.columns:
+        raise KeyError("frame is missing required `cv_group` column")
+    pairs = frame.loc[:, ["bacteria", "cv_group"]].drop_duplicates()
+    multi = pairs.groupby("bacteria")["cv_group"].nunique()
+    conflicts = multi[multi > 1]
+    if not conflicts.empty:
+        raise ValueError(f"bacteria with multiple cv_group values: {conflicts.index.tolist()}")
+    return dict(zip(pairs["bacteria"].astype(str), pairs["cv_group"].astype(str)))
 
 
 def run_preflight(output_dir: Path) -> dict[str, object]:
@@ -285,7 +319,7 @@ def run_kfold_evaluation(
 ) -> dict[str, object]:
     """Run 10-fold bacteria-stratified CV with SPANDEX metrics."""
     all_bacteria = sorted(full_frame["bacteria"].unique())
-    fold_assignments = assign_bacteria_folds(all_bacteria)
+    fold_assignments = assign_bacteria_folds(bacteria_to_cv_group_map(full_frame))
 
     LOGGER.info("k-fold CV: %d bacteria across %d folds", len(all_bacteria), N_FOLDS)
     fold_sizes = defaultdict(int)

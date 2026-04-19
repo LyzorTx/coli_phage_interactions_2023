@@ -52,6 +52,7 @@ from lyzortx.pipeline.autoresearch.sx01_eval import (
     N_FOLDS,
     SEEDS,
     assign_bacteria_folds,
+    bacteria_to_cv_group_map,
     bootstrap_spandex_cis,
     load_mlc_scores,
 )
@@ -300,8 +301,7 @@ def run_sx11(
     mlc_df = load_mlc_scores()
     mlc_lookup = {(r["bacteria"], r["phage"]): r["mlc_score"] for _, r in mlc_df.iterrows()}
 
-    all_bacteria = sorted(clean_frame["bacteria"].unique())
-    fold_assignments = assign_bacteria_folds(all_bacteria)
+    fold_assignments = assign_bacteria_folds(bacteria_to_cv_group_map(clean_frame))
 
     per_arm_predictions: dict[str, list[dict[str, object]]] = {arm: [] for arm in arms}
 
