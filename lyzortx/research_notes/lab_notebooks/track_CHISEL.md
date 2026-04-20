@@ -1044,3 +1044,134 @@ Two threads converged to this adoption:
   in `context`. `chisel-unified-kfold-baseline` similarly.
 - Canonical artifacts regenerated at `lyzortx/generated_outputs/ch04_chisel_baseline/` and
   `lyzortx/generated_outputs/ch05_unified_kfold/`.
+
+### 2026-04-20 13:54 CEST: CH06 Arm 2 — MMseqs2 pairwise proteome similarity (null / regression)
+
+#### Executive summary
+
+Replaced the Guelin-only TL17 categorical projection with a 32-dim PCA over the 148×148
+all-vs-all MMseqs2 proteome bit-score matrix — the plan's strongest structural candidate for
+closing the BASEL discrimination gap. **Arm 2 fails the acceptance criterion**: BASEL
+bacteria-axis AUC drops to **0.7045** (baseline 0.7229; target > 0.7152), a 1.84 pp
+regression with no compensating gain elsewhere. Aggregate numbers wobble within sampling
+noise: bacteria-axis AUC 0.8240 vs 0.8218 (+0.22 pp, CIs overlap), phage-axis AUC 0.8878 vs
+0.8919 (−0.41 pp, CIs overlap). Confirms the plan's "may cannibalize TL17" pre-registered
+risk — continuous proteome similarity replaces TL17 without adding BASEL-discriminative
+signal, and for BASEL phages the Guelin-dominated PCA axes are actively worse than the
+TL17 categorical encoding.
+
+#### Feature construction
+
+MMseqs2 `easy-search` self-vs-self on the 148-phage combined proteome (10,129 Guelin
+pyrodigal proteins from the existing TL17 panel FASTA + 8,701 BASEL phanotate proteins from
+the per-phage pharokka output, combined into 18,830 protein FASTA with
+`<phage>|<protein_id>` headers). e-value 1e-5, sensitivity 7.5, default top-300 targets per
+query. 294,085 hits aggregated to a 148×148 summed-bit-score phage-level matrix (68.1% off-
+diagonal nonzero; diagonal zeroed so `sim_to_self` is not a constant phage-identity feature).
+
+PCA(n_components=32) on the 148×148 matrix: top-5 components explain 84.0%, top-32 explain
+95.6% of variance. The PCA transform is unsupervised and symmetric across all 148 phages —
+no label information and no Guelin vs BASEL split at fit time, so the encoding is
+panel-independent in the sense Arm 2 was supposed to test. Materialized as a
+`phage_projection__arm2_pc_{00..31}` slot under `.scratch/basel/feature_slots_arm2/` so CH05's
+existing `patch_context_with_extended_slots` picks it up via a new `slots_dir=` parameter
+(backwards-compatible default). 33 TL17 columns replaced with 32 PCA columns; other phage
+slots (`phage_stats`, `phage_rbp_struct`) symlinked unchanged.
+
+#### Variance pre-flight
+
+Per plan.yml `VARIANCE PRE-FLIGHT`, all three subsets pass the CV > 0.1 OR Cohen's d > 0.1
+gate (against phage-level lysis rate median split):
+
+| Subset | n | Max abs CV | Max abs Cohen's d | CV > 0.1 | d > 0.1 | Gate |
+|---|---|---|---|---|---|---|
+| Guelin | 96 | 6.4e6 | 0.96 | 32/32 | 19/32 | pass |
+| BASEL non-zero TL17 | 39 | 188.3 | 3.12 | 32/32 | 21/32 | pass |
+| BASEL zero-vector TL17 | 13 | 19.8 | 2.29 | 30/32 | 31/32 | pass |
+
+The BASEL subsets' high Cohen's d on many components initially looked promising — but that's
+a phage-level marginal (phage lysis rate correlates with PCA components), not pair-level
+discrimination. The full-training result shows the pair-level signal is essentially flat
+or worse than baseline; variance pre-flight is a necessary but insufficient gate for arm
+survival.
+
+#### Full-training results
+
+10-fold bacteria-axis (CH02 cv_group hash) and 10-fold phage-axis (StratifiedKFold by ICTV
+family / other / UNKNOWN), 3 seeds each under `ch04_parallel.fit_seeds`, same CH05 feature
+bundle with `phage_projection` swapped:
+
+| Axis | Metric | Baseline | Arm 2 | Δ | Notes |
+|---|---|---|---|---|---|
+| Bacteria | AUC | 0.8218 [0.8063, 0.8368] | **0.8240** [0.8066, 0.8397] | +0.22 pp | CIs overlap |
+| Bacteria | Brier | 0.1466 [0.1393, 0.1538] | 0.1500 [0.1427, 0.1572] | +0.34 pp | marginally worse |
+| Phage | AUC | 0.8919 [0.8650, 0.9166] | 0.8878 [0.8625, 0.9114] | −0.41 pp | CIs overlap |
+| Phage | Brier | 0.1181 [0.1012, 0.1359] | 0.1175 [0.1010, 0.1344] | −0.06 pp | flat |
+
+Cross-source breakdown — the decisive numbers (CI widths from the CH05 baseline report,
+point estimates recomputed from Arm 2's per-pair predictions):
+
+| Subset | Baseline AUC | Arm 2 AUC | ΔAUC | Baseline Brier | Arm 2 Brier |
+|---|---|---|---|---|---|
+| Bact-axis Guelin (96 phages, 35403 pairs) | 0.8247 | 0.8278 | +0.31 pp | 0.1434 | 0.1476 |
+| **Bact-axis BASEL (52 phages, 1240 pairs)** | **0.7229** | **0.7045** | **−1.84 pp** | 0.2380 | 0.2185 |
+| Phage-axis Guelin | 0.8922 | 0.8879 | −0.43 pp | 0.1156 | 0.1159 |
+| Phage-axis BASEL | 0.8822 | 0.8734 | −0.88 pp | 0.1890 | 0.1628 |
+
+**BASEL bacteria-axis AUC 0.7045 is below the target 0.7152** — Arm 2 does not meet the
+plan's discrimination success criterion. Brier improves for BASEL on both axes (bacteria-
+axis 0.2380 → 0.2185; phage-axis 0.1890 → 0.1628), but that is a calibration-side effect
+driven by the narrower, shrunken-toward-base-rate distribution of Arm 2 predictions (BASEL
+std 0.336 → 0.303), not discrimination — AUC moves the opposite direction.
+
+#### Interpretation
+
+Arm 2 confirms the plan's pre-registered "may cannibalize TL17 — RFE keeps the better one,
+net ≈ wash" hypothesis, but resolves it in the wrong direction for BASEL. Two mechanisms:
+
+1. **Guelin-weighted PCA axes.** The 148×148 similarity matrix is dominated by the 96
+   Guelin phages (65% of rows), so PCA axes capture mostly Guelin proteome variance. BASEL
+   phages' unique proteome signals are compressed into low-variance tail components that PCA
+   drops. The top-32 components explain 95.6% of total variance, but the Guelin-specific vs
+   BASEL-specific signal ratio is heavily skewed — BASEL phages do get non-zero projections
+   (no zero-vector failure mode, which is a win over TL17), but the projections don't encode
+   BASEL-discriminative structure.
+
+2. **Proteome similarity is not RBP similarity.** The TL17 reference bank is pharokka-
+   filtered to RBP proteins (`classify_rbp_genes`) — only ~200 proteins, receptor-binding-
+   specific. MMseqs2 all-vs-all on the full 18,830-protein panel includes every core gene:
+   terminase, polymerase, capsid, lysis machinery. Conserved housekeeping proteins contribute
+   identically across all phage pairs, so the resulting similarity matrix overweights
+   core-genome shared ancestry and underweights RBP-specific variation. Per
+   `receptor-specificity-solved`: "the signal is in short motifs at specific loci, not
+   global protein similarity."
+
+Both mechanisms were anticipated by the plan's "net ≈ wash" caveat; the result sharpens
+that prediction into "BASEL regression, Guelin wash" — an active reason to stop at TL17
+rather than replace it with Arm 2.
+
+#### Verdict
+
+**Null (regression on BASEL discrimination).** Arm 2 does not replace TL17 as the canonical
+phage-side feature slot. The plan's acceptance criterion is not met on any of its three
+exit conditions (AUC lift, top-3 lift — retired under CHISEL anyway, NILS53 rescue — not
+measurable on the BASEL side). Adds to `panel-size-ceiling` evidence: continuous proteome
+similarity at phage-level aggregation does not crack the BASEL discrimination gap.
+
+#### Scope
+
+Single-arm PR. Arms 3 and 4 run on separate branches and will be reported in follow-up
+entries. CH06 closes when Arm 4 merges (per-arm PRs chain under "Relates to #440" for
+Arms 2/3 and "Closes #440" for Arm 4).
+
+#### Artifacts
+
+- `lyzortx/pipeline/autoresearch/ch06_arm2_mmseqs_proteome.py` — precompute + eval driver.
+- `lyzortx/pipeline/autoresearch/sx03_eval.py:patch_context_with_extended_slots` — new
+  backwards-compatible `slots_dir=` parameter (default unchanged).
+- `.scratch/ch06_arm2/{combined_proteome.faa, mmseqs_hits.tsv, pairwise_bitscore.npz}` —
+  precompute cache (MMseqs2 hits, 148×148 bit-score matrix).
+- `.scratch/basel/feature_slots_arm2/phage_projection/features.csv` — Arm 2 slot (148 × 33
+  columns: phage + 32 PCA).
+- `lyzortx/generated_outputs/ch06_arm2_mmseqs_proteome/` — variance pre-flight JSON, per-
+  row and pair-level prediction CSVs, cross-source breakdown, final metrics JSON.

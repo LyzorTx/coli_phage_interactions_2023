@@ -58,10 +58,16 @@ EXTENDED_SLOTS_DIR = Path(".scratch/basel/feature_slots")
 N_FOLDS = 10
 
 
-def patch_context_with_extended_slots(context: Any) -> None:
-    """Replace phage slot artifacts with extended versions (Guelin + BASEL)."""
+def patch_context_with_extended_slots(context: Any, slots_dir: Path = EXTENDED_SLOTS_DIR) -> None:
+    """Replace phage slot artifacts with extended versions (Guelin + BASEL).
+
+    `slots_dir` defaults to the canonical CH05 extended slots at
+    `.scratch/basel/feature_slots/`. CH06 Arm 2 passes a different directory
+    (`.scratch/basel/feature_slots_arm2/`) to swap the `phage_projection` slot
+    with the MMseqs2 pairwise proteome similarity features.
+    """
     for slot_name in ("phage_projection", "phage_stats", "phage_rbp_struct"):
-        extended_csv = EXTENDED_SLOTS_DIR / slot_name / "features.csv"
+        extended_csv = slots_dir / slot_name / "features.csv"
         if not extended_csv.exists():
             LOGGER.warning("Extended slot %s not found at %s — using original", slot_name, extended_csv)
             continue
