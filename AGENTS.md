@@ -7,6 +7,13 @@ Before thinking, planning, or doing anything, follow these four steps in order:
 3. **Accelerate.** Make the implementation thinner, more elegant, and faster.
 4. **Automate.** Only after steps 1-3. Automating a bad requirement locks in waste.
 
+# Estimates and Timers
+
+- Calibrate time estimates from observed timings on this codebase, not from generic rules of thumb. Overestimates
+  inflate perceived scope and discourage progress; if actuals keep undershooting estimates, halve the multiplier.
+- Schedule wakeups BEFORE expected finish, not after. If the task is done when you peek, proceed immediately; if not,
+  reschedule a shorter peek. One wasted 60-second check beats five idle minutes past finish.
+
 # Directory-Specific Policies
 
 Detailed coding, testing, scientific review, CI, and orchestration policies live in subdirectory `AGENTS.md` files
