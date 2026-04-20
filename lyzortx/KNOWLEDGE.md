@@ -263,18 +263,22 @@ Architecture choices, calibration, and performance bounds.
   Straboviridae exclusion closes only 1.5 pp of the 9.5 pp bacteria-axis BASEL deficit — family bias is not the driver.
   **Closure-metric note (reconciles CH05 vs CH09 numbers).** Two valid closure metrics for BASEL calibration transfer,
   which look different but are measuring different things: (i) **max|gap| closure** = reduction of the WORST-decile
-  |observed−predicted| gap after isotonic (CH05 reported bacteria-axis 51.6→32.6 pp = 36.8% closure, phage-axis
-  48.3→32.0 pp = 33.8% closure); (ii) **ECE closure** = reduction of the ECE (weighted across all deciles) after
-  isotonic (CH09 reports bacteria-axis 61.8%, phage-axis 44.5%). max|gap| closes less than ECE by construction because
-  the worst-case decile resists shrinkage more than the average decile. Both are preserved here as valid
+  |observed−predicted| gap after isotonic (CH05 pre-filter era reported bacteria-axis 51.6→32.6 pp = 36.8% closure,
+  phage-axis 48.3→32.0 pp = 33.8% closure); (ii) **ECE closure** = reduction of the ECE (weighted across all deciles)
+  after isotonic. Under the post-filter canonical (CH06-followup PR #444 + CH09 PR #443): CH09 reports bacteria-axis ECE
+  0.216→0.044 = **79.5%** closure and phage-axis ECE 0.237→0.111 = **53.2%** closure — both materially better than the
+  pre-filter CH09 numbers (61.8% / 44.5%), confirming the neat-only filter improves cross-panel calibration transfer,
+  not just discrimination. max|gap| closes less than ECE by construction because the worst-case decile resists shrinkage
+  more than the average decile; phage-axis BASEL reliability tables show the transferred calibrator still overshoots the
+  0.5-0.8 mid-P bins by +0.25-0.35 pp even when ECE has compressed by half. Both metrics are preserved here as valid
   characterizations — earlier drafts that quoted "34-37% closure" without saying which metric were ambiguous (the 34-37%
-  range tracks max|gap|, not ECE). Residual BASEL ECE after transfer 0.103-0.132 is the load-bearing number regardless
-  of closure-metric choice: BASEL remains ~20× worse-calibrated than Guelin under the shared calibrator, and TL17-bias
-  remains the residual mechanism. This is the active CHISEL reference for two-axis generalization and cross- source
-  behaviour. [validated; source: CH05, 2026-04-19 CHISEL unified k-fold; CH06-followup, 2026-04-20 filter adoption;
-  CH09, 2026-04-20 calibration layer; see also: chisel-baseline, spandex-unified-kfold-baseline,
-  per-phage-retired-under-chisel, cv-group-leakage-fixed, new-phage-generalization, deployment-goal, plm-rbp-redundant,
-  panel-size-ceiling]
+  range tracks max|gap|, not ECE). Residual BASEL ECE after transfer **0.044 bacteria / 0.111 phage** is the
+  load-bearing number: BASEL remains ~6-17× worse-calibrated than Guelin under the shared calibrator (Guelin LOOF ECE ≈
+  0.007 on both axes), and TL17-bias remains the residual mechanism. This is the active CHISEL reference for two-axis
+  generalization and cross- source behaviour. [validated; source: CH05, 2026-04-19 CHISEL unified k-fold; CH06-followup,
+  2026-04-20 filter adoption; CH09, 2026-04-20 calibration layer; see also: chisel-baseline,
+  spandex-unified-kfold-baseline, per-phage-retired-under-chisel, cv-group-leakage-fixed, new-phage-generalization,
+  deployment-goal, plm-rbp-redundant, panel-size-ceiling]
   - ***Baseline movement across CHISEL tickets** (numbers here reference the 148×369 unified panel unless otherwise
     noted): - CH05 initial canonical (pre-filter, absolute log₁₀ pfu/ml encoding):   bacteria-axis AUC 0.8061 [0.7917,
     0.8199] / Brier 0.1778; phage-axis AUC   0.8850 [0.8617, 0.9062] / Brier 0.1348; cross-source phage-axis Guelin
