@@ -3,7 +3,7 @@
 <!-- Last consolidated: 2026-04-19T16:00:00+02:00 -->
 <!-- Source: lyzortx/research_notes/lab_notebooks -->
 
-**65 knowledge units** across 7 themes (46 active, 19 dead ends)
+**66 knowledge units** across 7 themes (47 active, 19 dead ends)
 
 ## Data & Labels
 
@@ -144,6 +144,37 @@ What works, what doesn't, leakage risks, and encoding decisions.
     (O-antigen/capsule blocking, intracellular defenses, injection efficiency) dominate host-range determination in
     clinical isolates. This means receptor identity is necessary but far from sufficient for predicting strain-level
     lysis.*
+- **`moriniere-receptor-fractions-validated`**: CH06 Arm 3 validates Moriniere 2026 per-receptor k-mer-fraction vectors
+  (13 dim, one fraction per receptor class, = `|kmers(R) ∩ kmers(P)| / |kmers(R)|`) as the canonical panel-independent
+  replacement for the Guelin-derived TL17 `phage_projection` slot. On the CH05 unified 148-phage panel (post-filter
+  canonical), Arm 3 delivers BASEL bacteria-axis AUC 0.7374 (+1.45 pp vs 0.7229 baseline, meets the CH06 acceptance
+  criterion >0.7152), rescues the 13 BASEL zero-vector-TL17 phages by +4.36 pp on phage-axis (0.6901 → 0.7337) with no
+  Guelin regression (±0.15 pp). Arm 2 (MMseqs2 pairwise proteome similarity) and Arm 4 (tail-restricted TL17 BLAST) were
+  both null — Arm 2 cannibalized non-zero-projection BASEL while rescuing zero-proj BASEL; Arm 4 produced a strict
+  subset of baseline TL17 hits. The aggregation level is the mechanism: raw 815 k-mers were null in SX12
+  (`kmer-receptor-expansion-neutral`) because they are information-redundant with TL17 at the sequence level, but
+  aggregation to 13 per-receptor-class normalized fractions removes that redundancy by forcing the model to see
+  class-level probabilities rather than re-derive them. Moriniere's classifier was trained on 260 non-Guelin reference
+  phages, so the feature basis is panel-independent at source. [validated; source: CH06 Arm 3, 2026-04-20 CH06
+  close-out; see also: chisel-unified-kfold-baseline, receptor-specificity-solved, kmer-receptor-expansion-neutral,
+  plm-rbp-redundant, panel-size-ceiling, deployment-goal]
+  - *Plan.yml pre-registered Arm 3 as "expected null" citing `same-receptor-uncorrelated-hosts` (Tsx phages Jaccard
+    0.091 on host ranges) and Moriniere's K-12-only training (no capsule/O-antigen). Both characterizations are correct
+    about what receptor-class probabilities do NOT encode, but the CH06 acceptance criterion is absolute cross-panel
+    discrimination AUC, not within-receptor-class host-range rank ordering. A 13-dim probability vector that is
+    panel-independent and distinguishes "which major receptor family does this phage use" is discriminative even if it
+    says nothing about strain-level within-class ranking. Guelin numbers are flat (bacteria-axis 0.8247 → 0.8232,
+    phage-axis 0.8922 → 0.8934), so Arm 3 does not damage the Guelin-heavy aggregate. BASEL non-zero-proj TL17 phages
+    (n=39) also improve (+2.54 pp bact-axis, +0.54 pp phage-axis), so there is no zero-vs-non-zero trade-off — Arm 3
+    strictly dominates baseline TL17 on the BASEL side. **Canonical migration is deferred**: Arm 3 is currently a
+    side-materialized slot at `.scratch/basel/feature_slots_arm3/phage_projection/features.csv`; CH05 / CH07 / CH08 /
+    CH09 pipelines still read baseline TL17. A follow-up ticket (CH10) should make Arm 3 the default slot and re-run
+    those pipelines. Supersedes the "panel-independent phage features are the remaining lever" open question in
+    `chisel-unified-kfold-baseline` (the lever exists; now the question is migration cost + downstream calibration
+    effects). Canonical artifacts: lyzortx/generated_outputs/ch06_arm3_moriniere_receptor/ch06_arm3_metrics.json,
+    ch06_arm3_{bacteria,phage}_axis_predictions.csv, ch06_arm3_cross_source_breakdown.csv,
+    ch06_arm3_variance_preflight.json, and the slot file
+    .scratch/basel/feature_slots_arm3/phage_projection/features.csv.*
 
 ## Model Architecture & Performance
 
