@@ -66,7 +66,11 @@ from lyzortx.pipeline.autoresearch.ch04_eval import (
     build_clean_row_training_frame,
     compute_aggregate_auc_brier,
     select_pair_max_concentration_rows,
-    train_and_predict_per_row_fold,
+)
+from lyzortx.pipeline.autoresearch.ch04_parallel import (
+    fit_seeds,
+    prepare_fold_design_matrices,
+    select_rfe_features,
 )
 from lyzortx.pipeline.autoresearch.sx01_eval import (
     N_FOLDS,
@@ -370,16 +374,20 @@ def run_bacteria_axis(
     *,
     candidate_module: ModuleType,
     context: Any,
+    candidate_dir: Path,
     clean_rows: pd.DataFrame,
     device_type: str,
     output_dir: Path,
+    max_folds: Optional[int] = None,
+    num_workers: int = 3,
 ) -> pd.DataFrame:
     """10-fold bacteria-axis CV via CH02 cv_group hash (all 148 phages in training)."""
     LOGGER.info("=== Bacteria-axis evaluation (CH02 cv_group folds, all-pairs only) ===")
     mapping = bacteria_to_cv_group_map(clean_rows)
     fold_assignments = assign_bacteria_folds(mapping)
     all_rows: list[dict[str, object]] = []
-    for fold_id in range(N_FOLDS):
+    folds_to_run = N_FOLDS if max_folds is None else min(max_folds, N_FOLDS)
+    for fold_id in range(folds_to_run):
         holdout_bac = {b for b, f in fold_assignments.items() if f == fold_id}
         train_bac = {b for b, f in fold_assignments.items() if f != fold_id}
         fold_train = clean_rows[clean_rows["bacteria"].isin(train_bac)].copy()
@@ -392,16 +400,30 @@ def run_bacteria_axis(
             len(holdout_bac),
             len(fold_holdout),
         )
+        train_design, holdout_design, feature_columns, categorical_columns = prepare_fold_design_matrices(
+            candidate_module=candidate_module,
+            context=context,
+            training_frame=fold_train,
+            holdout_frame=fold_holdout,
+        )
+        rfe_features, rfe_categorical = select_rfe_features(
+            train_design=train_design,
+            feature_columns=feature_columns,
+            categorical_columns=categorical_columns,
+        )
+        seed_results = fit_seeds(
+            seeds=SEEDS,
+            candidate_module=candidate_module,
+            candidate_dir=candidate_dir,
+            train_design=train_design,
+            holdout_design=holdout_design,
+            rfe_features=rfe_features,
+            rfe_categorical=rfe_categorical,
+            device_type=device_type,
+            num_workers=num_workers,
+        )
         fold_seed_rows: list[dict[str, object]] = []
-        for seed in SEEDS:
-            rows, _ = train_and_predict_per_row_fold(
-                candidate_module=candidate_module,
-                context=context,
-                training_frame=fold_train,
-                holdout_frame=fold_holdout,
-                seed=seed,
-                device_type=device_type,
-            )
+        for _seed, rows, _fi in seed_results:
             for r in rows:
                 r["fold_id"] = fold_id
             fold_seed_rows.extend(rows)
@@ -425,17 +447,21 @@ def run_phage_axis(
     *,
     candidate_module: ModuleType,
     context: Any,
+    candidate_dir: Path,
     clean_rows: pd.DataFrame,
     phage_family: dict[str, str],
     device_type: str,
     output_dir: Path,
+    max_folds: Optional[int] = None,
+    num_workers: int = 3,
 ) -> pd.DataFrame:
     """10-fold phage-axis CV via StratifiedKFold (all 369 bacteria in training)."""
     LOGGER.info("=== Phage-axis evaluation (StratifiedKFold by ICTV family, all-pairs only) ===")
     phages = sorted(clean_rows["phage"].unique())
     fold_assignments = assign_phage_folds(phages, phage_family)
     all_rows: list[dict[str, object]] = []
-    for fold_id in range(N_FOLDS):
+    folds_to_run = N_FOLDS if max_folds is None else min(max_folds, N_FOLDS)
+    for fold_id in range(folds_to_run):
         holdout_phages = {p for p, f in fold_assignments.items() if f == fold_id}
         train_phages = {p for p, f in fold_assignments.items() if f != fold_id}
         fold_train = clean_rows[clean_rows["phage"].isin(train_phages)].copy()
@@ -448,16 +474,30 @@ def run_phage_axis(
             len(holdout_phages),
             len(fold_holdout),
         )
+        train_design, holdout_design, feature_columns, categorical_columns = prepare_fold_design_matrices(
+            candidate_module=candidate_module,
+            context=context,
+            training_frame=fold_train,
+            holdout_frame=fold_holdout,
+        )
+        rfe_features, rfe_categorical = select_rfe_features(
+            train_design=train_design,
+            feature_columns=feature_columns,
+            categorical_columns=categorical_columns,
+        )
+        seed_results = fit_seeds(
+            seeds=SEEDS,
+            candidate_module=candidate_module,
+            candidate_dir=candidate_dir,
+            train_design=train_design,
+            holdout_design=holdout_design,
+            rfe_features=rfe_features,
+            rfe_categorical=rfe_categorical,
+            device_type=device_type,
+            num_workers=num_workers,
+        )
         fold_seed_rows: list[dict[str, object]] = []
-        for seed in SEEDS:
-            rows, _ = train_and_predict_per_row_fold(
-                candidate_module=candidate_module,
-                context=context,
-                training_frame=fold_train,
-                holdout_frame=fold_holdout,
-                seed=seed,
-                device_type=device_type,
-            )
+        for _seed, rows, _fi in seed_results:
             for r in rows:
                 r["fold_id"] = fold_id
             fold_seed_rows.extend(rows)
@@ -484,13 +524,23 @@ def run_ch05_eval(
     cache_dir: Path,
     candidate_dir: Path,
     basel_log10_pfu_ml: float = BASEL_LOG10_PFU_ML,
+    max_folds: Optional[int] = None,
+    num_workers: int = 3,
 ) -> dict[str, object]:
+    """Run the full CH05 two-axis evaluation.
+
+    `max_folds` limits the number of CV folds per axis (for subset iteration during
+    CH06 parallelism development). `num_workers` controls seed-level parallelism;
+    see `run_ch04_eval` for the contract.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     start_time = datetime.now(timezone.utc)
     LOGGER.info(
-        "CH05 evaluation starting at %s (basel_log10_pfu_ml=%.2f)",
+        "CH05 evaluation starting at %s (basel_log10_pfu_ml=%.2f, max_folds=%s, num_workers=%d)",
         start_time.isoformat(),
         basel_log10_pfu_ml,
+        max_folds if max_folds is not None else "all",
+        num_workers,
     )
 
     unified = load_unified_row_frame(basel_log10_pfu_ml=basel_log10_pfu_ml)
@@ -513,17 +563,23 @@ def run_ch05_eval(
     bacteria_axis_per_row = run_bacteria_axis(
         candidate_module=candidate_module,
         context=context,
+        candidate_dir=candidate_dir,
         clean_rows=clean_rows,
         device_type=device_type,
         output_dir=output_dir,
+        max_folds=max_folds,
+        num_workers=num_workers,
     )
     phage_axis_per_row = run_phage_axis(
         candidate_module=candidate_module,
         context=context,
+        candidate_dir=candidate_dir,
         clean_rows=clean_rows,
         phage_family=phage_family,
         device_type=device_type,
         output_dir=output_dir,
+        max_folds=max_folds,
+        num_workers=num_workers,
     )
 
     # Per-axis aggregate + bootstrap.
@@ -671,6 +727,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "to e.g. 9.3 for a sensitivity analysis if a more specific titer is sourced."
         ),
     )
+    parser.add_argument(
+        "--max-folds",
+        type=int,
+        default=None,
+        help="Limit number of CV folds per axis (subset iteration during CH06 development).",
+    )
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=3,
+        help="Seed-level parallelism (1 = sequential; 3 matches len(SEEDS)).",
+    )
     return parser.parse_args(argv)
 
 
@@ -683,6 +751,8 @@ def main(argv: list[str] | None = None) -> None:
         cache_dir=args.cache_dir,
         candidate_dir=args.candidate_dir,
         basel_log10_pfu_ml=args.basel_log10_pfu_ml,
+        max_folds=args.max_folds,
+        num_workers=args.num_workers,
     )
 
 

@@ -63,7 +63,6 @@ from lyzortx.pipeline.autoresearch.candidate_replay import (
     BootstrapMetricCI,
     load_module_from_path,
     safe_round,
-    temporary_module_attribute,
 )
 from lyzortx.pipeline.autoresearch.ch03_row_expansion import (
     RAW_SCORE_NEGATIVE,
@@ -71,7 +70,11 @@ from lyzortx.pipeline.autoresearch.ch03_row_expansion import (
     RAW_SCORE_UNINTERPRETABLE,
     load_row_expanded_frame,
 )
-from lyzortx.pipeline.autoresearch.gt03_eval import apply_rfe
+from lyzortx.pipeline.autoresearch.ch04_parallel import (
+    fit_seeds,
+    prepare_fold_design_matrices,
+    select_rfe_features,
+)
 from lyzortx.pipeline.autoresearch.sx01_eval import (
     FOLD_HASH_NAMESPACE,
     FOLD_SALT,
@@ -142,72 +145,34 @@ def train_and_predict_per_row_fold(
     holdout_frame: pd.DataFrame,
     seed: int,
     device_type: str,
+    candidate_dir: Path = DEFAULT_CANDIDATE_DIR,
 ) -> tuple[list[dict[str, object]], pd.DataFrame]:
-    """Row-level all-pairs trainer for CH04.
+    """Row-level all-pairs trainer for CH04 (single-seed, sequential).
 
-    Same host/phage slot bundle as SX10, same pairwise cross-terms, same RFE. Differs
-    from SPANDEX/CH02 on three axes: (1) `label_row_binary` replaces `label_any_lysis`
-    as the training target, (2) `pair_concentration__log10_pfu_ml` is added as a
-    feature column before RFE, and (3) every row is a training example rather than
-    one row per pair. Per-phage blending (AX02) is intentionally omitted — see module
-    docstring for rationale.
+    Thin wrapper around `prepare_fold_design_matrices` + `select_rfe_features` +
+    `fit_seeds` with one seed — kept for callers and tests that want the
+    per-(fold, seed) training primitive. `run_ch04_eval` does not call this path
+    for the main loop anymore; it computes design + RFE once per fold and
+    dispatches the three seeds via `fit_seeds` (parallel when `num_workers > 1`).
+
+    Same host/phage slot bundle as SX10, same pairwise cross-terms, same RFE.
+    Differs from SPANDEX/CH02 on three axes: (1) `label_row_binary` replaces
+    `label_any_lysis` as the training target, (2) `pair_concentration__log10_pfu_ml`
+    is added as a feature column before RFE, and (3) every row is a training
+    example rather than one row per pair. Per-phage blending (AX02) is
+    intentionally omitted — see module docstring for rationale.
     """
-    from lyzortx.pipeline.autoresearch.derive_pairwise_depo_capsule_features import (
-        compute_pairwise_depo_capsule_features,
+    train_design, holdout_design, feature_columns, categorical_columns = prepare_fold_design_matrices(
+        candidate_module=candidate_module,
+        context=context,
+        training_frame=training_frame,
+        holdout_frame=holdout_frame,
     )
-    from lyzortx.pipeline.autoresearch.derive_pairwise_receptor_omp_features import (
-        compute_pairwise_receptor_omp_features,
+    rfe_features, rfe_categorical = select_rfe_features(
+        train_design=train_design,
+        feature_columns=feature_columns,
+        categorical_columns=categorical_columns,
     )
-
-    host_slots = ["host_surface", "host_typing", "host_stats", "host_defense"]
-    phage_slots = ["phage_projection", "phage_stats"]
-
-    host_table = candidate_module.build_entity_feature_table(
-        context.slot_artifacts, slot_names=host_slots, entity_key="bacteria"
-    )
-    phage_table = candidate_module.build_entity_feature_table(
-        context.slot_artifacts, slot_names=phage_slots, entity_key="phage"
-    )
-    host_typed, _, host_categorical = candidate_module.type_entity_features(host_table, "bacteria")
-    phage_typed, _, phage_categorical = candidate_module.type_entity_features(phage_table, "phage")
-
-    train_design = candidate_module.build_raw_pair_design_matrix(
-        training_frame, host_features=host_typed, phage_features=phage_typed
-    )
-    holdout_design = candidate_module.build_raw_pair_design_matrix(
-        holdout_frame, host_features=host_typed, phage_features=phage_typed
-    )
-
-    compute_pairwise_depo_capsule_features(train_design)
-    compute_pairwise_depo_capsule_features(holdout_design)
-    compute_pairwise_receptor_omp_features(train_design)
-    compute_pairwise_receptor_omp_features(holdout_design)
-
-    # Propagate row-level columns onto the merged design (many_to_one merges may drop
-    # row-level columns in some candidate implementations; be explicit).
-    train_design[CONCENTRATION_FEATURE_COLUMN] = training_frame[CONCENTRATION_FEATURE_COLUMN].to_numpy()
-    holdout_design[CONCENTRATION_FEATURE_COLUMN] = holdout_frame[CONCENTRATION_FEATURE_COLUMN].to_numpy()
-    train_design["label_row_binary"] = training_frame["label_row_binary"].to_numpy()
-    holdout_design["label_row_binary"] = holdout_frame["label_row_binary"].to_numpy()
-    train_design["log10_pfu_ml"] = training_frame["log10_pfu_ml"].to_numpy()
-    holdout_design["log10_pfu_ml"] = holdout_frame["log10_pfu_ml"].to_numpy()
-    train_design["log_dilution"] = training_frame["log_dilution"].to_numpy()
-    holdout_design["log_dilution"] = holdout_frame["log_dilution"].to_numpy()
-    train_design["replicate"] = training_frame["replicate"].to_numpy()
-    holdout_design["replicate"] = holdout_frame["replicate"].to_numpy()
-
-    prefixes = tuple(f"{s}__" for s in host_slots + phage_slots) + (
-        "pair_depo_capsule__",
-        "pair_receptor_omp__",
-        "pair_concentration__",
-    )
-    feature_columns = [col for col in train_design.columns if col.startswith(prefixes)]
-    categorical_columns = [col for col in (host_categorical + phage_categorical) if col in feature_columns]
-
-    y_train = train_design["label_row_binary"].astype(int).to_numpy(dtype=int)
-    rfe_features = apply_rfe(train_design, feature_columns, categorical_columns, y_train, seed=42)
-    rfe_categorical = [c for c in categorical_columns if c in rfe_features]
-
     LOGGER.info(
         "Fold training (per-row): %d features after RFE (from %d), %d train rows, %d holdout rows, "
         "concentration_in_rfe=%s",
@@ -217,45 +182,18 @@ def train_and_predict_per_row_fold(
         len(holdout_design),
         CONCENTRATION_FEATURE_COLUMN in rfe_features,
     )
-
-    with temporary_module_attribute(candidate_module, "PAIR_SCORER_RANDOM_STATE", seed):
-        estimator = candidate_module.build_pair_scorer(device_type=device_type)
-    estimator.fit(
-        train_design[rfe_features],
-        y_train,
-        categorical_feature=rfe_categorical,
+    seed_results = fit_seeds(
+        seeds=(seed,),
+        candidate_module=candidate_module,
+        candidate_dir=candidate_dir,
+        train_design=train_design,
+        holdout_design=holdout_design,
+        rfe_features=rfe_features,
+        rfe_categorical=rfe_categorical,
+        device_type=device_type,
+        num_workers=1,
     )
-    predictions = estimator.predict_proba(holdout_design[rfe_features])[:, 1]
-
-    rows = []
-    for (_, row), probability in zip(
-        holdout_design[
-            ["pair_id", "bacteria", "phage", "label_row_binary", "log_dilution", "log10_pfu_ml", "replicate"]
-        ].iterrows(),
-        predictions,
-    ):
-        rows.append(
-            {
-                "arm_id": "chisel_baseline",
-                "seed": seed,
-                "pair_id": str(row["pair_id"]),
-                "bacteria": str(row["bacteria"]),
-                "phage": str(row["phage"]),
-                "log_dilution": int(row["log_dilution"]),
-                "log10_pfu_ml": float(row["log10_pfu_ml"]),
-                "replicate": int(row["replicate"]),
-                "label_row_binary": int(row["label_row_binary"]),
-                "predicted_probability": safe_round(float(probability)),
-            }
-        )
-
-    feature_importance = pd.DataFrame(
-        {
-            "feature": rfe_features,
-            "importance": estimator.feature_importances_,
-        }
-    )
-    feature_importance["is_concentration_feature"] = feature_importance["feature"] == CONCENTRATION_FEATURE_COLUMN
+    _, rows, feature_importance = seed_results[0]
     return rows, feature_importance
 
 
@@ -361,10 +299,26 @@ def run_ch04_eval(
     output_dir: Path,
     cache_dir: Path,
     candidate_dir: Path,
+    max_folds: Optional[int] = None,
+    num_workers: int = 3,
 ) -> dict[str, object]:
+    """Run the full CH04 evaluation.
+
+    `max_folds` limits the number of folds (useful for subset iteration during
+    parallelism development — set `max_folds=1` to run a single fold in under
+    ~5 minutes and compare sequential vs parallel predictions bit-for-bit).
+    `num_workers` controls seed-level parallelism: 1 forces sequential, >=2
+    dispatches the three SEEDS through `multiprocessing.Pool`. Determinism is
+    preserved across all valid `num_workers` values.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     start_time = datetime.now(timezone.utc)
-    LOGGER.info("CH04 evaluation starting at %s", start_time.isoformat())
+    LOGGER.info(
+        "CH04 evaluation starting at %s (max_folds=%s, num_workers=%d)",
+        start_time.isoformat(),
+        max_folds if max_folds is not None else "all",
+        num_workers,
+    )
 
     row_frame = load_row_expanded_frame()
     clean_rows = build_clean_row_training_frame(row_frame)
@@ -399,7 +353,8 @@ def run_ch04_eval(
     all_per_row_predictions: list[dict[str, object]] = []
     all_feature_importance: list[pd.DataFrame] = []
 
-    for fold_id in range(N_FOLDS):
+    folds_to_run = N_FOLDS if max_folds is None else min(max_folds, N_FOLDS)
+    for fold_id in range(folds_to_run):
         holdout_bacteria = {b for b, f in fold_assignments.items() if f == fold_id}
         train_bacteria = {b for b, f in fold_assignments.items() if f != fold_id}
         fold_train = full_frame[full_frame["bacteria"].isin(train_bacteria)].copy()
@@ -413,16 +368,39 @@ def run_ch04_eval(
             len(fold_holdout),
         )
 
+        train_design, holdout_design, feature_columns, categorical_columns = prepare_fold_design_matrices(
+            candidate_module=candidate_module,
+            context=context,
+            training_frame=fold_train,
+            holdout_frame=fold_holdout,
+        )
+        rfe_features, rfe_categorical = select_rfe_features(
+            train_design=train_design,
+            feature_columns=feature_columns,
+            categorical_columns=categorical_columns,
+        )
+        LOGGER.info(
+            "Fold %d: %d features after RFE (from %d), concentration_in_rfe=%s",
+            fold_id,
+            len(rfe_features),
+            len(feature_columns),
+            CONCENTRATION_FEATURE_COLUMN in rfe_features,
+        )
+
+        seed_results = fit_seeds(
+            seeds=SEEDS,
+            candidate_module=candidate_module,
+            candidate_dir=candidate_dir,
+            train_design=train_design,
+            holdout_design=holdout_design,
+            rfe_features=rfe_features,
+            rfe_categorical=rfe_categorical,
+            device_type=device_type,
+            num_workers=num_workers,
+        )
+
         fold_seed_rows: list[dict[str, object]] = []
-        for seed in SEEDS:
-            rows, fi = train_and_predict_per_row_fold(
-                candidate_module=candidate_module,
-                context=context,
-                training_frame=fold_train,
-                holdout_frame=fold_holdout,
-                seed=seed,
-                device_type=device_type,
-            )
+        for seed, rows, fi in seed_results:
             for r in rows:
                 r["fold_id"] = fold_id
             fold_seed_rows.extend(rows)
@@ -554,6 +532,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
     parser.add_argument("--candidate-dir", type=Path, default=DEFAULT_CANDIDATE_DIR)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument(
+        "--max-folds",
+        type=int,
+        default=None,
+        help="Limit number of CV folds to run (for subset iteration during parallelism development).",
+    )
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=3,
+        help="Seed-level parallelism (1 = sequential; 3 matches len(SEEDS)).",
+    )
     return parser.parse_args(argv)
 
 
@@ -565,6 +555,8 @@ def main(argv: list[str] | None = None) -> None:
         output_dir=args.output_dir,
         cache_dir=args.cache_dir,
         candidate_dir=args.candidate_dir,
+        max_folds=args.max_folds,
+        num_workers=args.num_workers,
     )
 
 
