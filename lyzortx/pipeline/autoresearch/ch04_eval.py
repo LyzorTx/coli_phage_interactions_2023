@@ -535,7 +535,7 @@ def run_ch04_eval(
         "evaluation_unit": "per-pair at max observed log10_pfu_ml (one prediction per held-out pair)",
         "n_bacteria_total": int(pair_predictions["bacteria"].nunique()),
         "n_pairs_evaluated": int(len(pair_predictions)),
-        "n_training_rows_dropped_as_n": int(len(row_frame) - len(clean_rows)),
+        "n_training_rows_dropped": int(len(row_frame) - len(clean_rows)),
         "concentration_feature_column": CONCENTRATION_FEATURE_COLUMN,
         "concentration_mean_importance": safe_round(concentration_importance),
         "chisel_baseline": {

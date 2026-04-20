@@ -301,41 +301,60 @@ themes:
 
       - id: chisel-baseline
         statement: >
-          CHISEL canonical baseline (CH04, 2026-04-19): per-row binary training on every
-          interpretable (bacterium, phage, log_dilution, replicate, X, Y) raw observation
-          with `pair_concentration__log_dilution` as a numeric feature, SX10 feature bundle
+          CHISEL canonical baseline (CH04, updated 2026-04-20 with CH06-followup neat-only
+          filter): per-row binary training on every interpretable (bacterium, phage,
+          log_dilution, replicate, X, Y) raw observation with `pair_concentration__log10_pfu_ml`
+          as a numeric feature (absolute log₁₀ pfu/ml encoding, replacing the earlier
+          relative log_dilution encoding — CH05 track-wide change), SX10 feature bundle
           otherwise unchanged (host_surface + host_typing + host_stats + host_defense +
           phage_projection + phage_stats + pair_depo_capsule + pair_receptor_omp,
           RFE-selected), **all-pairs only** (AX02 per-phage blending retired, see
           per-phage-retired-under-chisel), 10-fold bacteria-axis CV under CH02 cv_group
-          hashing, 369×96 panel. Evaluation: each held-out pair scored at its max observed
-          log_dilution (all 35,266 pairs tested at log_dilution=0, so evaluation is at neat
-          concentration) with bacterium-level bootstrap CIs (1000 resamples). Result:
-          **AUC 0.8084 [0.7944, 0.8217], Brier 0.1750 [0.1677, 0.1824]**. This is the
-          active reference point for all future CHISEL arms.
-        sources: [CH04, 2026-04-19 CHISEL baseline]
+          hashing, 369×96 panel. **Training label policy includes the neat-only positive
+          filter**: Guelin pairs whose every score='1' observation is at log_dilution=0
+          (neat) have their positive rows dropped as candidate-non-productive per
+          Gaborieau 2024 Methods ("clearing at high titer can be non-productive"). Filter
+          drops 7,574 rows across 4,428 Guelin pairs (~20% of Guelin positives). BASEL
+          source is exempt — its single observation per pair is at log_dilution=0 by
+          construction. Evaluation: each held-out pair scored at its max observed
+          log10_pfu_ml (Guelin neat 8.7, BASEL 9.0) with bacterium-level bootstrap CIs
+          (1000 resamples). Result: **AUC 0.8217 [0.8054, 0.8365], Brier 0.1435 [0.1363,
+          0.1508]**. This is the active reference point for all future CHISEL arms.
+        sources: [CH04, 2026-04-19 CHISEL baseline; CH06-followup, 2026-04-20 filter adoption]
         status: active
         confidence: validated
         context: >
-          CH04 drops substantially from the CH02 revalidated baseline (AUC 0.8521, Brier
-          0.1317): ΔAUC = −4.37 pp, ΔBrier = +4.33 pp, with disjoint 95% CIs on both. Three
-          changes compound between the two numbers: (a) per-row training replaces
-          pair-level any_lysis — every (bacterium, phage, log_dilution, replicate, X, Y)
-          raw observation with score ∈ {0, 1} becomes its own training row (rows with
-          score = "n" are dropped as missing, not negative); (b) log_dilution enters as a
-          numeric feature so the model must predict at a specific concentration rather
-          than "does this pair ever lyse?"; (c) AX02 per-phage blending is retired (see
+          Baseline movement over CHISEL: CH02 revalidated SX10 (pair-level any_lysis, 10-fold
+          cv_group hashing, per-phage blending enabled) = AUC 0.8521, Brier 0.1317. CH04
+          initial canonical (per-row binary, all-pairs only, concentration feature,
+          pre-filter) = AUC 0.8084 [0.7944, 0.8217], Brier 0.1750 [0.1677, 0.1824] — ΔAUC
+          −4.37 pp, ΔBrier +4.33 pp vs CH02. CH04 post-CH06-followup (with neat-only
+          filter) = AUC 0.8217, Brier 0.1435 — +1.3 pp AUC and −3.2 pp Brier vs CH04 pre-
+          filter. Three changes compound between CH02 and CH04 pre-filter: (a) per-row
+          training replaces pair-level any_lysis — every (bacterium, phage, log_dilution,
+          replicate, X, Y) raw observation with score ∈ {0, 1} becomes its own training
+          row (rows with score = "n" are dropped as missing, not negative); (b)
+          concentration enters as a numeric feature (pair_concentration__log10_pfu_ml) so
+          the model must predict at a specific concentration rather than "does this pair
+          ever lyse?"; (c) AX02 per-phage blending is retired (see
           per-phage-retired-under-chisel), removing the bacterium-level memorization head
-          that contributed to CH02's AUC under the bacteria-axis setup. Diagnostic
-          decomposition: evaluation label distribution is nearly unchanged (27.4% positive
-          at max-conc vs 27.6% pair-level any_lysis — ~47 pair labels flip), so the drop
-          is training-side, not evaluation-side. The concentration feature is the #4
-          ranked feature by mean LightGBM importance (328.70, retained by RFE in all 30
-          fold × seed fits, above every receptor-OMP cross-term). CHISEL takes the 4.4 pp
-          aggregate-AUC cost in exchange for a deployable per-observation predictor aligned
-          with deployment-goal. Subsequent CHISEL tickets (CH05 phage-axis, CH06 both-axis,
-          CH07 feature re-audit) are anchored to this baseline, not to SPANDEX numbers.
-          Canonical artifacts:
+          that contributed to CH02's AUC under the bacteria-axis setup. The CH06-followup
+          filter adoption is the fourth adjustment: CH09 Arm 3 showed that dropping
+          Guelin positives occurring only at neat (the "clearing at high titer, possibly
+          non-productive" candidate per Gaborieau 2024) yields a cleaner discrimination
+          surface. The improvement is discrimination-only (AUC/Brier); ECE did NOT drop
+          under the filter (+0.7 pp), consistent with the filter sharpening the decision
+          surface rather than removing systematically over-inflated predictions — see
+          CH09 notebook entry for the directional-miss analysis. Diagnostic decomposition
+          (CH02 → CH04 pre-filter): evaluation label distribution was nearly unchanged
+          (27.4% positive at max-conc vs 27.6% pair-level any_lysis — ~47 pair labels
+          flip), so the drop was training-side, not evaluation-side. Concentration
+          feature is the #4 ranked feature by mean LightGBM importance (280.5 under the
+          post-filter canonical, 328.7 pre-filter), retained by RFE in all 30 fold × seed
+          fits. Subsequent CHISEL tickets (CH05 phage-axis, CH07 both-axis, CH08 feature
+          re-audit, CH09 calibration layer) all anchor to the post-filter canonical. The
+          filter default can be reversed via `--no-drop-high-titer-only-positives` for
+          sensitivity analysis. Canonical artifacts:
           lyzortx/generated_outputs/ch04_chisel_baseline/ch04_aggregate_metrics.json,
           ch04_predictions.csv (pair-level), ch04_per_row_predictions.csv (per-row), and
           ch04_feature_importance.csv.
@@ -403,93 +422,127 @@ themes:
 
       - id: chisel-unified-kfold-baseline
         statement: >
-          CHISEL unified Guelin+BASEL k-fold baseline (CH05, 2026-04-19): per-row binary
-          training on the unified 148-phage × 369-bacteria panel (36,643 pairs: 35,403 Guelin
-          + 1,240 BASEL), SX10 feature bundle, all-pairs only (per-phage blending retired
-          track-wide per `per-phage-retired-under-chisel`). Two axes:
-          **bacteria-axis AUC 0.8061 [0.7917, 0.8199], Brier 0.1778 [0.1702, 0.1853]**
+          CHISEL unified Guelin+BASEL k-fold baseline (CH05, updated 2026-04-20 with
+          CH06-followup neat-only filter adoption): per-row binary training on the unified
+          148-phage × 369-bacteria panel (36,643 pairs: 35,403 Guelin + 1,240 BASEL), SX10
+          feature bundle, all-pairs only (per-phage blending retired track-wide per
+          `per-phage-retired-under-chisel`), neat-only positive filter applied to Guelin
+          training rows (see chisel-baseline). Two axes:
+          **bacteria-axis AUC 0.8218 [0.8063, 0.8368], Brier 0.1466 [0.1393, 0.1538]**
           (10-fold CH02 cv_group hash; all 148 phages in training per fold);
-          **phage-axis AUC 0.8850 [0.8617, 0.9062], Brier 0.1348 [0.1219, 0.1495]**
+          **phage-axis AUC 0.8919 [0.8650, 0.9166], Brier 0.1181 [0.1012, 0.1359]**
           (10-fold StratifiedKFold by ICTV family + "other" <10-phage bucket + "UNKNOWN"
           no-family bucket — 40% of folds are pseudo-family catch-alls; calling it
-          "ICTV-stratified" without that qualifier misleads). This unit replaces the
-          earlier "cross-source AUC parity" headline with three separate findings:
-          **(1) phage-axis discrimination parity** (Guelin 0.8861 vs BASEL 0.8829,
-          |ΔAUC| 0.0032 — a weak non-rejection on 52 BASEL phages with CI 3× wider than
-          Guelin's, not positive evidence of transfer); **(2) phage-axis calibration
-          divergence** (Guelin Brier 0.1329 vs BASEL 0.1884, disjoint CIs, BASEL mid-P
-          reliability gap 21-27 pp wider than Guelin's in the 0.5-0.9 predicted-probability
-          bins); **(3) BASEL bacteria-axis deficit** (BASEL-only bacteria-axis AUC 0.7152
-          on the 1,240 BASEL pairs vs Guelin-only 0.8098 on the same axis — a 9.5 pp
-          BASEL-specific deficit invisible in the 96.6% Guelin-weighted aggregate, a
-          standalone deployability finding separate from the phage-axis parity story).
+          "ICTV-stratified" without that qualifier misleads). Three separate findings stand
+          in place of the earlier "cross-source AUC parity" headline:
+          **(1) phage-axis discrimination parity** (Guelin 0.8922 vs BASEL 0.8822,
+          |ΔAUC| 0.0100 — still a weak non-rejection on 52 BASEL phages with CI 3× wider
+          than Guelin's, not positive evidence of transfer; the filter widened the gap
+          slightly from 0.0032 pre-filter because Guelin's discrimination sharpened more
+          than BASEL's under the filter, which is expected — the filter only touches
+          Guelin training rows);
+          **(2) phage-axis calibration divergence** (Guelin Brier 0.1156 vs BASEL 0.1890,
+          disjoint CIs, BASEL mid-P reliability gap 21-27 pp wider than Guelin's in the
+          0.5-0.9 predicted-probability bins);
+          **(3) BASEL bacteria-axis deficit** (BASEL-only bacteria-axis AUC 0.7152 on the
+          1,240 BASEL pairs vs Guelin-only 0.8101 on the same axis — a 9.5 pp BASEL-specific
+          deficit essentially unchanged by the filter, confirming the deficit is a
+          feature-space / panel-mismatch issue, not a label-noise issue).
           Expected Calibration Error (ECE, weighted mean of per-decile |observed−predicted|
-          gaps) reported alongside AUC and Brier going forward: **bacteria-axis Guelin ECE
-          0.120, BASEL ECE 0.272; phage-axis Guelin ECE 0.104, BASEL ECE 0.236** under the
-          raw CH05 predictions. ECE separates calibration from discrimination more
-          interpretably than Brier and is now part of the CHISEL scorecard. Two separable
+          gaps) under the post-filter canonical: **bacteria-axis Guelin ECE 0.130, BASEL
+          ECE 0.216; phage-axis Guelin ECE 0.130, BASEL ECE 0.237**. Two separable
           root-cause mechanisms, each diagnostically distinct:
           **(A) Guelin mid-P miscalibration = training-label-vs-deployment-question
           mismatch, post-hoc fixable**. Leave-one-fold-out isotonic regression on Guelin
-          predictions drops Guelin bacteria-axis ECE 0.120→0.008 and phage-axis ECE
-          0.104→0.008 (78-89% decile-gap closure), AUC preserved within 0.5 pp. The model
-          has the discrimination; it emits inflated probabilities in mid-P because the
-          training label (score='1' = plate clearing) is more permissive than the
-          deployment target (productive lysis) — Gaborieau 2024 Methods explicitly admits
-          clearing events at high titer can be non-productive. No feature or data change
-          required; a post-hoc calibration layer (isotonic / Platt) is the fix. Connects
-          to `ambiguous-label-noise`.
+          predictions closes Guelin ECE to 0.005-0.008 on both axes (~94-96% ECE closure
+          under the post-filter canonical; was 78-89% decile-gap closure under the CH09
+          original report — see closure-metric note below), AUC preserved within 0.5 pp.
+          The training label is more permissive than the deployment target; Gaborieau 2024
+          Methods explicitly admits clearing at high titer can be non-productive. Two
+          complementary remedies: the CH06-followup filter adoption drops the most-likely
+          non-productive Guelin positives at the training-side (+1.3-1.6 pp AUC lift on
+          both axes); the CH09 post-hoc isotonic calibration layer remaps probabilities
+          to observed frequencies (closes Guelin ECE 94-96%). Remedies compose: filter
+          sharpens discrimination, isotonic fixes remaining miscalibration. Connects to
+          `ambiguous-label-noise`.
           **(B) BASEL's additional miscalibration = TL17-bias on the phage-side feature
           slot, NOT threshold**. Applying the Guelin-fitted isotonic calibrator to BASEL
-          closes only 34-37% of BASEL's gaps (residual ECE 0.113 bacteria-axis / 0.122
-          phage-axis) — the threshold-mismatch remedy does NOT rescue BASEL's extra
-          miscalibration, empirically separating this mechanism from (A). Root cause
-          isolated to the 39/52 BASEL phages whose `phage_projection` vectors are non-zero
-          (Brier 0.31 bacteria-axis): their projection vectors map into Guelin-derived TL17
-          neighborhoods associated with broad-host lysis but carry narrower actual host
-          ranges. The 13/52 BASEL phages with zero-vector projection calibrate correctly
-          (Brier 0.12) because the model has no phage signal to misuse and falls back to
-          the host-side prior. Requires panel-independent phage features (CH06 target), not
-          calibration. Straboviridae exclusion closes only 1.5 pp of the 9.5 pp
-          bacteria-axis BASEL deficit — family bias is not the driver. This is the active
-          CHISEL reference for two-axis generalization and cross-source behaviour.
-        sources: [CH05, 2026-04-19 CHISEL unified k-fold]
+          closes only part of the gap — magnitude depends on which closure metric one
+          uses (see closure-metric note below); residual BASEL ECE after transfer is
+          ~0.11 bacteria-axis / 0.13 phage-axis, still ~20× Guelin's calibrated ECE.
+          Threshold-mismatch remedy does NOT rescue BASEL's extra miscalibration.
+          Root cause isolated to the 39/52 BASEL phages whose `phage_projection` vectors
+          are non-zero (Brier 0.31 bacteria-axis pre-filter): their projection vectors
+          map into Guelin-derived TL17 neighborhoods associated with broad-host lysis but
+          carry narrower actual host ranges. The 13/52 BASEL phages with zero-vector
+          projection calibrate correctly (Brier 0.12) because the model has no phage
+          signal to misuse and falls back to the host-side prior. Requires panel-
+          independent phage features (CH06 Arms 2-4 target), not calibration. Straboviridae
+          exclusion closes only 1.5 pp of the 9.5 pp bacteria-axis BASEL deficit — family
+          bias is not the driver.
+          **Closure-metric note (reconciles CH05 vs CH09 numbers).** Two valid closure
+          metrics for BASEL calibration transfer, which look different but are measuring
+          different things: (i) **max|gap| closure** = reduction of the WORST-decile
+          |observed−predicted| gap after isotonic (CH05 reported bacteria-axis 51.6→32.6
+          pp = 36.8% closure, phage-axis 48.3→32.0 pp = 33.8% closure); (ii) **ECE
+          closure** = reduction of the ECE (weighted across all deciles) after isotonic
+          (CH09 reports bacteria-axis 61.8%, phage-axis 44.5%). max|gap| closes less than
+          ECE by construction because the worst-case decile resists shrinkage more than
+          the average decile. Both are preserved here as valid characterizations — earlier
+          drafts that quoted "34-37% closure" without saying which metric were ambiguous
+          (the 34-37% range tracks max|gap|, not ECE). Residual BASEL ECE after transfer
+          0.103-0.132 is the load-bearing number regardless of closure-metric choice:
+          BASEL remains ~20× worse-calibrated than Guelin under the shared calibrator,
+          and TL17-bias remains the residual mechanism.
+          This is the active CHISEL reference for two-axis generalization and cross-
+          source behaviour.
+        sources: [CH05, 2026-04-19 CHISEL unified k-fold; CH06-followup, 2026-04-20
+                  filter adoption; CH09, 2026-04-20 calibration layer]
         status: active
         confidence: validated
         context: >
-          Phage-axis AUC exceeds bacteria-axis AUC by 7.9 pp (CIs disjoint). The gap is
+          **Baseline movement across CHISEL tickets** (numbers here reference the 148×369
+          unified panel unless otherwise noted):
+          - CH05 initial canonical (pre-filter, absolute log₁₀ pfu/ml encoding):
+            bacteria-axis AUC 0.8061 [0.7917, 0.8199] / Brier 0.1778; phage-axis AUC
+            0.8850 [0.8617, 0.9062] / Brier 0.1348; cross-source phage-axis Guelin 0.8861 /
+            BASEL 0.8829, |ΔAUC| 0.0032; Guelin ECE 0.120 bacteria / 0.104 phage; BASEL
+            ECE 0.272 bacteria / 0.236 phage.
+          - CH06-followup canonical (post-filter, CH04 and CH05 both rerun under neat-
+            only filter default 2026-04-20): numbers in the statement above. ΔAUC
+            vs pre-filter: bacteria-axis +1.57 pp, phage-axis +0.70 pp. ΔBrier:
+            bacteria-axis −3.12 pp, phage-axis −1.67 pp. Filter lift is larger on
+            bacteria-axis (Guelin-heavy aggregate, filter directly affects training
+            rows) than on phage-axis (cross-source dilution). BASEL bacteria-axis
+            deficit (0.7152 → 0.7095, effectively unchanged) confirms the filter is a
+            Guelin-side data-quality fix, not a BASEL-side mechanism.
+          Phage-axis AUC exceeds bacteria-axis AUC by 7.0 pp (CIs disjoint). The gap is
           structural, not a deployment-value signal: phage-axis folds hold out entire
           phages but keep all 369 bacteria in training; bacteria-axis folds hold out
           bacteria and remove host-side signal for those test pairs. The SX15 "per-phage
           blending tax" framing (which interpreted this gap under per-phage blending
           enabled) is retired — under all-pairs-only evaluation there is no tax; the gap
-          is purely structural training-data coverage. Bacteria-axis aggregate AUC 0.8061
-          matches CH04's 0.8084 within 0.25 pp because adding 1,240 BASEL pairs to 35K
+          is purely structural training-data coverage. Bacteria-axis aggregate AUC tracks
+          CH04's canonical within sampling noise because adding 1,240 BASEL pairs to 35K
           Guelin pairs barely shifts the 96.6%-Guelin-weighted aggregate — which is
           exactly why the BASEL-specific 9.5 pp bacteria-axis deficit had to be reported
-          separately. The earlier draft's "BASEL phages generalize essentially identically
-          to Guelin phages" claim was a discrimination-only finding, not deployment
-          readiness — retired. The TL17-bias root cause supersedes the earlier
-          encoding-hypothesis framing: CH05's reliability analysis showed BASEL
-          over-predicted in mid-P, the opposite direction an encoding mismatch predicts,
-          so the pre-existing relative-log_dilution encoding of BASEL (at Guelin neat) was
-          not the dominant driver; the encoding has been fixed track-wide to absolute
-          log10_pfu_ml (Guelin {4.7, 6.7, 7.7, 8.7}; BASEL 9.0 per Maffei 2021 Fig. 12 +
-          Maffei 2025 Fig. 13 `>10⁹ pfu/ml if possible`) for semantic correctness. CH04
-          rerun (Guelin-only panel) is bit-identical at fold level because Guelin's change
-          is a monotonic affine shift of one feature (GUELIN_NEAT_LOG10_PFU_ML + log_dilution),
-          which LightGBM's bin-then-split flow leaves invariant. BASEL-side predictions may
-          shift on the pending CH05 rerun — BASEL's encoding moves from log_dilution=0 to
-          log10_pfu_ml=9.0, which is not an affine shift of the Guelin encoding, so
-          Guelin-side invariance does not extend to BASEL. Full CH05 rerun deferred to a
-          follow-up ticket.
+          separately.
+          The earlier draft's "BASEL phages generalize essentially identically to Guelin
+          phages" claim was a discrimination-only finding, not deployment readiness —
+          retired. The TL17-bias root cause supersedes the earlier encoding-hypothesis
+          framing: CH05's reliability analysis showed BASEL over-predicted in mid-P, the
+          opposite direction an encoding mismatch predicts, so the pre-existing
+          relative-log_dilution encoding of BASEL (at Guelin neat) was not the dominant
+          driver; the encoding has been fixed track-wide to absolute log10_pfu_ml
+          (Guelin {4.7, 6.7, 7.7, 8.7}; BASEL 9.0 per Maffei 2021 Fig. 12 + Maffei 2025
+          Fig. 13 `>10⁹ pfu/ml if possible`) for semantic correctness.
           Connects to `plm-rbp-redundant`: same Guelin-bank-dependent-phage-features
           failure mode, here on a genuine cross-panel split rather than cross-family
           within Guelin. Supports `panel-size-ceiling`: the fix is panel expansion or
-          panel-independent phage features (dispatched as new CH06 with four candidate
-          arms including OOD-aware inference, pairwise proteome similarity, Moriniere
-          receptor-class probabilities, tail-protein-restricted TL17 projection), not
-          richer engineered features. Canonical artifacts:
+          panel-independent phage features (the CH06 Arms 2-4 deferred scope: OOD-aware
+          inference, pairwise proteome similarity, Moriniere receptor-class probabilities,
+          tail-protein-restricted TL17 projection), not richer engineered features.
+          Canonical artifacts:
           lyzortx/generated_outputs/ch05_unified_kfold/ch05_combined_summary.json,
           ch05_{bacteria,phage}_axis_metrics.json, ch05_cross_source_breakdown.csv,
           ch05_{bacteria,phage}_axis_predictions.csv, ch05_per_family_breakdown.csv,
