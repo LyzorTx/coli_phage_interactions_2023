@@ -1451,7 +1451,7 @@ graph LR
   - KNOWLEDGE: add chisel-unified-kfold-baseline knowledge unit with the two-axis numbers + blending tax. Supersedes
     spandex-unified-kfold-baseline as active canonical; mark the SPANDEX unit as historical in its text.
   - Record two-axis methodology, cross-source AUC comparison, and updated blending tax in track_CHISEL.md.
-- [ ] **CH06** Panel-independent phage-feature sweep (TL17-bias root-cause attack). Model: `claude-opus-4-6`. CI image
+- [x] **CH06** Panel-independent phage-feature sweep (TL17-bias root-cause attack). Model: `claude-opus-4-6`. CI image
       profile: `base`. Depends on tasks: `CH05`.
   - GOAL: directly attack the discrimination half of the cross-source failure mode surfaced by CH05 — phage features
     derived from the Guelin-only TL17 reference bank actively hurt BASEL discrimination (non-zero-projection BASEL

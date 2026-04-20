@@ -2316,7 +2316,7 @@ tracks:
       title: Panel-independent phage-feature sweep (TL17-bias root-cause attack)
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - CH05
       acceptance_criteria:
