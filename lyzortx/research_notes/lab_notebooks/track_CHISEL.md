@@ -768,15 +768,23 @@ value. "Do no harm to Guelin" is the safety rail; "help BASEL" is the objective.
 | Guelin bacteria-axis ECE | 0.121 | 0.120 | −0.001 | unchanged (by design) |
 | Guelin phage-axis ECE | 0.104 | 0.097 | −0.008 | minor improvement |
 | BASEL bacteria-axis AUC | 0.7095 | 0.6670 | **−4.2 pp** | pooled AUC regresses |
-| BASEL phage-axis AUC | 0.8829 | 0.8461 | −3.7 pp | pooled AUC regresses |
+| BASEL phage-axis AUC | 0.8829 | 0.8040 | **−7.9 pp** | pooled AUC regresses |
 
-**Why pooled AUC drops even though the plan says it shouldn't.** Monotone per-phage
-shrinkage preserves within-phage ranking (the phage's three-dilution predictions maintain
-their order), but pooled AUC mixes pairs from shrunk and unshrunk phages. When shrunk phages'
-predictions compress toward base rate, their positives can no longer rank above unshrunk
-phages' negatives even when they should. Per-phage AUC is preserved; pooled AUC loses ~4 pp
-on BASEL. The plan's "AUC stays at 0.7152" statement applies to per-phage AUC, not pooled —
-a distinction the plan did not make explicit.
+**Why pooled AUC drops even though the plan says it shouldn't.** Under the canonical
+**hard gate**, phages with distance > threshold have ALL their pairs collapsed to
+`base_rate` as a single predicted value. Within-phage ranking is consequently destroyed
+for shrunk phages (all predictions tied, per-phage AUC degenerates to 0.5), not preserved.
+Pooled AUC loses signal from two compounding effects: (a) shrunk phages contribute no
+ranking information between their own pairs, and (b) shrunk predictions mix with unshrunk
+phages' continuous predictions, so true positives on shrunk phages can no longer rank
+above true negatives on unshrunk phages. The ~7.9 pp BASEL phage-axis drop is large
+because BASEL has a higher fraction of phages with distance > threshold (non-zero
+projection BASEL phages that exceed the threshold) than Guelin. A soft gate
+(sigmoid weighting) would preserve within-phage monotonicity at the cost of less
+aggressive calibration correction — the diagnostic sweep includes both variants so the
+operator can pick the trade-off. The plan's "BASEL bacteria-axis AUC stays at 0.7152"
+claim assumed per-phage ranking preservation under shrinkage, which holds only for the
+soft gate.
 
 **Verdict.** Arm 1 is a genuine calibration win at a discrimination cost. It does not close
 the BASEL discrimination gap (that is Arms 2-4's job) and it does not fully replace CH09's
