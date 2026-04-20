@@ -99,7 +99,7 @@ BOOTSTRAP_RANDOM_STATE = 42
 def build_clean_row_training_frame(
     row_frame: pd.DataFrame,
     *,
-    drop_high_titer_only_positives: bool = False,
+    drop_high_titer_only_positives: bool = True,
 ) -> pd.DataFrame:
     """Drop score=='n' rows, cast score to {0, 1}, attach CH04 label + concentration feature.
 
@@ -343,7 +343,7 @@ def run_ch04_eval(
     candidate_dir: Path,
     max_folds: Optional[int] = None,
     num_workers: int = 3,
-    drop_high_titer_only_positives: bool = False,
+    drop_high_titer_only_positives: bool = True,
 ) -> dict[str, object]:
     """Run the full CH04 evaluation.
 
@@ -595,11 +595,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--drop-high-titer-only-positives",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help=(
-            "CH09 Arm 3 label-threshold sensitivity: drop Guelin positive rows for "
-            "pairs where every score='1' observation occurs at log_dilution=0 (neat). "
-            "Proxy for 'clearing at high titer, possibly non-productive' (Gaborieau 2024)."
+            "Drop Guelin positive rows for pairs where every score='1' observation occurs "
+            "at log_dilution=0 (neat). Proxy for 'clearing at high titer, possibly "
+            "non-productive' (Gaborieau 2024). ENABLED BY DEFAULT as of the CH06 "
+            "follow-up filter adoption — CH09 Arm 3 showed this filter yields +1.3 pp AUC "
+            "and -3.2 pp Brier on the CH04 baseline. Pass --no-drop-high-titer-only-positives "
+            "to reproduce the pre-adoption baseline for sensitivity comparison."
         ),
     )
     return parser.parse_args(argv)

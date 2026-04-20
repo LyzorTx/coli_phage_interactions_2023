@@ -526,25 +526,33 @@ def run_ch05_eval(
     basel_log10_pfu_ml: float = BASEL_LOG10_PFU_ML,
     max_folds: Optional[int] = None,
     num_workers: int = 3,
+    drop_high_titer_only_positives: bool = True,
 ) -> dict[str, object]:
     """Run the full CH05 two-axis evaluation.
 
     `max_folds` limits the number of CV folds per axis (for subset iteration during
     CH06 parallelism development). `num_workers` controls seed-level parallelism;
     see `run_ch04_eval` for the contract.
+
+    `drop_high_titer_only_positives` inherits from CH04 — see
+    `build_clean_row_training_frame`. Enabled by default under the CH06 follow-up
+    filter adoption; pass `False` (CLI: `--no-drop-high-titer-only-positives`) to
+    reproduce the pre-adoption baseline.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     start_time = datetime.now(timezone.utc)
     LOGGER.info(
-        "CH05 evaluation starting at %s (basel_log10_pfu_ml=%.2f, max_folds=%s, num_workers=%d)",
+        "CH05 evaluation starting at %s (basel_log10_pfu_ml=%.2f, max_folds=%s, num_workers=%d, "
+        "drop_high_titer_only=%s)",
         start_time.isoformat(),
         basel_log10_pfu_ml,
         max_folds if max_folds is not None else "all",
         num_workers,
+        drop_high_titer_only_positives,
     )
 
     unified = load_unified_row_frame(basel_log10_pfu_ml=basel_log10_pfu_ml)
-    clean_rows = build_clean_row_training_frame(unified)
+    clean_rows = build_clean_row_training_frame(unified, drop_high_titer_only_positives=drop_high_titer_only_positives)
     LOGGER.info(
         "CH05 clean row frame: %d rows, %d pairs, %d bacteria, %d phages",
         len(clean_rows),
@@ -739,6 +747,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=3,
         help="Seed-level parallelism (1 = sequential; 3 matches len(SEEDS)).",
     )
+    parser.add_argument(
+        "--drop-high-titer-only-positives",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Drop Guelin positive rows for pairs where every score='1' observation occurs "
+            "at log_dilution=0 (neat). ENABLED BY DEFAULT as of the CH06 follow-up filter "
+            "adoption. Pass --no-drop-high-titer-only-positives for the pre-adoption baseline."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -753,6 +771,7 @@ def main(argv: list[str] | None = None) -> None:
         basel_log10_pfu_ml=args.basel_log10_pfu_ml,
         max_folds=args.max_folds,
         num_workers=args.num_workers,
+        drop_high_titer_only_positives=args.drop_high_titer_only_positives,
     )
 
 
