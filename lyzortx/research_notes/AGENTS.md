@@ -22,6 +22,26 @@ When the `/replan` skill is used and results in plan changes, write entries to b
 evidence, metric comparisons). The project entry should document the strategic decision (e.g., which tracks were killed
 or restructured, and why). Include source citations (URLs + quotes) for any claims about external library behavior.
 
+## Track closeout recaps
+
+When a track finishes (all its tickets are merged and no further work is planned under that track), add a
+`lab_notebooks/track_{TRACK}_recap.md` file that summarizes what the track accomplished. The recap is separate from the
+per-ticket entries in `track_{TRACK}.md`: the track file is the episodic log, the recap is the digest.
+
+A recap should cover, in roughly this order:
+
+- **Goal** the track was chartered to answer, in one or two sentences.
+- **Headline outcomes** — the load-bearing numbers (e.g., new canonical baseline, deltas vs prior canonical, closure of
+  any named gap) with CI where meaningful.
+- **What changed in the canonical pipeline** — training policy, feature slots, evaluation protocol, scorecard metrics.
+- **Dead ends and null arms** — what was tested and found not to lift, with one-line reasons (for later tracks to not
+  re-litigate).
+- **Open follow-ups** — concrete items that the track surfaced but deferred, so a future replan can pick them up.
+- **Artifact pointers** — the canonical generated-outputs directories and any scripts that reproduce headline numbers.
+
+Keep the recap short — a reader should be able to understand the track's net contribution in a few minutes without
+reading every ticket entry. Link back to notebook entries for detail rather than duplicating them.
+
 ## In-flight entry editing
 
 When working on a feature branch or open PR, treat notebook entries touched in that branch as mutable working
