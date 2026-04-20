@@ -1175,3 +1175,145 @@ Arms 2/3 and "Closes #440" for Arm 4).
   columns: phage + 32 PCA).
 - `lyzortx/generated_outputs/ch06_arm2_mmseqs_proteome/` — variance pre-flight JSON, per-
   row and pair-level prediction CSVs, cross-source breakdown, final metrics JSON.
+
+### 2026-04-20 15:08 CEST: CH06 Arm 3 — Moriniere receptor probabilities (validated — meets acceptance)
+
+#### Executive summary
+
+Plan.yml pre-registered Arm 3 as "expected null" based on `same-receptor-uncorrelated-hosts`
+and Moriniere's classifier training on K-12 derivatives. The full run contradicts that:
+Arm 3 meets the CH06 acceptance criterion with **BASEL bacteria-axis AUC 0.7374** (baseline
+0.7229, target > 0.7152, **+1.45 pp**). The decisive deployability metric — BASEL
+zero-projection phages (n=13, the literal TL17 zero-vector-failure subset) — improves
+**+4.36 pp on phage-axis** (0.6901 → 0.7337). Guelin numbers flat (±0.15 pp on both axes);
+BASEL non-zero-projection phages also gain (+2.54 pp bacteria-axis, +0.54 pp phage-axis).
+Arm 3 replaces the Guelin-only TL17 categorical projection with a 13-dim per-receptor
+k-mer-fraction vector, trained upstream on 260 non-Guelin phages so the feature basis is
+panel-independent at source — which is exactly what the plan's `deployment-goal` needs.
+
+#### Feature construction
+
+For each phage P and each of the 13 Moriniere receptor classes R, the feature value is
+`|kmers(R) ∩ kmers(P)| / |kmers(R)|` — the fraction of receptor R's 5-mer set that appears
+anywhere in P's proteome. Divided per-receptor so the class imbalance in Dataset S6 (HepI:
+168 k-mers, Kdo: 9, GluI: 28, …) is normalized out; otherwise HepI would dominate raw
+hit counts just by having more k-mers to match.
+
+Critical reuse: `lyzortx.pipeline.autoresearch.build_moriniere_kmer_slot.collect_*_phage_
+proteomes` provides the 148-phage Guelin-plus-BASEL proteome load, and
+`lyzortx.pipeline.autoresearch.predict_receptor_from_kmers.load_receptor_kmers` parses the
+GenoPHI Dataset S6 supplementary XLSX. Plan.yml listed the feature space as "19-dim softmax"
+but the actual Moriniere dataset has **13 receptor classes** (tsx, ompA, ompC, ompF, fhuA,
+btuB, lptD, lamB, NGR, Kdo, HepI, HepII, GluI) — the notebook entry reports 13-dim
+reflecting the data as-loaded rather than the plan's stale number.
+
+Slot schema: `phage_projection__recep_frac_<receptor>` × 13 columns, materialized to
+`.scratch/basel/feature_slots_arm3/phage_projection/features.csv`. Phage-stats and
+phage-rbp-struct slots symlinked from the baseline directory, so only the projection slot
+is changed.
+
+#### Variance pre-flight
+
+All three subsets pass the CV > 0.1 OR Cohen's d > 0.1 gate — and unlike Arm 2, the
+BASEL zero-projection subset shows strong signal: 11/13 receptors have Cohen's d > 0.1
+against phage-level lysis-rate median split, max abs d 1.20.
+
+| Subset | n | Max CV | Max Cohen's d | d > 0.1 | CV > 0.1 | Gate |
+|---|---|---|---|---|---|---|
+| Guelin | 96 | 6.7 | 0.60 | 12/13 | 13/13 | pass |
+| BASEL non-zero TL17 | 39 | 6.25 | 1.67 | 13/13 | 13/13 | pass |
+| BASEL zero-vector TL17 | 13 | 3.61 | 1.20 | 11/13 | 12/13 | pass |
+
+#### Full-training results
+
+10-fold bacteria-axis (CH02 cv_group hash) and 10-fold phage-axis (StratifiedKFold by ICTV
+family + "other" + "UNKNOWN"), 3 seeds each under `ch04_parallel.fit_seeds`, 1000-sample
+unit-level bootstrap.
+
+| Axis | Metric | Baseline | Arm 3 | Δ | CI overlap |
+|---|---|---|---|---|---|
+| Bacteria | AUC (agg) | 0.8218 [0.8063, 0.8368] | 0.8205 [0.8039, 0.8362] | −0.13 pp | yes |
+| Bacteria | Brier (agg) | 0.1466 | 0.1457 | −0.09 pp | yes |
+| Phage | AUC (agg) | 0.8919 [0.8650, 0.9166] | 0.8936 [0.8672, 0.9171] | +0.17 pp | yes |
+| Phage | Brier (agg) | 0.1181 | 0.1177 | −0.04 pp | yes |
+
+Aggregate numbers are flat (as expected when Guelin dominates weight). The real signal
+lives in the cross-source and BASEL-subset decomposition:
+
+| Subset | Bact-axis Baseline | Arm 3 | Δ | Phage-axis Baseline | Arm 3 | Δ |
+|---|---|---|---|---|---|---|
+| Guelin (n=96) | 0.8247 | 0.8232 | −0.15 pp | 0.8922 | 0.8934 | +0.12 pp |
+| BASEL all (n=52) | **0.7229** | **0.7374** | **+1.45 pp** | 0.8822 | 0.8902 | +0.80 pp |
+| BASEL non-zero TL17 (n=39) | 0.6968 | 0.7222 | +2.54 pp | 0.8974 | 0.9028 | +0.54 pp |
+| **BASEL zero-vec TL17 (n=13)** | 0.6325 | 0.6484 | +1.59 pp | **0.6901** | **0.7337** | **+4.36 pp** |
+
+**Acceptance criterion met.** BASEL bacteria-axis 0.7374 > 0.7152 target, with improvement
+on every cross-source subset on both axes (Guelin flat; BASEL positive across zero/non-zero
+decomposition). No cannibalization signature — unlike Arm 2, Arm 3 rescues zero-proj BASEL
+without regressing non-zero-proj BASEL.
+
+#### Arm 2 re-interpretation in light of Arm 3
+
+Arm 2's merged notebook entry framed the result as "null / BASEL regression" on the
+aggregate BASEL bacteria-axis AUC. The subset decomposition after the fact shows a more
+nuanced picture: Arm 2 **does** rescue zero-proj BASEL (+1.07 pp bacteria-axis, +1.27 pp
+phage-axis) — the deployability mechanism it was designed to address — but cannibalizes
+non-zero-proj BASEL (−2.07 pp bacteria-axis, −1.52 pp phage-axis). The 39/52 non-zero
+BASEL phages contribute 920/1240 pairs (74%), so their regression dominates the aggregate.
+Arm 2 as a **drop-in replacement** for TL17 fails; Arm 2's phage-level similarity vector
+composed **alongside** TL17 (keep RBP-focused signal where available, add proteome
+similarity where TL17 is zero) could be a valid follow-up — but not needed if Arm 3 does
+the same rescue cleanly, which it does.
+
+#### Why the plan's "expected null" prediction was wrong
+
+Plan.yml cited two reasons Arm 3 would fail:
+
+1. `same-receptor-uncorrelated-hosts` — phages sharing a predicted receptor have Jaccard
+   0.091 on host ranges (Tsx phages).
+2. Moriniere trained on K-12 derivatives lacking capsule/O-antigen, so
+   polysaccharide-mediated specificity is not in scope.
+
+Both are correct characterizations of what receptor-class probabilities *don't* encode, but
+the CH06 acceptance criterion is not "within-receptor-class host-range accuracy" or "capture
+Gate-1 polysaccharide mechanism." It is **absolute cross-panel discrimination AUC on
+BASEL bacteria-axis**. A 13-dim probability vector that is panel-independent (trained on
+260 non-Guelin phages) and distinguishes "which of the major receptor families does this
+phage use" is a real discriminative feature even if it says nothing about strain-level
+host-range rank ordering. The null prediction was reasoning about a different question.
+
+`kmer-receptor-expansion-neutral` (the SX12 / GT06 null) stands — raw 815-kmer
+presence-absence is information-redundant with `phage_projection`. Arm 3's aggregation to
+13 per-receptor fractions removes that redundancy by forcing the model to see class-level
+probabilities rather than re-deriving them from the 815 raw k-mers; the aggregation turns
+out to carry more actionable signal than the raw features.
+
+#### Verdict
+
+**Success — promote to canonical.** Arm 3 should become the default `phage_projection`
+slot for CHISEL going forward. Recommendation (handled in follow-up commits to
+`knowledge.yml`):
+
+- Update `chisel-unified-kfold-baseline` knowledge unit to note the CH06 outcome and
+  reference Arm 3 as the validated panel-independent phage-side feature slot.
+- Add a new knowledge unit `moriniere-receptor-probabilities-panel-independent`
+  summarizing the finding (BASEL bacteria-axis +1.45 pp, zero-proj BASEL phage-axis
+  +4.36 pp, Guelin flat).
+- Harden `plm-rbp-redundant` with "receptor-class probability aggregation (Arm 3) is the
+  working alternative to global protein similarity" — the PLM null stands, but the
+  replacement path is per-receptor aggregation, not global pooling.
+
+Arm 4 (tail-restricted TL17) runs next for completeness. Under the Arm 3 win, Arm 4's
+expected-null-or-wash carries less weight: even if Arm 4 works, Arm 3 is the simpler,
+source-panel-independent solution.
+
+#### Artifacts
+
+- `lyzortx/pipeline/autoresearch/ch06_arm3_moriniere_receptor.py` — precompute + eval driver.
+- `.scratch/basel/feature_slots_arm3/phage_projection/features.csv` — Arm 3 slot
+  (148 × 14 columns: phage + 13 receptor-fraction).
+- `lyzortx/generated_outputs/ch06_arm3_moriniere_receptor/ch06_arm3_metrics.json` — final
+  aggregate AUC/Brier with CIs.
+- `.../ch06_arm3_{bacteria,phage}_axis_predictions.csv` — per-pair predictions.
+- `.../ch06_arm3_cross_source_breakdown.csv` — phage-axis cross-source.
+- `.../ch06_arm3_variance_preflight.json` — pre-flight subset breakdown.
