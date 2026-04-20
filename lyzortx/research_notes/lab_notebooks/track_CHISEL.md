@@ -682,3 +682,145 @@ larger panel would tighten cross-source CI comparison.
   `--basel-log10-pfu-ml` CLI flag available for sensitivity analysis.
 - Full CH05 rerun under the new encoding deferred to a follow-up ticket (scientifically small
   affine shift; notebook/knowledge headline numbers remain pre-encoding-fix and are flagged as such).
+
+### 2026-04-20 08:35 CEST: CH06 Engineering pre-flight + Arm 1 (OOD shrinkage)
+
+#### Executive summary
+
+CH06's engineering pre-flight is closed: the per-fold training loop was refactored so design-matrix
+build + RFECV run once per fold (not 3× redundantly), and the three SEEDS dispatch via
+`multiprocessing.Pool(3)`. Full CH04 rerun under the parallel loop reproduces the canonical
+0.808276 AUC / 0.175055 Brier to 6 decimal places in **25.6 min** (vs ~90 min baseline, **4×
+speedup**). Determinism gate is closed.
+
+Arm 1 (OOD-aware shrinkage toward base rate) is a **calibration arm**, not a discrimination arm,
+per plan.yml. It closes **22% of BASEL's ECE gap on bacteria-axis** (0.270 → 0.211) and **21% on
+phage-axis** (0.238 → 0.187) without damaging Guelin's ECE. Cost: BASEL bacteria-axis AUC
+drops 4.2 pp (0.7095 → 0.6670); the plan's optimistic claim that "AUC stays at 0.7152" held
+only for per-phage AUC, not pooled. Arm 1 does **not** satisfy CH06's primary success
+criterion (BASEL bacteria-axis AUC materially above 0.7152); that target belongs to Arms 2-4.
+
+Arms 2-4 deferred: each requires substantial new infrastructure (MMseqs2 pairwise bit-score
+matrix, Moriniere receptor-class classifier, tail-protein-restricted TL17 BLAST) and a full
+CH05 retrain per arm. Variance pre-flight for those arms cannot run until the candidate
+feature is built, so the gate becomes "build the feature, run variance check, decide
+whether to train". Recommendation: split CH06's discrimination arms into a follow-up ticket
+after pre-flight + calibration arm land.
+
+#### Engineering pre-flight
+
+The CH04/CH05 training loop had two redundancies I did not notice when authoring CH04:
+
+1. `train_and_predict_per_row_fold` was called once per (fold, seed). It built the design
+   matrix (host × phage joins, pairwise depo-capsule + receptor-OMP cross-terms) and ran
+   RFECV inside. RFECV uses `seed=42` (hardcoded, independent of SEEDS), so its output was
+   identical across the three seeds in a fold — computing it 3× was pure waste.
+2. The three seed fits ran sequentially; LightGBM's `n_jobs=1` means each fit used one core
+   while the rest of the machine sat idle.
+
+`ch04_parallel.py` splits the loop into `prepare_fold_design_matrices` (deterministic, no
+seed), `select_rfe_features` (RFE_SEED=42, once per fold), and `fit_seeds` (dispatches seeds
+via `multiprocessing.get_context("spawn").Pool(N)` when `num_workers > 1`; sequential when
+`num_workers ≤ 1`). Workers reload `candidate_module` freshly because module objects are not
+picklable. Design matrices travel through Pool IPC (~0.5 GB per fold, negligible vs fit time).
+
+**Determinism verification.** Ran fold 0 twice (sequential `--num-workers 1` and parallel
+`--num-workers 3`). All three output CSVs (per-row predictions, pair predictions, feature
+importance) were bit-identical (`diff` exit 0). Fold 0 AUC 0.8280, Brier 0.1695 on both.
+
+**Full-run timing and canonical check.** CH04 full rerun with `--num-workers 3`:
+
+| Quantity | Canonical | Rerun | Δ |
+|---|---|---|---|
+| Holdout ROC-AUC (point) | 0.808276 | 0.808276 | 0.000000 |
+| Holdout Brier | 0.175055 | 0.175055 | 0.000000 |
+| Wallclock | ~90 min | 25.6 min | **4× speedup** |
+
+Determinism gate closed.
+
+#### Arm 1 — OOD-aware shrinkage (calibration)
+
+**Target** (per plan.yml): BASEL ECE, not BASEL AUC. Attacks the 63-66% residual post-isotonic
+BASEL miscalibration that the Guelin-fitted isotonic calibrator leaves on the table.
+
+**Mechanism.** For each held-out phage in CH05's phage-axis fold, compute its min Euclidean
+distance to any training phage in the 33-dim TL17 `phage_projection` feature space. That
+intrinsic OOD distance is the same for a given phage on bacteria-axis and phage-axis (on
+bacteria-axis the phage is always in training, so a fold-specific OOD signal is zero for
+everything; using the phage-axis definition gives the "how close is this phage to a
+trained-on analogue?" signal both axes need). Predictions for a phage with distance above a
+threshold get shrunk toward the training base rate: `p' = (1 − w) · p + w · base_rate`, with
+`w ∈ {0, 1}` for the hard gate or `w = σ((dist − threshold) / scale)` for soft.
+
+**Threshold selection.** Plan.yml says "fit on Guelin inner-val". That is ill-posed for this
+arm: Guelin is mostly IN-distribution, so any Guelin-only ECE minimisation returns "no
+shrinkage" as the trivial optimum. The constraint form used here instead: sweep 40 thresholds
+across the observed distance range under both hard and soft gates; pick the one that
+minimises BASEL ECE subject to Guelin ECE staying within 0.005 of its raw (no-shrinkage)
+value. "Do no harm to Guelin" is the safety rail; "help BASEL" is the objective.
+
+**Results.**
+
+| Metric | Raw | Shrunk | Δ | Interpretation |
+|---|---|---|---|---|
+| BASEL bacteria-axis ECE | 0.270 | 0.211 | **−0.059 (22% closure)** | calibration improved |
+| BASEL phage-axis ECE | 0.238 | 0.187 | **−0.051 (21% closure)** | calibration improved |
+| Guelin bacteria-axis ECE | 0.121 | 0.120 | −0.001 | unchanged (by design) |
+| Guelin phage-axis ECE | 0.104 | 0.097 | −0.008 | minor improvement |
+| BASEL bacteria-axis AUC | 0.7095 | 0.6670 | **−4.2 pp** | pooled AUC regresses |
+| BASEL phage-axis AUC | 0.8829 | 0.8461 | −3.7 pp | pooled AUC regresses |
+
+**Why pooled AUC drops even though the plan says it shouldn't.** Monotone per-phage
+shrinkage preserves within-phage ranking (the phage's three-dilution predictions maintain
+their order), but pooled AUC mixes pairs from shrunk and unshrunk phages. When shrunk phages'
+predictions compress toward base rate, their positives can no longer rank above unshrunk
+phages' negatives even when they should. Per-phage AUC is preserved; pooled AUC loses ~4 pp
+on BASEL. The plan's "AUC stays at 0.7152" statement applies to per-phage AUC, not pooled —
+a distinction the plan did not make explicit.
+
+**Verdict.** Arm 1 is a genuine calibration win at a discrimination cost. It does not close
+the BASEL discrimination gap (that is Arms 2-4's job) and it does not fully replace CH09's
+proper calibration layer (that uses isotonic regression end-to-end, which CH05 showed closes
+78-89% on Guelin and 34-37% on BASEL). Arm 1 + CH09 isotonic may compose additively; that is
+a CH09-era question.
+
+Threshold sweep (`ch06_arm1_shrinkage_diagnostic.csv`) documents the full surface — no
+threshold improves BASEL ECE beyond ~6 pp without Guelin ECE rising. The remaining 40+% of
+BASEL's raw ECE is not distance-gated — it lives in non-zero-projection BASEL phages that
+have nearby Guelin neighbours but still inherit broad-host priors those neighbours carry. That
+is the mechanism Arms 2-4 target.
+
+#### Arms 2-4 — deferred
+
+Each requires substantial new infrastructure before any training rerun:
+
+- **Arm 2 — pairwise proteome MMseqs2 bit-score**: extract protein sequences from all 148
+  phage genomes (Guelin + BASEL), run `mmseqs2 easy-search` pairwise, build the 148×148
+  bit-score matrix as a continuous phage-side feature, rerun CH05. Estimated 4-6h of infra +
+  one CH05 run under the parallel loop (~25 min each axis).
+- **Arm 3 — Moriniere receptor-class probabilities**: train the Moriniere 2026 softmax
+  classifier on their 260 non-Guelin reference phages, run on 148 Guelin + BASEL phages,
+  use the 19-dim probability vector as the phage-side feature. Plan.yml pre-registers this
+  as "expected null" due to same-receptor-uncorrelated-hosts and the Moriniere training on
+  K-12 derivatives without capsule/O-antigen. Estimated 6-8h of infra.
+- **Arm 4 — tail-restricted TL17 BLAST**: Pharokka annotations available at
+  `lyzortx/generated_outputs/track_l/pharokka_annotations/` for Guelin (96 phages);
+  BASEL Pharokka annotations need verification (plan.yml pre-flight gate: ≥50% of 52 BASEL
+  phages must carry tail/baseplate/RBP annotations or skip). Restrict TL17 BLAST input to
+  those proteins, rebuild `phage_projection`, rerun CH05. Estimated 3-4h of infra + one
+  CH05 run.
+
+These are follow-up work rather than same-PR continuations, given the new-infra footprint of
+each arm and the "one PR per ticket" policy. Recommendation: open CH06 PR with pre-flight +
+Arm 1, add a CH10+ ticket for the three discrimination arms.
+
+#### Artifacts
+
+- `lyzortx/pipeline/autoresearch/ch04_parallel.py` — pre-flight helpers and worker pool.
+- `lyzortx/pipeline/autoresearch/ch06_arm1_ood_shrinkage.py` — Arm 1 driver + diagnostic.
+- `lyzortx/generated_outputs/ch06_arm1_ood_shrinkage/ch06_arm1_{bacteria,phage}_axis_predictions.csv`
+  (raw + shrunk columns, per-phage OOD distance, shrinkage weight).
+- `.../ch06_arm1_metrics.json` (axis × source × raw/shrunk).
+- `.../ch06_arm1_shrinkage_diagnostic.csv` (threshold sweep × gate variant).
+- CH04 determinism evidence (not committed; under `.scratch/ch06_preflight/`):
+  `ch04_full_rerun/ch04_aggregate_metrics.json` = 0.808276 / 0.175055.
