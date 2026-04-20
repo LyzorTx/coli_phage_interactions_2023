@@ -2533,7 +2533,7 @@ tracks:
       title: Post-hoc calibration layer + label-threshold sensitivity
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - CH05
       acceptance_criteria:

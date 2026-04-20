@@ -1599,7 +1599,7 @@ graph LR
     feature-family conclusions and the corresponding knowledge units must be reverted from null to open. Do not suppress
     unexpected positives.
   - Record the re-audit outcomes and null-stability conclusions in track_CHISEL.md.
-- [ ] **CH09** Post-hoc calibration layer + label-threshold sensitivity. Model: `claude-opus-4-6`. CI image profile:
+- [x] **CH09** Post-hoc calibration layer + label-threshold sensitivity. Model: `claude-opus-4-6`. CI image profile:
       `base`. Depends on tasks: `CH05`.
   - GOAL: turn the CH05 isotonic diagnostic into a deployable calibration layer. CH05 empirically separated two
     calibration-failure mechanisms: (A) Guelin mid-P miscalibration (ECE 0.12 → 0.008 post-isotonic, 78-89% decile-gap
