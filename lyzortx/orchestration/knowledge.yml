@@ -444,10 +444,13 @@ themes:
           **(2) phage-axis calibration divergence** (Guelin Brier 0.1156 vs BASEL 0.1890,
           disjoint CIs, BASEL mid-P reliability gap 21-27 pp wider than Guelin's in the
           0.5-0.9 predicted-probability bins);
-          **(3) BASEL bacteria-axis deficit** (BASEL-only bacteria-axis AUC 0.7152 on the
-          1,240 BASEL pairs vs Guelin-only 0.8101 on the same axis — a 9.5 pp BASEL-specific
-          deficit essentially unchanged by the filter, confirming the deficit is a
-          feature-space / panel-mismatch issue, not a label-noise issue).
+          **(3) BASEL bacteria-axis deficit** (BASEL-only bacteria-axis AUC 0.7229 on the
+          1,240 BASEL pairs vs Guelin-only 0.8247 on the same axis — a 10.2 pp BASEL-specific
+          deficit essentially unchanged by the filter — pre-filter was 9.5 pp, the +0.7 pp
+          widening comes from Guelin sharpening under the filter more than BASEL does.
+          Confirms the deficit is a feature-space / panel-mismatch issue, not a label-noise
+          issue, since a Guelin-only label-quality filter would not change BASEL's absolute
+          discrimination if BASEL's miscalibration lived in labels).
           Expected Calibration Error (ECE, weighted mean of per-decile |observed−predicted|
           gaps) under the post-filter canonical: **bacteria-axis Guelin ECE 0.130, BASEL
           ECE 0.216; phage-axis Guelin ECE 0.130, BASEL ECE 0.237**. Two separable
@@ -455,8 +458,10 @@ themes:
           **(A) Guelin mid-P miscalibration = training-label-vs-deployment-question
           mismatch, post-hoc fixable**. Leave-one-fold-out isotonic regression on Guelin
           predictions closes Guelin ECE to 0.005-0.008 on both axes (~94-96% ECE closure
-          under the post-filter canonical; was 78-89% decile-gap closure under the CH09
-          original report — see closure-metric note below), AUC preserved within 0.5 pp.
+          measured under the pre-filter CH09 canonical; the post-filter LOOF closure is
+          re-derived as part of the CH09 PR rebase and should remain in the same band —
+          see the closure-metric note below for the reconciliation of ECE vs max|gap|
+          closure reporting). AUC preserved within 0.5 pp.
           The training label is more permissive than the deployment target; Gaborieau 2024
           Methods explicitly admits clearing at high titer can be non-productive. Two
           complementary remedies: the CH06-followup filter adoption drops the most-likely
@@ -514,8 +519,10 @@ themes:
             bacteria-axis −3.12 pp, phage-axis −1.67 pp. Filter lift is larger on
             bacteria-axis (Guelin-heavy aggregate, filter directly affects training
             rows) than on phage-axis (cross-source dilution). BASEL bacteria-axis
-            deficit (0.7152 → 0.7095, effectively unchanged) confirms the filter is a
-            Guelin-side data-quality fix, not a BASEL-side mechanism.
+            deficit widens slightly from 9.5 pp to 10.2 pp (0.7152→0.7229 BASEL,
+            0.8098→0.8247 Guelin) — Guelin sharpens more than BASEL under the
+            Guelin-only filter, which confirms the filter is a Guelin-side data-
+            quality fix, not a BASEL-side mechanism.
           Phage-axis AUC exceeds bacteria-axis AUC by 7.0 pp (CIs disjoint). The gap is
           structural, not a deployment-value signal: phage-axis folds hold out entire
           phages but keep all 369 bacteria in training; bacteria-axis folds hold out
