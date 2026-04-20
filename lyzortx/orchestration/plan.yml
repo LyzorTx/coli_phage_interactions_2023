@@ -2453,7 +2453,7 @@ tracks:
       title: Both-axis holdout evaluation (10 x 10 double cross-validation)
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - CH06
       acceptance_criteria:

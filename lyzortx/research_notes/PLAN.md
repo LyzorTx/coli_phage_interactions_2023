@@ -1546,7 +1546,7 @@ graph LR
     **must explicitly name and reject each candidate on the exclusion list** (SaProt/ProstT5, PHROG aggregates, dense
     PHROG categorical, receptor k-mers, physicochemical RBP) with one-line justification per exclusion so no future
     ticket re-proposes them without having seen the earlier verdicts.
-- [ ] **CH07** Both-axis holdout evaluation (10 x 10 double cross-validation). Model: `claude-opus-4-6`. CI image
+- [x] **CH07** Both-axis holdout evaluation (10 x 10 double cross-validation). Model: `claude-opus-4-6`. CI image
       profile: `base`. Depends on tasks: `CH06`.
   - GOAL: the strongest generalization test — bacterium AND phage held out simultaneously. Directly addresses the
     external-critic concern that the "panel-size ceiling" has only been probed on single-axis CV. If both-axis AUC holds
