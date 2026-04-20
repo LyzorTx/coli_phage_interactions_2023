@@ -1121,8 +1121,8 @@ point estimates recomputed from Arm 2's per-pair predictions):
 **BASEL bacteria-axis AUC 0.7045 is below the target 0.7152** — Arm 2 does not meet the
 plan's discrimination success criterion. Brier improves for BASEL on both axes (bacteria-
 axis 0.2380 → 0.2185; phage-axis 0.1890 → 0.1628), but that is a calibration-side effect
-driven by the wider shrunken-toward-base-rate distribution of Arm 2 predictions, not
-discrimination — AUC moves the opposite direction.
+driven by the narrower, shrunken-toward-base-rate distribution of Arm 2 predictions (BASEL
+std 0.336 → 0.303), not discrimination — AUC moves the opposite direction.
 
 #### Interpretation
 
