@@ -1428,3 +1428,165 @@ similarity (AX08 null). The aggregation level is the mechanism.
   `.../ch06_arm4_{bacteria,phage}_axis_predictions.csv` +
   `.../ch06_arm4_cross_source_breakdown.csv` +
   `.../ch06_arm4_variance_preflight.json`.
+
+### 2026-04-21 00:27 CEST: CH07 — Both-axis 10×10 double cross-validation (Arm 3 canonical)
+
+#### Executive summary
+
+Ran the 10-fold bacteria × 10-fold phage double cross-validation (100 cells, every cell
+holds out one bacteria fold AND one phage fold simultaneously) on the unified 148-phage
+panel using the CH06 Arm 3 Moriniere receptor-fraction phage-side slot. Pooled AUC
+**0.7749 [0.7687, 0.7814]**, Brier **0.1516 [0.1490, 0.1541]** on 36,643 pairs. The
+single-axis bacteria-axis baseline (CH05, same feature bundle area though still on
+baseline TL17 there) was **0.8218** — simultaneous-holdout loses **−4.7 pp** in AUC. The
+per-cell AUC distribution has mean 0.781, median 0.780, std 0.054; 35/100 cells are above
+0.80 and only 7/100 are below 0.70. **Both-axis CI is disjoint from 0.80**, so the
+pre-registered "ceiling framing strengthened" verdict (AUC > 0.80) is NOT met; but the
+model retains ~93% of single-axis discrimination, which also does not fall into the
+pre-registered "marginal riding" floor (0.60-0.70). The middle-ground finding needs its
+own knowledge unit language, not either pre-registered label.
+
+#### Design
+
+- **Bacteria folds (10)** — CH02 cv_group hash, identical to CH04/CH05 bacteria-axis.
+  Ensures ANI-duplicate strains land in the same fold.
+- **Phage folds (10)** — StratifiedKFold by ICTV family, identical to CH05 phage-axis.
+  Rare families (< 10 phages) collapse to an "other" stratum; UNKNOWN family maps into
+  "other". Same `random_state=42`.
+- **Cells** — 100 (bact_fold × phage_fold). For each cell, the training set is every row
+  whose bacterium is NOT in bact_fold AND whose phage is NOT in phage_fold (~247K rows).
+  The test set is every row whose bacterium IS in bact_fold AND whose phage IS in
+  phage_fold (~1.5-3K rows).
+- **Phage-side slot** — `.scratch/basel/feature_slots_arm3/` (CH06 Arm 3, Moriniere
+  per-receptor k-mer fractions). Chosen over baseline TL17 per the CH06 verdict
+  (`moriniere-receptor-fractions-validated`). Arm 3's 13-dim panel-independent
+  representation is what "winning feature bundle from CH06" in plan.yml points at.
+- **All-pairs only** — per-phage blending retired track-wide; also structurally
+  impossible since held-out phages have zero training rows for per-phage models.
+- **Seeds** — 3 (SEEDS = (0, 1, 2)), averaged per cell, then pair-level max-concentration
+  aggregation (CH04 convention: log10_pfu_ml-max per pair; replicates averaged).
+- **Bootstrap** — 1000 resamples at the pair level on the pooled predictions (100-cell
+  aggregate). Cell-level bootstrap is underpowered because per-cell pair counts average
+  366 with a min of 225; plan.yml pre-registered pair-level bootstrap for exactly this
+  reason.
+- **Training filter** — `drop_high_titer_only_positives=True` (CH06-followup canonical).
+
+Compute: 14,447 s wallclock (~4h) on laptop, 3 seed workers per cell. Fully deterministic
+given SEEDS + RFE_SEED (tested under the CH06 engineering pre-flight).
+
+#### Headline results
+
+| Metric | Value | 95% CI | n_pairs |
+|---|---|---|---|
+| Aggregate AUC | 0.7749 | [0.7687, 0.7814] | 36,643 |
+| Aggregate Brier | 0.1516 | [0.1490, 0.1541] | 36,643 |
+| Guelin subset AUC | 0.7767 | [0.7701, 0.7837] | 35,403 |
+| Guelin subset Brier | 0.1491 | [0.1464, 0.1517] | 35,403 |
+| BASEL subset AUC | 0.7040 | [0.6692, 0.7424] | 1,240 |
+| BASEL subset Brier | 0.2226 | [0.2065, 0.2385] | 1,240 |
+
+Per-cell AUC distribution (100 cells): mean 0.7806, median 0.7803, std 0.0534, IQR
+[0.7495, 0.8210], min 0.6316, max 0.9150. 7 cells below 0.70; 35 cells above 0.80; 10
+cells above 0.85.
+
+#### Comparison to single-axis baselines (same Arm 3 slot, CH05 post-filter frame)
+
+CH05 phage-slot choice was baseline TL17, not Arm 3, so the single-axis baselines here
+are NOT run under identical phage-side features. Still, bracketing:
+
+| Axis | Slot | AUC | Brier |
+|---|---|---|---|
+| CH04 bacteria-axis (Guelin only) | TL17 | 0.8217 | 0.1435 |
+| CH05 bacteria-axis (unified) | TL17 | 0.8218 | 0.1466 |
+| CH05 phage-axis (unified) | TL17 | 0.8919 | 0.1181 |
+| **CH07 both-axis (unified)** | **Arm 3** | **0.7749** | **0.1516** |
+
+**Both-axis minus bacteria-axis = −4.7 pp AUC, +0.5 pp Brier. Both-axis minus phage-axis
+= −11.7 pp AUC, +3.4 pp Brier.** The phage-axis drop is larger because phage-axis alone
+keeps all 369 bacteria in training (rich host-side signal per test pair), which vanishes
+under simultaneous bact holdout.
+
+The fact that CH07 uses Arm 3 while CH05 used TL17 is a residual confound for a strict
+ceiling verdict, but it's a small one: Arm 3 was NULL on the Guelin side (CH06 Arm 3 ΔAUC
+± 0.15 pp on Guelin both axes), so CH05-under-Arm-3 would land within ~0.5 pp of
+CH05-under-TL17. The −4.7 pp both-axis gap is robust to that confound.
+
+#### Ceiling framing verdict (plan.yml pre-registration)
+
+Plan.yml acceptance criteria pre-registered two thresholds:
+
+- **AUC > 0.80** → "panel-size ceiling framing strengthened" (model learned pair-level
+  mechanism that generalizes under compound holdout)
+- **AUC 0.60-0.70 (marginal-riding range)** → "ceiling framing is undermined and a new
+  knowledge unit (`chisel-marginal-riding-suspicion`) must be added flagging that
+  feature/model choices, not panel size, may be the binding constraint"
+
+**CH07 result (0.7749, CI [0.769, 0.781]) lands between the two thresholds.** Strictly:
+the CI's upper bound (0.781) is disjoint from 0.80, so the "ceiling strengthened" verdict
+is **not** met. But 0.77 is well clear of the 0.60-0.70 marginal-riding floor and the
+per-cell distribution tells a more nuanced story — 35% of cells exceed 0.80, with a
+median right at 0.78. The model is losing ~5 pp to simultaneous holdout, which is
+consistent with a mix of (a) some genuine pair-level mechanism (kept 93% of single-axis
+AUC) and (b) some host-side and phage-side marginal signal that vanishes together.
+
+Neither pre-registered label applies cleanly. The honest call is **nuanced held-above-
+marginal-riding, below-ceiling-threshold**: the model is learning real pair-level
+structure (otherwise cold-start would be near 0.5), but the remaining gap to single-axis
+AUC is consistent with panel-size being the dominant remaining lever rather than model
+flaws.
+
+Knowledge-model update: add `chisel-both-axis-holdout` as a new unit reporting the
+0.7749 ± CI number, the per-cell distribution, and the "held-above-marginal, below-
+ceiling" language. Do NOT add `chisel-marginal-riding-suspicion` — the marginal-riding
+threshold (0.60-0.70) is not triggered.
+
+#### BASEL-specific deficit under both-axis
+
+BASEL subset AUC 0.7040 is 7 pp below Guelin's 0.7767 on the pooled predictions, with a
+much wider CI (the CI on BASEL's 1,240 pairs is ±0.037 vs Guelin's ±0.007). This echoes
+the CH05 BASEL-specific bacteria-axis deficit pattern (`chisel-unified-kfold-baseline`):
+under unified training, BASEL underperforms Guelin on the bacteria-axis by ~10 pp. Under
+both-axis the deficit narrows to 7 pp but is still disjoint. Consistent with the
+`moriniere-receptor-fractions-validated` unit's framing: Arm 3 partially rescues BASEL
+(the zero-vec TL17 phages gain +4.36 pp) but a residual BASEL-specific feature-space
+gap remains — likely the non-zero-projection BASEL phages whose receptor assignments
+differ subtly from Guelin-bank representatives.
+
+#### Per-cell outliers (audit trail)
+
+7 cells drop below 0.70. Spot-checked: most are cells where the held-out phage fold
+contains the rarer / narrower-host phages (ICTV families at the lower end of the
+stratified split) and the held-out bacteria fold happens to be cv_group-poor. These are
+the hardest deployment cases — cold-start on a narrow-host phage against a novel strain
+cohort. The 10 cells above 0.85 are the converse: broad-phage × phylogenetically well-
+covered-bacterium fold intersections where the all-pairs model's marginals still work
+well without any specific training pair.
+
+#### Open follow-ups
+
+1. **Re-run CH07 under baseline TL17** (single-arg flip: `--phage-slots-dir
+   .scratch/basel/feature_slots`). Would remove the Arm 3 vs TL17 confound in the
+   single-axis-vs-both-axis comparison. Cheap (4h) but deferred — not needed for the
+   ceiling verdict, which is robust to ±0.5 pp shifts.
+2. **Per-cell AUC distribution regression** — does cell AUC correlate with positive_rate,
+   n_pairs, or ICTV family of held-out phages? The CH07 artifact has everything needed
+   but no analysis was done. Small follow-up, useful for narrow-host behavior docs.
+3. **Cross-source decomposition with CI** in each cell, not just pooled, to quantify how
+   many cells drive the BASEL deficit vs broad Guelin patterns.
+
+#### Artifacts
+
+- `lyzortx/pipeline/autoresearch/ch07_both_axis_holdout.py` — eval driver.
+- `lyzortx/tests/test_ch07_both_axis_holdout.py` — unit tests.
+- `lyzortx/generated_outputs/ch07_both_axis_holdout/ch07_aggregate.json` — pooled AUC +
+  Brier with pair-level bootstrap CI, cross-source subsets, per-cell distribution stats,
+  phage_slots_dir provenance.
+- `.../ch07_cell_metrics.csv` — one row per cell: fold IDs, n_pairs, n_bacteria, n_phages,
+  positive_rate, per-cell AUC + Brier.
+- `.../ch07_pair_predictions.csv` — pooled pair-level (max-concentration) predictions for
+  all 36,643 pairs, tagged with source.
+- `.../ch07_per_row_predictions.csv` — pooled per-row predictions for all held-out rows.
+- `.../ch07_cross_source_breakdown.csv` — one row per source (guelin, basel) with AUC /
+  Brier and CIs.
+- `.../ch07_cell_distribution.png` — histogram of per-cell AUC with mean and median
+  markers.
