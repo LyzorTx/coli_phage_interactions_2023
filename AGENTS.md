@@ -14,6 +14,17 @@ Before thinking, planning, or doing anything, follow these four steps in order:
 - Schedule wakeups BEFORE expected finish, not after. If the task is done when you peek, proceed immediately; if not,
   reschedule a shorter peek. One wasted 60-second check beats five idle minutes past finish.
 
+# Background Tasks and Completion Triggers
+
+- For long-running shell commands, pass `run_in_background=true` to the Bash tool directly. Do NOT add `&` inside the
+  command — wrapping with `&` detaches the subprocess from Bash, so the runtime's completion notification fires
+  immediately at launch rather than on the real process exit.
+- For already-running processes (spawned earlier, or launched with `&`), wait with a Bash `run_in_background=true`
+  until-loop on the PID: `until ! ps -p <PID> > /dev/null 2>&1; do sleep 30; done`. The notification fires when the
+  process exits.
+- Pair completion triggers with a ScheduleWakeup safety timer sized to `~1.2×` the expected runtime. Completion
+  triggers do not fire on hangs; the timer catches hangs. Whichever fires first wins.
+
 # Directory-Specific Policies
 
 Detailed coding, testing, scientific review, CI, and orchestration policies live in subdirectory `AGENTS.md` files
