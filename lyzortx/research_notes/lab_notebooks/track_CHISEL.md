@@ -1307,6 +1307,117 @@ Arm 4 (tail-restricted TL17) runs next for completeness. Under the Arm 3 win, Ar
 expected-null-or-wash carries less weight: even if Arm 4 works, Arm 3 is the simpler,
 source-panel-independent solution.
 
+### 2026-04-20 17:01 CEST: CH06 Arm 4 — tail-restricted TL17 BLAST (null — CH06 closes)
+
+#### Executive summary
+
+Tail-restricted TL17 BLAST query re-projection does not lift discrimination: **BASEL
+bacteria-axis AUC 0.7145 (−0.84 pp vs baseline 0.7229, below the 0.7152 target)**.
+Aggregate AUC flat on both axes. BASEL zero-vector TL17 phages see no meaningful rescue
+(+0.29 pp bacteria-axis; +0.12 pp phage-axis). BASEL non-zero-projection phages regress
+on both axes (−1.19 pp bacteria / −1.08 pp phage). Guelin flat. Fails the CH06 acceptance
+criterion. **CH06 closes with Arm 3 (Moriniere per-receptor k-mer fractions) as the
+canonical panel-independent phage-side feature slot**; Arm 4 joins the dead-end list.
+
+#### Why Arm 4 was an expected near-no-op
+
+The existing `tl17_rbp_reference_bank.faa` is already RBP-filtered at build time via
+`classify_rbp_genes` — only ~200 proteins, receptor-binding-specific. Arm 4 restricts
+the QUERY side of the BLAST to tail/baseplate/RBP-annotated proteins of each phage.
+Tail proteins of the query phage already match RBPs in the reference bank under the
+baseline run; non-tail proteins of the query rarely cross-hit RBPs (since the bank is
+narrow). So restricting the query side is mostly a strict subset of the hits the
+baseline already counts — nothing new is added, and in noisy cases some genuine
+cross-hits are dropped.
+
+Variance pre-flight flagged this: the BASEL zero-vector TL17 subset had 0 features
+with Cohen's d > 0.1 on Arm 4 (vs 11/13 for Arm 3). The 13 BASEL phages whose proteomes
+didn't match the Guelin RBP bank under baseline TL17 still don't match under tail-
+restricted TL17 — expected, since Arm 4 is a STRICT SUBSET of the baseline search. The
+ticket's own pre-flight guidance — "the arm cannot rescue a phage whose tail region is
+not annotated" — is confirmed empirically.
+
+#### Feature construction
+
+For each of 148 phages (96 Guelin + 52 BASEL), extract tail/baseplate/RBP-annotated
+proteins from the Pharokka merged TSV (category ∈ {tail, baseplate} OR annotation
+matches `RBP_PATTERNS` from `parse_annotations`). Matching strategy:
+
+- **Guelin** (96 phages): coordinate overlap between Pharokka CDS (start, stop, contig)
+  and the track_d per-phage protein FASTA (`start=`, `end=`, `contig=` header metadata).
+  Exact (start, end, contig) tuple lookup into an O(1) index.
+- **BASEL** (52 phages): CDS name match between Pharokka `gene` field and `phanotate.faa`
+  header (first whitespace-separated token).
+
+All 148 phages carry tail-annotated proteins (100% BASEL pre-flight gate pass — well
+above the plan's >50% coverage requirement). Combined tail-restricted query FASTA has
+~1,750 tail proteins. Searched against `tl17_rbp_reference_bank.faa` via MMseqs2
+`easy-search` with `--max-seqs 20` + 12-column BLAST layout; aggregated to per-phage ×
+32 TL17 family max-pident scores + 1 summary hit count, same schema as baseline TL17.
+
+#### Full-training results
+
+| Axis | Subset | Baseline | Arm 4 | Δ |
+|---|---|---|---|---|
+| Bacteria | Aggregate | 0.8218 [0.8063, 0.8368] | 0.8209 [0.8055, 0.8359] | −0.09 pp |
+| Bacteria | Guelin (n=96) | 0.8247 | 0.8239 | −0.08 pp |
+| Bacteria | **BASEL all (n=52)** | **0.7229** | **0.7145** | **−0.84 pp** |
+| Bacteria | BASEL zero-vec (n=13) | 0.6325 | 0.6354 | +0.29 pp |
+| Bacteria | BASEL non-zero (n=39) | 0.6968 | 0.6849 | −1.19 pp |
+| Phage | Aggregate | 0.8919 | 0.8881 | −0.38 pp |
+| Phage | Guelin (n=96) | 0.8922 | 0.8884 | −0.38 pp |
+| Phage | BASEL all (n=52) | 0.8822 | 0.8753 | −0.69 pp |
+| Phage | BASEL zero-vec (n=13) | 0.6901 | 0.6913 | +0.12 pp |
+| Phage | BASEL non-zero (n=39) | 0.8974 | 0.8866 | −1.08 pp |
+
+**Acceptance criterion not met.** BASEL bacteria-axis AUC 0.7145 < 0.7152 target
+(marginal miss but a miss). No rescue of zero-vec BASEL beyond baseline. Guelin flat;
+BASEL non-zero regresses on both axes. Brier deltas are small and CIs overlap throughout.
+
+#### CH06 — three-way comparison and close-out verdict
+
+| Arm | Bact-axis BASEL | Phage-axis zero-vec BASEL | Guelin (both axes) | Verdict |
+|---|---|---|---|---|
+| Baseline TL17 | 0.7229 | 0.6901 | 0.8247 / 0.8922 | — |
+| Arm 2 (MMseqs2 pairwise) | 0.7045 (−1.84 pp) | 0.7028 (+1.27 pp) | 0.8278 / 0.8879 | null (BASEL non-zero cannibalized) |
+| **Arm 3 (Moriniere recep. fractions)** | **0.7374 (+1.45 pp)** | **0.7337 (+4.36 pp)** | 0.8232 / 0.8934 | **success** |
+| Arm 4 (tail-restricted TL17) | 0.7145 (−0.84 pp) | 0.6913 (+0.12 pp) | 0.8239 / 0.8884 | null |
+
+**CH06 closes with Arm 3 as the canonical panel-independent phage-side feature slot.**
+Arm 3 is the single passing arm; it rescues both the zero-vector deployability failure
+mode (+4.36 pp on the 13 BASEL phages that get zero TL17 signal) and the non-zero-proj
+BASEL subset (+2.54 pp bact-axis), without damaging Guelin. Arm 2 partially addressed
+the deployability mechanism but cannibalized RBP-specific signal; Arm 4 was a strict
+subset of baseline TL17 hits and carried no new information.
+
+This outcome updates `plm-rbp-redundant` and `receptor-specificity-solved`: the
+receptor-class signal IS useful, **provided** it's aggregated to per-class probabilities
+rather than fed as raw 815 k-mer presence-absence (SX12 null) or as global protein-level
+similarity (AX08 null). The aggregation level is the mechanism.
+
+#### Open follow-ups
+
+1. **Wire Arm 3 into the canonical `phage_projection` slot** — currently Arm 3 is a
+   side-materialized artifact at `.scratch/basel/feature_slots_arm3/`; canonical CH05 /
+   CH07 / CH08 / CH09 pipelines still read baseline TL17. A separate migration ticket
+   (CH10?) should make Arm 3 the default, re-run CH05 / CH07 / CH08 / CH09 under the
+   new slot, and update their baseline numbers.
+2. **Arm 2 composition with TL17** — identified as valid follow-up during Arm 3 review
+   (keep TL17 where available, add Arm 2 PCA for zero-vec phages). Under Arm 3's clean
+   win this is unnecessary but could be revisited if Arm 3's canonical migration
+   reveals an unexpected failure mode.
+
+#### Artifacts
+
+- `lyzortx/pipeline/autoresearch/ch06_arm4_tail_restricted_tl17.py` — precompute + eval
+  driver.
+- `.scratch/ch06_arm4/{tail_restricted_query.faa, mmseqs_hits.tsv}` — precompute cache.
+- `.scratch/basel/feature_slots_arm4/phage_projection/features.csv` — Arm 4 slot.
+- `lyzortx/generated_outputs/ch06_arm4_tail_restricted_tl17/ch06_arm4_metrics.json` +
+  `.../ch06_arm4_{bacteria,phage}_axis_predictions.csv` +
+  `.../ch06_arm4_cross_source_breakdown.csv` +
+  `.../ch06_arm4_variance_preflight.json`.
+
 #### Artifacts
 
 - `lyzortx/pipeline/autoresearch/ch06_arm3_moriniere_receptor.py` — precompute + eval driver.
