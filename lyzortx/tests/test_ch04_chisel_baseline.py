@@ -39,7 +39,9 @@ def test_build_clean_row_training_frame_drops_n_rows() -> None:
             _raw_row("bac_B__phage_X", "n", 0),
         ]
     )
-    clean = build_clean_row_training_frame(rows)
+    # Test the n-drop behavior in isolation; default filter would also drop the neat-only
+    # positive row, which is covered separately below.
+    clean = build_clean_row_training_frame(rows, drop_high_titer_only_positives=False)
     assert len(clean) == 2
     assert set(clean["score"]) == {"0", "1"}
     assert set(clean["label_row_binary"]) == {0, 1}
@@ -52,8 +54,56 @@ def test_build_clean_row_training_frame_drops_n_rows() -> None:
 
 def test_build_clean_row_training_frame_preserves_all_clean_rows() -> None:
     rows = pd.DataFrame([_raw_row("bac_A__phage_X", "0", d, replicate=r) for d in [0, -1, -2, -4] for r in [1, 2]])
+    # Pair has no positives, so the neat-only filter is a no-op.
     clean = build_clean_row_training_frame(rows)
     assert len(clean) == len(rows)
+
+
+def test_neat_only_filter_drops_positives_at_log_dilution_zero_only() -> None:
+    """CH06 follow-up canonical filter: pair positive only at neat → drop its positive rows."""
+    rows = pd.DataFrame(
+        [
+            # Pair A: positive only at log_dilution=0 → filter should drop the positive rows.
+            _raw_row("bac_A__phage_X", "1", 0, replicate=1),
+            _raw_row("bac_A__phage_X", "1", 0, replicate=2),
+            _raw_row("bac_A__phage_X", "0", -1, replicate=1),
+            _raw_row("bac_A__phage_X", "0", -2, replicate=1),
+            # Pair B: positive at neat AND at a dilution step → filter leaves untouched.
+            _raw_row("bac_B__phage_X", "1", 0, replicate=1),
+            _raw_row("bac_B__phage_X", "1", -1, replicate=1),
+            _raw_row("bac_B__phage_X", "0", -2, replicate=1),
+        ]
+    )
+    # source column not required on Guelin-only fixtures — the filter uses
+    # `clean.get("source", pd.Series("guelin", ...))` default.
+    with_filter = build_clean_row_training_frame(rows, drop_high_titer_only_positives=True)
+    without_filter = build_clean_row_training_frame(rows, drop_high_titer_only_positives=False)
+
+    # Without filter: 7 rows survive n-drop (no n rows in fixture).
+    assert len(without_filter) == 7
+    # With filter: pair_A's 2 positive rows are dropped (replicates at log_dilution=0), pair_B untouched.
+    assert len(with_filter) == 5
+    dropped = set(zip(without_filter["pair_id"], without_filter["log_dilution"], without_filter["score"])) - set(
+        zip(with_filter["pair_id"], with_filter["log_dilution"], with_filter["score"])
+    )
+    assert all(pair == "bac_A__phage_X" and dil == 0 and score == "1" for pair, dil, score in dropped)
+
+
+def test_neat_only_filter_exempts_basel_source() -> None:
+    """BASEL pairs have only a single observation at log_dilution=0; filter must not touch them."""
+    rows = pd.DataFrame(
+        [
+            # Guelin pair positive only at neat → drops.
+            {**_raw_row("bac_A__phage_X", "1", 0), "source": "guelin"},
+            # BASEL pair positive at its only observation (log_dilution=0 by convention) → preserved.
+            {**_raw_row("bac_A__phage_Y", "1", 0), "source": "basel"},
+        ]
+    )
+    clean = build_clean_row_training_frame(rows, drop_high_titer_only_positives=True)
+    sources_kept = set(zip(clean["pair_id"], clean["source"]))
+    # Guelin pair's positive row was dropped; BASEL positive preserved.
+    assert ("bac_A__phage_X", "guelin") not in sources_kept
+    assert ("bac_A__phage_Y", "basel") in sources_kept
 
 
 def _pred_row(pair_id: str, log_dilution: int, replicate: int, label: int, proba: float) -> dict:

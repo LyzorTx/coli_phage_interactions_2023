@@ -96,7 +96,11 @@ BOOTSTRAP_SAMPLES = 1000
 BOOTSTRAP_RANDOM_STATE = 42
 
 
-def build_clean_row_training_frame(row_frame: pd.DataFrame) -> pd.DataFrame:
+def build_clean_row_training_frame(
+    row_frame: pd.DataFrame,
+    *,
+    drop_high_titer_only_positives: bool = True,
+) -> pd.DataFrame:
     """Drop score=='n' rows, cast score to {0, 1}, attach CH04 label + concentration feature.
 
     `score == "n"` rows are dropped from training (they're missing observations, not
@@ -110,6 +114,28 @@ def build_clean_row_training_frame(row_frame: pd.DataFrame) -> pd.DataFrame:
     interpretable lysis observations) lose all their rows in this filter, so the
     surviving pair count is below the input pair count. Log lets callers notice when
     that number shifts across dataset revisions.
+
+    `drop_high_titer_only_positives` (CH09 Arm 3 label-threshold sensitivity toggle):
+    when True, drop positive rows for pairs where every `score == "1"` observation
+    occurs at `log_dilution == 0` (neat, the highest-titer condition). This removes
+    candidate "clearing at high titer, possibly non-productive" positives per
+    Gaborieau 2024 Methods, which explicitly admits plate clearing at neat can arise
+    from non-productive mechanisms (lysis-from-without, abortive infection) rather
+    than productive lysis. A pair that tests positive at neat AND at ≥1 dilution
+    step survived; a pair positive only at neat failed to lyse even once diluted,
+    suggesting the neat-only positive may be non-productive. BASEL rows (single
+    observation per pair) are unaffected — their `log_dilution` is always 0, so
+    every BASEL pair falls under this filter if its score is 1. For that reason
+    the filter is explicitly restricted to Guelin-source pairs.
+
+    Note on plan.yml wording: the CH09 plan text described this filter as dropping
+    positives "where score='1' occurs only at the lowest-titer dilution
+    (log_dilution <= -2)", which is the opposite direction (drop positives at the
+    most-diluted concentrations). That literal reading only affects ~22 rows on
+    the real data — too small to be meaningful — AND contradicts the cited
+    rationale (Gaborieau's concern is clearing at HIGH titer, i.e. the neat
+    log_dilution=0 condition). This implementation follows the Gaborieau-rationale
+    interpretation. The discrepancy is flagged in track_CHISEL.md's CH09 entry.
     """
     clean = row_frame.loc[row_frame["score"].isin([RAW_SCORE_POSITIVE, RAW_SCORE_NEGATIVE])].copy()
     dropped_rows = len(row_frame) - len(clean)
@@ -134,6 +160,22 @@ def build_clean_row_training_frame(row_frame: pd.DataFrame) -> pd.DataFrame:
         )
     clean["label_row_binary"] = clean["score"].astype(int)
     clean[CONCENTRATION_FEATURE_COLUMN] = clean["log10_pfu_ml"].astype(float)
+    if drop_high_titer_only_positives:
+        # Only filter Guelin-source pairs; BASEL has a single log_dilution=0 observation per
+        # pair so every BASEL positive would otherwise be dropped, which defeats the intent.
+        is_guelin = clean.get("source", pd.Series("guelin", index=clean.index)) == "guelin"
+        positive = clean[(clean["label_row_binary"] == 1) & is_guelin]
+        pair_min_pos_dilution = positive.groupby("pair_id")["log_dilution"].min()
+        neat_only_pairs = pair_min_pos_dilution[pair_min_pos_dilution >= 0].index
+        positive_drop_mask = (clean["label_row_binary"] == 1) & is_guelin & clean["pair_id"].isin(neat_only_pairs)
+        n_dropped = int(positive_drop_mask.sum())
+        LOGGER.info(
+            "CH09 Arm 3 filter (Guelin high-titer-only): dropped %d positive rows across %d pairs "
+            "where score='1' occurs only at log_dilution=0 (neat)",
+            n_dropped,
+            int(len(neat_only_pairs)),
+        )
+        clean = clean.loc[~positive_drop_mask].reset_index(drop=True)
     return clean
 
 
@@ -301,6 +343,7 @@ def run_ch04_eval(
     candidate_dir: Path,
     max_folds: Optional[int] = None,
     num_workers: int = 3,
+    drop_high_titer_only_positives: bool = True,
 ) -> dict[str, object]:
     """Run the full CH04 evaluation.
 
@@ -310,18 +353,24 @@ def run_ch04_eval(
     `num_workers` controls seed-level parallelism: 1 forces sequential, >=2
     dispatches the three SEEDS through `multiprocessing.Pool`. Determinism is
     preserved across all valid `num_workers` values.
+
+    `drop_high_titer_only_positives` enables the CH09 Arm 3 label-threshold
+    sensitivity filter (see `build_clean_row_training_frame`).
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     start_time = datetime.now(timezone.utc)
     LOGGER.info(
-        "CH04 evaluation starting at %s (max_folds=%s, num_workers=%d)",
+        "CH04 evaluation starting at %s (max_folds=%s, num_workers=%d, drop_high_titer_only=%s)",
         start_time.isoformat(),
         max_folds if max_folds is not None else "all",
         num_workers,
+        drop_high_titer_only_positives,
     )
 
     row_frame = load_row_expanded_frame()
-    clean_rows = build_clean_row_training_frame(row_frame)
+    clean_rows = build_clean_row_training_frame(
+        row_frame, drop_high_titer_only_positives=drop_high_titer_only_positives
+    )
 
     training = clean_rows[
         (clean_rows["split_holdout"] == "train_non_holdout") & (clean_rows["is_hard_trainable"] == "1")
@@ -486,7 +535,7 @@ def run_ch04_eval(
         "evaluation_unit": "per-pair at max observed log10_pfu_ml (one prediction per held-out pair)",
         "n_bacteria_total": int(pair_predictions["bacteria"].nunique()),
         "n_pairs_evaluated": int(len(pair_predictions)),
-        "n_training_rows_dropped_as_n": int(len(row_frame) - len(clean_rows)),
+        "n_training_rows_dropped": int(len(row_frame) - len(clean_rows)),
         "concentration_feature_column": CONCENTRATION_FEATURE_COLUMN,
         "concentration_mean_importance": safe_round(concentration_importance),
         "chisel_baseline": {
@@ -544,6 +593,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=3,
         help="Seed-level parallelism (1 = sequential; 3 matches len(SEEDS)).",
     )
+    parser.add_argument(
+        "--drop-high-titer-only-positives",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Drop Guelin positive rows for pairs where every score='1' observation occurs "
+            "at log_dilution=0 (neat). Proxy for 'clearing at high titer, possibly "
+            "non-productive' (Gaborieau 2024). ENABLED BY DEFAULT as of the CH06 "
+            "follow-up filter adoption — CH09 Arm 3 showed this filter yields +1.3 pp AUC "
+            "and -3.2 pp Brier on the CH04 baseline. Pass --no-drop-high-titer-only-positives "
+            "to reproduce the pre-adoption baseline for sensitivity comparison."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -557,6 +619,7 @@ def main(argv: list[str] | None = None) -> None:
         candidate_dir=args.candidate_dir,
         max_folds=args.max_folds,
         num_workers=args.num_workers,
+        drop_high_titer_only_positives=args.drop_high_titer_only_positives,
     )
 
 

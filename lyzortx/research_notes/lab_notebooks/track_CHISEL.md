@@ -832,3 +832,98 @@ Arm 1, add a CH10+ ticket for the three discrimination arms.
 - `.../ch06_arm1_shrinkage_diagnostic.csv` (threshold sweep × gate variant).
 - CH04 determinism evidence (not committed; under `.scratch/ch06_preflight/`):
   `ch04_full_rerun/ch04_aggregate_metrics.json` = 0.808276 / 0.175055.
+
+### 2026-04-20 10:30 CEST: CH06-followup — Adopt neat-only positive filter as canonical baseline
+
+#### Executive summary
+
+CH09 Arm 3 surfaced a label-quality finding that didn't fit CH09's calibration scope: dropping
+Guelin pairs whose every `score == '1'` observation occurs at `log_dilution=0` (neat, the
+highest-titer condition) yields **+1.3 pp AUC** and **−3.2 pp Brier** on the CH04 baseline. The
+filter is defensible under Gaborieau 2024 Methods (plate clearing at high titer can be non-
+productive — lysis-from-without, abortive infection). Rather than carry the finding as a
+sensitivity probe for every downstream ticket, this follow-up promotes it to the canonical
+CHISEL training policy. New `chisel-baseline` numbers: **AUC 0.8217 [0.8054, 0.8365], Brier
+0.1435 [0.1363, 0.1508]** (replaces AUC 0.8084 / Brier 0.1750). New `chisel-unified-kfold-
+baseline` numbers: **bacteria-axis AUC 0.8218 [0.8063, 0.8368] / Brier 0.1466; phage-axis AUC
+0.8919 [0.8650, 0.9166] / Brier 0.1181**; cross-source phage-axis Guelin 0.8922 / BASEL
+0.8822 (|ΔAUC| 0.010). Downstream tickets (CH06 Arms 2-4, CH07, CH08) now anchor to the
+post-filter canonical automatically.
+
+#### Filter definition
+
+In `ch04_eval.build_clean_row_training_frame`, `drop_high_titer_only_positives` now defaults to
+`True`. Behaviour: for each Guelin pair, find every `score == '1'` observation. If **all** of
+them occur at `log_dilution == 0` (neat) — i.e. the pair has no positives at any dilution step
+(`log_dilution < 0`) — drop those positive rows from training. The pair is not removed entirely;
+its negative observations at dilution steps remain in training, and evaluation still includes
+the pair (max-concentration inference is independent of the training-row filter). BASEL is
+explicitly exempt via the `source == "guelin"` guard: BASEL has a single observation per pair
+at `log_dilution=0` by construction, so without the exemption the filter would eliminate every
+BASEL positive.
+
+Scale of the filter: **7,574 positive rows across 4,428 Guelin pairs** — approximately 20% of
+Guelin positives. The remaining 80% are positives that showed survival at a dilution step,
+i.e. productive lysis evidence.
+
+Pass `--no-drop-high-titer-only-positives` (or `drop_high_titer_only_positives=False`) to
+reproduce the pre-adoption baseline. The CLI flag uses `argparse.BooleanOptionalAction` so both
+directions are explicit at invocation time.
+
+#### Rationale
+
+Two threads converged to this adoption:
+
+1. **Literature motivation.** Gaborieau 2024 Methods (the paper our Guelin panel derives from)
+   explicitly flags that clearing spots at high titer can be non-productive — the phage
+   overwhelms the cell lawn mechanically without actually replicating. Our binary spot-test
+   scoring cannot distinguish productive from non-productive clearing, so any pair whose only
+   positive is at neat is a candidate non-productive positive.
+
+2. **Empirical validation (CH09 Arm 3).** Trained CH04 under the filter and compared vs
+   baseline: AUC went up (+1.3 pp, disjoint CIs), Brier went down (−3.2 pp), ECE went up
+   slightly (+0.7 pp). The AUC/Brier wins are substantial and directional; the ECE shift is
+   small and indicates the filter is not directly fixing probability inflation — it's
+   removing noise from the discrimination surface. That's a data-quality improvement, not a
+   threshold-calibration fix. CH09 Arm 1's isotonic calibrator remains the primary ECE
+   remedy.
+
+#### Downstream implications
+
+- **CH05 unified baseline**: rerun under the filter — bacteria-axis AUC 0.8218 / Brier 0.1466
+  (+1.57 pp / −3.12 pp vs pre-filter 0.8061 / 0.1778); phage-axis AUC 0.8919 / Brier 0.1181
+  (+0.70 pp / −1.68 pp vs 0.8850 / 0.1348); cross-source phage-axis Guelin 0.8922 vs BASEL
+  0.8822, |ΔAUC| 0.010 (widened slightly from 0.003 pre-filter because Guelin sharpens more
+  than BASEL — expected, since the filter only affects Guelin training rows). Post-filter ECE:
+  bacteria-axis Guelin 0.130 / BASEL 0.216 (BASEL improved 21% vs 0.272 pre-filter); phage-axis
+  Guelin 0.130 / BASEL 0.237 (BASEL essentially flat vs 0.236 pre-filter). The
+  `chisel-unified-kfold-baseline` knowledge unit is updated with the post-filter canonical
+  and reports both calibration-closure metrics (max|gap| closure from CH05 era AND ECE closure
+  from CH09 era — they measure different things and both are valid).
+- **CH06 Arms 2-4** (deferred from the merged CH06 PR): when they eventually run, their
+  phage-side feature ablations are evaluated against the post-filter canonical, making their
+  deltas cleaner.
+- **CH07** (both-axis 10×10 CV): upstream of both the filter and CH06 arms. Uses the post-
+  filter canonical as its discrimination floor.
+- **CH08** (wave-2 re-audit): SX12/SX13 nulls re-verified against the post-filter canonical —
+  expect the nulls still hold (SX12 and SX13 were metric-artefact nulls, not filter-
+  sensitivity-driven), but the check is cheap.
+- **CH09** (calibration layer): LOOF ECE + BASEL-transfer-closure re-reported on the post-
+  filter predictions. Arm 3 reframes from "does the filter help?" (yes, already answered) to
+  "what is the filter's sensitivity to the choice of which positives to drop?" (a narrower
+  sensitivity analysis now that the filter is canonical).
+
+#### Artifacts
+
+- `lyzortx/pipeline/autoresearch/ch04_eval.py`: default flipped, CLI flag gains
+  `BooleanOptionalAction` semantics, `n_training_rows_dropped` field (formerly
+  `_as_n`) renamed since the count now reflects both `n`-score drops and filter drops.
+- `lyzortx/pipeline/autoresearch/ch05_eval.py`: filter flag propagated through `run_ch05_eval`
+  - CLI.
+- `lyzortx/tests/test_ch04_chisel_baseline.py`: two new tests cover the filter branch
+  (neat-only pair dropped; pair with positive at both neat and dilution preserved; BASEL
+  exempt).
+- Knowledge units: `chisel-baseline` updated to post-filter numbers with old numbers preserved
+  in `context`. `chisel-unified-kfold-baseline` similarly.
+- Canonical artifacts regenerated at `lyzortx/generated_outputs/ch04_chisel_baseline/` and
+  `lyzortx/generated_outputs/ch05_unified_kfold/`.
