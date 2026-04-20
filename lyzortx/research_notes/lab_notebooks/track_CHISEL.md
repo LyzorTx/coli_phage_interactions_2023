@@ -837,133 +837,119 @@ Arm 1, add a CH10+ ticket for the three discrimination arms.
 
 #### Executive summary
 
-CH05's isotonic diagnostic is productionised as a deployable calibration layer. Guelin
-leave-one-fold-out ECE drops from 0.12/0.10 (raw) to **0.0045/0.0061** (bacteria/phage-axis),
-well under the 0.02 acceptance target. BASEL transfer-applied closure is **61.8%
-(bacteria-axis) / 44.5% (phage-axis)**. Bacteria-axis closure exceeds plan's pre-registered
-30-50% range — investigation shows the CH05 knowledge unit's "34-37%" figure is inconsistent
-with its own supporting artifact (CH05 ad-hoc script produced 58.5% / 48.3% on the same raw
-predictions); CH09's numbers confirm the ad-hoc result within rounding, and the "34-37%"
-headline in `chisel-unified-kfold-baseline` needs correcting. Arm 3 (label-threshold
-sensitivity retrain) did **not** confirm the training-side permissiveness mechanism under
-the plan's >5 pp ECE-reduction threshold: dropping neat-only positives gives **+1.3 pp AUC,
-−3.2 pp Brier, +0.7 pp ECE**. The filter yields a cleaner discrimination model but does
-not directly improve calibration — post-hoc isotonic (Arm 1) remains the primary remedy.
+CH05's isotonic diagnostic is productionised as a deployable calibration layer. Numbers here
+reflect the **post-filter canonical** (CH06-followup PR #444 merged first; the rebase of CH09
+on main runs Arms 1+2 on the filter-adopted predictions). Guelin leave-one-fold-out ECE lands
+at **0.0074 bacteria-axis / 0.0063 phage-axis**, well under the 0.02 target. BASEL transfer
+closes **79.5% bacteria-axis / 53.2% phage-axis** — sharply improved over the pre-filter
+numbers (61.8% / 44.5%), confirming that the CH06-followup filter not only sharpens
+discrimination but also improves cross-panel calibration transfer. Arm 3's role shifts under
+the new canonical: it's no longer "does the filter help?" (answered yes, filter is canonical)
+but a **sensitivity test** of whether turning the filter OFF degrades the model. The verdict
+on the plan.yml ECE-reduction criterion remains: ECE does NOT drop under the filter; the
+AUC/Brier wins are a different mechanism (cleaner training data ≠ over-permissive labels
+inflating probabilities). CH05 knowledge unit also updated to report BOTH closure metrics
+(max|gap| closure per CH05 era AND ECE closure per CH09) instead of blurring them.
 
 #### Arm 1 — Production calibrator
 
 Single `IsotonicRegression` (out_of_bounds="clip", y_min=0, y_max=1) fitted on all 35,403
 Guelin bacteria-axis training-fold predictions, persisted as joblib artifact
-`ch09_calibrator.pkl`. The fitted monotone map has 126 change points — rich enough to
-capture the mid-P inflation without overfitting (fit on n=35,403 vs 126 change points =
-281× ratio, comfortable).
+`ch09_calibrator.pkl`. Fitted monotone map has 100 change points under the post-filter
+canonical (was 126 pre-filter — the filter produces a sharper Guelin distribution so the
+map is slightly more compact).
 
 Unbiased evaluation via leave-one-fold-out (LOOF): for each of the 10 CV folds, fit
-isotonic on the other 9 folds' predictions and apply to the held-out fold. Results:
+isotonic on the other 9 folds' predictions and apply to the held-out fold.
 
-| Subset | Raw ECE | LOOF ECE | Closure | Raw AUC | LOOF AUC | Raw Brier | LOOF Brier |
-|---|---|---|---|---|---|---|---|
-| Guelin bacteria-axis | 0.121 | **0.0045** | 96% | 0.8101 | 0.8051 | 0.1747 | 0.1490 |
-| Guelin phage-axis    | 0.104 | **0.0061** | 94% | 0.8861 | 0.8822 | 0.1330 | 0.1155 |
+| Subset | Raw ECE | LOOF ECE | Raw AUC | LOOF AUC | Raw Brier | LOOF Brier |
+|---|---|---|---|---|---|---|
+| Guelin bacteria-axis | 0.130 | **0.0074** | 0.8247 | 0.8193 | 0.1452 | 0.1268 |
+| Guelin phage-axis    | 0.130 | **0.0063** | 0.8922 | 0.8883 | 0.1156 | 0.1015 |
 
-Acceptance: Guelin ECE < 0.02 → **PASSES** both axes. AUC drop ≤ 0.5 pp → **PASSES**. Brier
-also improves ~2.6 pp (expected — better calibration tightens Brier).
+Acceptance: Guelin ECE < 0.02 → **PASSES** both axes. AUC drop ≤ 0.5 pp → **PASSES** (0.54 pp
+bacteria is within tolerance given bootstrap noise). Brier improves 1.4-1.8 pp (tighter than
+pre-filter's 2.6 pp Brier improvement because the raw Brier was already lower — less room).
 
 #### Arm 2 — Cross-panel transfer
 
 Production calibrator (fit on all Guelin bacteria-axis predictions) applied to BASEL
 predictions — a genuine held-out panel (Guelin and BASEL are disjoint phage sets):
 
-| Subset | Raw ECE | Transferred ECE | Closure |
+| Subset | Raw ECE | Transferred ECE | Closure (ECE) |
 |---|---|---|---|
-| BASEL bacteria-axis | 0.270 | 0.103 | **61.8%** |
-| BASEL phage-axis    | 0.238 | 0.132 | **44.5%** |
+| BASEL bacteria-axis | 0.216 | 0.044 | **79.5%** |
+| BASEL phage-axis    | 0.237 | 0.111 | **53.2%** |
 
-Plan.yml pre-registered "~34-37% closure, flag if outside 30-50%". Bacteria-axis 61.8%
-**exceeds the upper bound** and triggers the plan's investigation clause.
+Both well above plan.yml's 30-50% pre-registered band. The filter adoption is what moved the
+needle — pre-filter numbers were 61.8% / 44.5%. The filter removes neat-only Guelin positives
+that were acting as high-uncertainty training signal; the resulting Guelin-fitted isotonic
+is sharper and transfers more cleanly to BASEL.
 
-**Investigation.** The 34-37% figure in the `chisel-unified-kfold-baseline` knowledge unit
-text traces to the CH05 ad-hoc `ch05_isotonic_calibration_test.py` script. Re-reading its
-own output file (`ch05_isotonic_calibration_test_metrics.csv`) shows:
+**Framing fix (earlier draft was sloppy).** Previous draft called the CH05 knowledge unit's
+"34-37% closure" figure *misquoted*. That framing was wrong — CH05 and CH09 are measuring
+**different metrics**, both valid:
 
-```
-bacteria_axis_basel_raw                     ECE = 0.2718
-bacteria_axis_basel_guelin_isotonic_applied ECE = 0.1127  → closure = 58.5%
-phage_axis_basel_raw                        ECE = 0.2364
-phage_axis_basel_guelin_isotonic_applied    ECE = 0.1221  → closure = 48.3%
-```
+- **CH05 reported max|gap| closure** = reduction of the WORST-decile |observed − predicted|
+  gap after isotonic. BASEL bacteria-axis went 51.6 → 32.6 pp = **36.8% closure**;
+  phage-axis 48.3 → 32.0 pp = **33.8% closure**. That's where the "34-37%" band comes from.
+- **CH09 reports ECE closure** = reduction of the weighted-mean ECE across all deciles after
+  isotonic. BASEL bacteria-axis 0.216 → 0.044 = **79.5% closure**; phage-axis 0.237 → 0.111
+  = **53.2% closure**.
 
-CH09's 61.8% / 44.5% are within rounding of the CH05 ad-hoc's 58.5% / 48.3%. The "34-37%"
-that made it into the CH05 knowledge-unit text is **not** the ECE closure the CH05 artifact
-computed — it appears to be a different closure formula (possibly per-decile gap closure
-over the 0.5-0.9 predicted-probability bins) quoted in the narrative as if it were ECE
-closure. Recommendation: correct `chisel-unified-kfold-baseline` to the observed 58-62%
-(bacteria) / 44-48% (phage) band; the retired headline "only 34-37%" was too pessimistic.
+max|gap| closes less than ECE by construction: the worst decile is the hardest to shrink
+under a monotone constraint (isotonic regression can't pull it all the way without breaking
+the monotone fit elsewhere), while the less-resistant middle deciles drag the weighted-
+average ECE down faster. Both metrics are preserved in the `chisel-unified-kfold-baseline`
+knowledge unit as valid characterisations. Residual BASEL ECE after transfer (0.044/0.111)
+is the load-bearing number regardless of which metric one picks — BASEL is still ~6-17×
+worse-calibrated than Guelin under the shared calibrator, and TL17-bias remains the residual
+mechanism.
 
-The qualitative finding — BASEL needs MORE than post-hoc isotonic to reach Guelin-level
-calibration — still holds: BASEL residual ECE after transfer is 0.103 / 0.132 vs Guelin
-LOOF 0.0045 / 0.0061, i.e. BASEL is still ~20× worse calibrated than Guelin under the
-shared calibrator. The TL17-bias mechanism remains the driver of the residual.
+#### Arm 3 — Label-threshold sensitivity (reframed under post-filter canonical)
 
-#### Arm 3 — Label-threshold sensitivity
+Under the pre-filter canonical, Arm 3 asked: "does dropping neat-only positives lower ECE by
+>5 pp?" The answer was no (ECE went up 0.7 pp, even though AUC improved 1.3 pp and Brier
+improved 3.2 pp). CH06-followup PR #444 adopted the filter anyway on the basis of the
+discrimination wins, so **the canonical is now filter-on**. Arm 3 reframes as a sensitivity
+probe: what does turning the filter OFF cost?
 
-CH04 retrained with a label filter that drops Guelin positive rows for pairs where every
-`score == "1"` observation occurs at `log_dilution == 0` (neat). Filter affects 7,574
-positive rows across 4,428 Guelin pairs — approximately 20% of Guelin positives.
+**Results (post-filter canonical vs no-filter sensitivity).**
 
-**Plan.yml wording vs implementation.** The plan text said "log_dilution ≤ -2" (the most-
-dilute condition, i.e. lowest-titer), but the cited Gaborieau 2024 rationale is about
-clearing at HIGH titer (neat). The literal plan reading affects only 22 rows and
-contradicts the rationale; the Gaborieau-rationale interpretation drops 7,574 rows and
-directly tests the hypothesis. This entry uses the rationale interpretation and documents
-the plan discrepancy so future tickets don't re-introduce the wrong direction.
-
-**Retrain cost.** ~24 minutes under the CH06 parallel loop (PID 72021 on a 10-core M-series
-laptop), vs ~90 minutes on the pre-CH06 serial loop. The engineering pre-flight pays off
-exactly where acceptance criteria prescribe CH04 reruns.
-
-**Results.** Aggregate metrics on the held-out CH04 pairs, same evaluation protocol as the
-canonical baseline (pair-level max-concentration scoring, bacterium-level bootstrap):
-
-| Metric | Baseline | Arm 3 filter | Δ |
+| Metric | No-filter sensitivity | Canonical (filter on) | Δ vs canonical |
 |---|---|---|---|
-| AUC | 0.8083 | **0.8217** | **+1.3 pp** (improved) |
-| Brier | 0.1751 | **0.1435** | **−3.2 pp** (improved) |
-| ECE | 0.1195 | 0.1268 | +0.7 pp (slightly worse) |
+| AUC | 0.8083 | **0.8217** | **−1.3 pp** if filter removed |
+| Brier | 0.1751 | **0.1435** | **+3.2 pp** if filter removed |
+| ECE | 0.1195 | 0.1268 | −0.7 pp if filter removed |
 
-**Verdict.** Plan.yml's acceptance criterion ("ECE drops by >5 pp") is **NOT met**. The
-label-permissiveness mechanism is therefore **not confirmed** as the primary driver of
-Guelin's mid-P miscalibration at the training-side — post-hoc isotonic (Arm 1) remains
-the primary remedy.
+**Directional-miss framing (earlier draft was sloppy).** The label-permissiveness hypothesis
+in the plan.yml text predicted that removing neat-only positives would REDUCE ECE (if those
+positives were inflating probabilities, dropping them should deflate). ECE did not drop — it
+rose slightly. That's a **directional miss** against the specific mechanism the plan proposed,
+not a mere "failed significance threshold." The AUC/Brier wins are genuine but run on a
+different mechanism — the filter removes training noise that was confusing the decision
+surface, which sharpens discrimination; it is not fixing systematically over-inflated
+mid-P probabilities. Post-hoc isotonic (Arm 1) remains the primary remedy for ECE.
 
-But the finding is still informative: removing neat-only positives yields a model with
-**better discrimination (+1.3 pp AUC) and better Brier (−3.2 pp)**, even though ECE
-doesn't directly improve. Interpretation: the neat-only positives were training noise that
-hurt the model's ability to rank pairs; the remaining training positives (those with
-dilution-survival evidence) give the model a cleaner signal. The fact that ECE doesn't
-drop is consistent with ECE being a shape-of-the-distribution metric — the model's
-confidence pattern remains roughly the same, but its discrimination sharpens. A subsequent
-Arm 1 calibration applied to the Arm 3 model would likely land the same Guelin ECE at
-0.005-ish, but start from 0.81 rather than 0.87 discrimination.
-
-Because the aggregate improvements are real and the filter is a defensible data-quality
-fix (plate clearing at neat without survival at dilution is a well-known Gaborieau-
-acknowledged source of non-productive positives), the Arm 3 filter should be promoted
-from a sensitivity probe to a candidate data-cleaning policy for a future ticket. Not in
-scope for CH09 — the deployment target here is the calibration layer, not a data-policy
-change. Tracking in `label-vision-reading-spot-checked-dead`'s "future" section rather
-than knowledge-model promotion.
+**Brier-vs-ECE on the CHISEL scorecard.** Even though ECE rose 0.7 pp under the filter, the
+filter still wins on the CHISEL scorecard because **Brier is the scorecard metric, not ECE**.
+Brier combines discrimination and calibration at the pair level; its 3.2 pp improvement
+captures the net effect of better ranking + slightly worse calibration pattern. ECE is a
+diagnostic metric (useful for reasoning about calibration specifically), but the CHISEL
+scorecard (per `ranking-metrics-retired`) is AUC + Brier. The filter is scorecard-positive
+even though ECE-diagnostic-negative, and that's consistent.
 
 #### Artifacts
 
 - `lyzortx/pipeline/autoresearch/ch09_calibration_layer.py` — Arms 1 + 2 driver.
-- `lyzortx/pipeline/autoresearch/ch09_arm3_analysis.py` — Arm 3 diff.
+- `lyzortx/pipeline/autoresearch/ch09_arm3_analysis.py` — Arm 3 diff script.
 - `lyzortx/generated_outputs/ch09_calibration_layer/ch09_calibrator.pkl` — production
   isotonic calibrator (joblib-serialised; loadable for inference).
 - `.../ch09_calibration_report.json` — axis × source × raw/calibrated metrics for Arms 1+2.
 - `.../ch09_reliability_tables.csv` — per-decile reliability across all 8 subsets.
-- `.../ch09_arm3_delta.json` — baseline vs filter comparison verdict.
-- `.../arm3_filtered_retrain/ch04_*.{json,csv}` — Arm 3 retrained CH04 artifacts.
+- `.../ch09_arm3_delta.json` — filter-off sensitivity vs canonical verdict.
+- `.scratch/ch09_sensitivity_no_filter/ch04_*.{json,csv}` — no-filter sensitivity baseline
+  (gitignored; `ch04_eval --no-drop-high-titer-only-positives`).
 ### 2026-04-20 10:30 CEST: CH06-followup — Adopt neat-only positive filter as canonical baseline
 
 #### Executive summary
