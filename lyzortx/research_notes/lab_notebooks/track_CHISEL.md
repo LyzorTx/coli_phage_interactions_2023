@@ -1307,6 +1307,17 @@ Arm 4 (tail-restricted TL17) runs next for completeness. Under the Arm 3 win, Ar
 expected-null-or-wash carries less weight: even if Arm 4 works, Arm 3 is the simpler,
 source-panel-independent solution.
 
+#### Artifacts
+
+- `lyzortx/pipeline/autoresearch/ch06_arm3_moriniere_receptor.py` — precompute + eval driver.
+- `.scratch/basel/feature_slots_arm3/phage_projection/features.csv` — Arm 3 slot
+  (148 × 14 columns: phage + 13 receptor-fraction).
+- `lyzortx/generated_outputs/ch06_arm3_moriniere_receptor/ch06_arm3_metrics.json` — final
+  aggregate AUC/Brier with CIs.
+- `.../ch06_arm3_{bacteria,phage}_axis_predictions.csv` — per-pair predictions.
+- `.../ch06_arm3_cross_source_breakdown.csv` — phage-axis cross-source.
+- `.../ch06_arm3_variance_preflight.json` — pre-flight subset breakdown.
+
 ### 2026-04-20 17:01 CEST: CH06 Arm 4 — tail-restricted TL17 BLAST (null — CH06 closes)
 
 #### Executive summary
@@ -1417,14 +1428,3 @@ similarity (AX08 null). The aggregation level is the mechanism.
   `.../ch06_arm4_{bacteria,phage}_axis_predictions.csv` +
   `.../ch06_arm4_cross_source_breakdown.csv` +
   `.../ch06_arm4_variance_preflight.json`.
-
-#### Artifacts
-
-- `lyzortx/pipeline/autoresearch/ch06_arm3_moriniere_receptor.py` — precompute + eval driver.
-- `.scratch/basel/feature_slots_arm3/phage_projection/features.csv` — Arm 3 slot
-  (148 × 14 columns: phage + 13 receptor-fraction).
-- `lyzortx/generated_outputs/ch06_arm3_moriniere_receptor/ch06_arm3_metrics.json` — final
-  aggregate AUC/Brier with CIs.
-- `.../ch06_arm3_{bacteria,phage}_axis_predictions.csv` — per-pair predictions.
-- `.../ch06_arm3_cross_source_breakdown.csv` — phage-axis cross-source.
-- `.../ch06_arm3_variance_preflight.json` — pre-flight subset breakdown.
