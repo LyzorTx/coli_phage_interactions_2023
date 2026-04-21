@@ -321,7 +321,7 @@ Architecture choices, calibration, and performance bounds.
   ECE 0.111, BASEL ECE 0.188**. Two separable root-cause mechanisms, each diagnostically distinct: **(A) Guelin mid-P
   miscalibration = training-label-vs-deployment-question mismatch, post-hoc fixable**. Leave-one-fold-out isotonic
   regression on Guelin predictions closes Guelin ECE to **0.0057 bacteria-axis / 0.0052 phage-axis** (~95% ECE closure),
-  AUC preserved within 0.5 pp. The raw reliability shape is specifically: deciles 6-9 overpredict lysis by 19-30 pp on
+  AUC preserved within 0.5 pp. The raw reliability shape is specifically: deciles 6-9 overpredict lysis by 18-31 pp on
   >10k rows combined — the model is systematically overconfident in the upper-P bins, which is what isotonic regression
   exists to fix. The training label is more permissive than the deployment target; Gaborieau 2024 Methods admits
   clearing at high titer can be non-productive — CH10 rejected the training-side filter remedy (see chisel-baseline),
@@ -413,7 +413,7 @@ Architecture choices, calibration, and performance bounds.
     comfortable margin on Guelin and is the load-bearing calibration guarantee for Guelin deployment. BASEL transfer is
     a diagnostic secondary output — the 44.6%-64.3% closure confirms the calibrator is NOT sufficient alone for
     cross-panel use, and CH13's Arm 3 canonical-slot migration is the next lever. Reliability shape under raw Guelin
-    predictions: model overpredicts lysis by 19-30 pp in deciles 6-9 (upper-P bins), which is what the isotonic layer
+    predictions: model overpredicts lysis by 18-31 pp in deciles 6-9 (upper-P bins), which is what the isotonic layer
     specifically targets. Canonical artifacts:
     lyzortx/generated_outputs/ch09_calibration_layer/{ch09_calibration_report.json, ch09_calibrator.pkl,
     ch09_reliability_tables.csv}. Sensitivity-column artifacts (post-filter, deprecated): same filenames under

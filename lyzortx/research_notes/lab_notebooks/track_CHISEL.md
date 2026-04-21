@@ -2123,7 +2123,7 @@ LOOF-calibrated ECE and is the TL17-bias panel-mismatch signal that CH13
 
 **Reliability shape under raw CH11 Guelin predictions** (per reviewer finding #1 —
 name the shape, don't hide behind aggregate Brier): deciles 6-9 systematically
-overpredict lysis by 19-30 pp on >10k rows combined (weighted by bin population).
+overpredict lysis by 18-31 pp on >10k rows combined (weighted by bin population).
 This upper-P overconfidence is what the isotonic layer specifically targets — and
 the ECE 0.122 → 0.0057 closure is direct evidence it works. The underlying cause is
 Gaborieau 2024's own Methods caveat: clearing at high titer can be non-productive,
