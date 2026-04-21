@@ -139,39 +139,38 @@ And what surprised us on re-audit:
 
 ## Open follow-ups
 
-Each is a concrete, schedulable item — not a vague aspiration.
+Each is a concrete, schedulable item — not a vague aspiration. (All CH10-CH13
+scope complete; CH13 close-out is in the headline narrative above, not here.)
 
-1. ~~**CH13 — Arm 3 canonical migration.**~~ **DONE (2026-04-21).** Arm 3 migrated to
-   canonical `phage_projection` slot in both the autoresearch Guelin-only cache and the
-   unified-panel slot root; TL17 BLAST families retired to `_tl17/` sensitivity
-   fallbacks. CH04 rerun: 0.8083 → 0.8094 (Guelin-only, at-parity). CH08 SX12 rerun:
-   +0.58 pp CH13 vs +0.72 pp CH12 (Arm 3 subsumes ~19% of the kmer signal, the rest is
-   incremental). CH05/CH07/CH09 reproduce bit-for-bit under the new default (they were
-   already using Arm 3 via override). Knowledge units `chisel-baseline`,
-   `chisel-unified-kfold-baseline`, `moriniere-receptor-fractions-validated`,
-   `kmer-receptor-expansion-neutral`, `host-omp-variation-unpredictive` all updated.
-2. **Slot registry allowlist hoist.** `ch04_parallel.FEATURE_COLUMN_PREFIXES` is a
+1. **Slot registry allowlist hoist.** `ch04_parallel.FEATURE_COLUMN_PREFIXES` is a
    hardcoded allowlist; a slot attached without its prefix registered is silently dropped
    from model features (caught during CH08). Move the prefix declaration into the slot
    artifact itself so attaching auto-registers.
-3. **CH08 top-K variance ablation.** Re-run SX12 at K ∈ {50, 200, 400} to check whether
-   the +1.16 pp signal is K-stable. If K-sensitive, demote the claim.
-4. **SX13 phylogroup-confound check.** Permute OMP kmer values within phylogroup and
-   re-run SX13; if the +0.17 pp survives, the effect is OMP-specific; if it vanishes, it
-   is lineage-confounded noise.
-5. **BASEL bacteria-axis deficit (10 pp, not closed).** CH06 Arm 3 rescues zero-vec BASEL
-   phages (+4.36 pp on phage-axis for n=13) but leaves a 10-pp BASEL bacteria-axis
-   deficit on the full panel. Root cause analysis pointed at TL17-bias on the non-zero-
-   projection BASEL phages; Arm 3's slot partially addresses it but doesn't close the
-   gap. Panel expansion remains the dominant lever (see `panel-size-ceiling`).
+2. **CH08 top-K variance ablation.** Re-run SX12 at K ∈ {50, 200, 400} to check whether
+   the +0.58 pp CH13 Arm-3-canonical lift is K-stable. If K-sensitive, demote the claim.
+3. **SX13 Brier-only signal under Arm 3 — lineage-confound check.** CH13 surfaced a
+   Guelin bact-axis ΔBrier −0.09 pp (CI [−0.15, −0.02], disjoint below zero) with AUC
+   null. Permute host-OMP kmer values within phylogroup and re-run SX13; if the Brier
+   signal survives, it is OMP-specific; if it vanishes, it is lineage-confounded.
+4. **Bootstrap `ar02_schema_manifest_v1.json` into `prepare.py`.** CH13's Arm 3 slot
+   migration currently lives in `ad_hoc_analysis_code/ch13_arm3_migration/` and rewrites
+   the top-level cache schema after the fact. Rewire `prepare.py` to emit Arm 3 as the
+   default `phage_projection` slot so fresh clones don't need the two-step bootstrap.
+5. **BASEL bacteria-axis deficit (7.1 pp residual under Arm 3 canonical).** CH11
+   narrowed the deficit from 10.2 pp (post-filter TL17) to 7.1 pp (pre-filter Arm 3).
+   The residual is TL17-bias-free by construction, so the remaining gap is
+   panel-mismatch in the host feature encoding or in the 39 non-zero-projection BASEL
+   phages. Panel expansion (new Guelin-like spot-test data) is the dominant lever —
+   see `panel-size-ceiling`.
 6. **Cell-level parallelism for CH07.** 100-cell both-axis CV took ~4 h; a 3-4×
    speedup is available if `fit_seeds` is refactored to run multiple cells in parallel
    with memory budgeting. Not blocking but useful for future cheap both-axis re-runs.
-7. **Reliability-diagram calibration miss in CH07 high-P deciles** (raised in reviewer
-   self-review of PR #450): calibration deteriorates −13 to −43 pp in top-5 deciles even
-   under Arm 3. Already covered by `chisel-unified-kfold-baseline`'s existing calibration
-   divergence language + CH09 isotonic layer, but worth a focused diagnostic if a future
-   track needs production calibration on both-axis.
+7. **Reliability diagnostic at top P deciles.** Raw CH04 predictions overpredict lysis
+   by 18-31 pp at predicted-probability deciles 6-9 (ECE 0.122, max|gap| 0.317) — this
+   shape is approximately unchanged across TL17 and Arm 3 baselines and is the reason
+   CH09 isotonic is load-bearing before any deployment decision. A focused diagnostic
+   (per-bacterium reliability trace, per-Straboviridae trace) would help localise
+   whether the upper-P bucket is dominated by a specific failure mode.
 
 ## Artifact pointers
 
@@ -179,8 +178,9 @@ Canonical generated-outputs directories (under `lyzortx/generated_outputs/`):
 
 + `ch02_cv_group_fix/` — CV fold-hashing fix + SX10 revalidation.
 + `ch03_row_expansion/` — per-row training matrix + any_lysis regression check.
-+ `ch04_chisel_baseline/ch04_aggregate_metrics.json` — CH10 pre-filter canonical,
-  bacteria-axis AUC 0.8083 [0.7943, 0.8216].
++ `ch04_chisel_baseline/ch04_aggregate_metrics.json` — CH13 Arm 3 canonical,
+  bacteria-axis AUC 0.8094 [0.7956, 0.8226]. Pre-CH13 TL17 canonical preserved at
+  `ch04_chisel_baseline_tl17/`.
 + `ch05_unified_kfold/ch05_combined_summary.json` — unified Guelin+BASEL two-axis
   baseline.
 + `ch06_arm1_ood_shrinkage/`, `ch06_arm2_mmseqs_proteome/`,
