@@ -1411,8 +1411,8 @@ similarity (AX08 null). The aggregation level is the mechanism.
 1. **Wire Arm 3 into the canonical `phage_projection` slot** — currently Arm 3 is a
    side-materialized artifact at `.scratch/basel/feature_slots_arm3/`; canonical CH05 /
    CH07 / CH08 / CH09 pipelines still read baseline TL17. A separate migration ticket
-   (CH10?) should make Arm 3 the default, re-run CH05 / CH07 / CH08 / CH09 under the
-   new slot, and update their baseline numbers.
+   (planned as CH13 in plan.yml) should make Arm 3 the default, re-run CH05 / CH07 /
+   CH08 / CH09 under the new slot, and update their baseline numbers.
 2. **Arm 2 composition with TL17** — identified as valid follow-up during Arm 3 review
    (keep TL17 where available, add Arm 2 PCA for zero-vec phages). Under Arm 3's clean
    win this is unnecessary but could be revisited if Arm 3's canonical migration

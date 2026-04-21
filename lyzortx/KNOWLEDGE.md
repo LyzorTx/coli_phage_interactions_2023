@@ -168,10 +168,11 @@ What works, what doesn't, leakage risks, and encoding decisions.
     (n=39) also improve (+2.54 pp bact-axis, +0.54 pp phage-axis), so there is no zero-vs-non-zero trade-off — Arm 3
     strictly dominates baseline TL17 on the BASEL side. **Canonical migration is deferred**: Arm 3 is currently a
     side-materialized slot at `.scratch/basel/feature_slots_arm3/phage_projection/features.csv`; CH05 / CH07 / CH08 /
-    CH09 pipelines still read baseline TL17. A follow-up ticket (CH10) should make Arm 3 the default slot and re-run
-    those pipelines. Supersedes the "panel-independent phage features are the remaining lever" open question in
-    `chisel-unified-kfold-baseline` (the lever exists; now the question is migration cost + downstream calibration
-    effects). Canonical artifacts: lyzortx/generated_outputs/ch06_arm3_moriniere_receptor/ch06_arm3_metrics.json,
+    CH09 pipelines still read baseline TL17. A follow-up ticket (CH13 in plan.yml post the CH10-12 filter-revert
+    insertion) should make Arm 3 the default slot and re-run those pipelines. Supersedes the "panel-independent phage
+    features are the remaining lever" open question in `chisel-unified-kfold-baseline` (the lever exists; now the
+    question is migration cost + downstream calibration effects). Canonical artifacts:
+    lyzortx/generated_outputs/ch06_arm3_moriniere_receptor/ch06_arm3_metrics.json,
     ch06_arm3_{bacteria,phage}_axis_predictions.csv, ch06_arm3_cross_source_breakdown.csv,
     ch06_arm3_variance_preflight.json, and the slot file
     .scratch/basel/feature_slots_arm3/phage_projection/features.csv.*
