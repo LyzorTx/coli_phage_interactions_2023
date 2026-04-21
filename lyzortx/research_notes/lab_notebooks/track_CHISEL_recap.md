@@ -61,7 +61,7 @@ Against the SPANDEX starting point:
   13/52 BASEL phages) → Moriniere per-receptor k-mer fractions (CH06 Arm 3,
   panel-independent 13-dim, BASEL zero-vec phage-axis +4.36 pp; see
   `moriniere-receptor-fractions-validated`). Canonical migration deferred to the
-  follow-up CH10 slot (currently a side-materialized artifact at
+  follow-up CH13 ticket (currently a side-materialized artifact at
   `.scratch/basel/feature_slots_arm3/`).
 - **Both-axis cold-start**: never previously measured → CH07 reports 0.7749 on 100 cells
   with pair-level bootstrap.
@@ -113,7 +113,7 @@ And what surprised us on re-audit:
 
 Each is a concrete, schedulable item — not a vague aspiration.
 
-1. **CH10 (pending) — Arm 3 canonical migration.** Wire
+1. **CH13 (pending) — Arm 3 canonical migration.** Wire
    `.scratch/basel/feature_slots_arm3/phage_projection/features.csv` into the canonical
    `phage_projection` slot, retire the Guelin-derived TL17 artifact, and re-run CH04 /
    CH05 / CH07 / CH08 / CH09 under the new slot. Baselines should shift slightly; knowledge
