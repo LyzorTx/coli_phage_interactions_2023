@@ -85,10 +85,17 @@ re-litigate):
   BASEL closes 79.5% of bacteria-axis ECE and 53.2% of phage-axis ECE, but residual BASEL
   ECE 0.044/0.111 is 6-17× Guelin's calibrated ECE — TL17-bias is a feature-level
   problem, not a threshold-level one.
-- **CH09 Arm 3 (label-threshold sensitivity)**: directional miss. Dropping Guelin
-  neat-only positives gives +1.3 pp AUC, −3.2 pp Brier, but +0.7 pp ECE (not a
-  calibration fix). Adopted as canonical anyway on discrimination wins (see
-  `chisel-baseline` post-filter).
+- **CH09 Arm 3 (label-threshold sensitivity)**: directional miss + label-shift artifact.
+  Dropping Guelin neat-only positives gives headline +1.3 pp AUC, −3.2 pp Brier, +0.7 pp
+  ECE — but a 2026-04-21 post-hoc decomposition found the filter also flips 4,428 pair
+  eval labels 1→0 (12.6% of eval set), because evaluation pulls the label from the
+  pair's max-concentration observation and the removed neat-only positive leaves a 0
+  replicate standing. On matched (pre-filter) labels the filter-trained model has
+  −1.47 pp AUC (regression) but −0.98 pp Brier (genuine improvement survives).
+  Adopted as canonical on Gaborieau-2024 label-policy grounds (neat-only positives
+  are candidate-non-productive) plus the Brier-on-matched-labels gain, NOT on
+  discrimination. See `chisel-baseline` knowledge unit for the 2×2 decomposition and
+  the corrected framing.
 
 And what surprised us on re-audit:
 

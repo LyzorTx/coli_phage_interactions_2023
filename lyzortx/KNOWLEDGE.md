@@ -210,17 +210,33 @@ Architecture choices, calibration, and performance bounds.
     removing the bacterium-level memorization head that contributed to CH02's AUC under the bacteria-axis setup. The
     CH06-followup filter adoption is the fourth adjustment: CH09 Arm 3 showed that dropping Guelin positives occurring
     only at neat (the "clearing at high titer, possibly non-productive" candidate per Gaborieau 2024) yields a cleaner
-    discrimination surface. The improvement is discrimination-only (AUC/Brier); ECE did NOT drop under the filter (+0.7
-    pp), consistent with the filter sharpening the decision surface rather than removing systematically over-inflated
-    predictions — see CH09 notebook entry for the directional-miss analysis. Diagnostic decomposition (CH02 → CH04
-    pre-filter): evaluation label distribution was nearly unchanged (27.4% positive at max-conc vs 27.6% pair-level
-    any_lysis — ~47 pair labels flip), so the drop was training-side, not evaluation-side. Concentration feature is the
-    #4 ranked feature by mean LightGBM importance (280.5 under the post-filter canonical, 328.7 pre-filter), retained by
-    RFE in all 30 fold × seed fits. Subsequent CHISEL tickets (CH05 phage-axis, CH07 both-axis, CH08 feature re-audit,
-    CH09 calibration layer) all anchor to the post-filter canonical. The filter default can be reversed via
-    `--no-drop-high-titer-only-positives` for sensitivity analysis. Canonical artifacts:
-    lyzortx/generated_outputs/ch04_chisel_baseline/ch04_aggregate_metrics.json, ch04_predictions.csv (pair-level),
-    ch04_per_row_predictions.csv (per-row), and ch04_feature_importance.csv.*
+    discrimination surface. **The headline +1.3 pp AUC / −3.2 pp Brier vs pre-filter is NOT a pure model-quality gain**
+    — a 2026-04-21 post-hoc case-by-case decomposition (`.scratch/chisel_review/caseXcase_chisel.py`) shows that the
+    filter flips 4,428 pair eval labels 1→0 (12.6% of the 35,266-pair eval set). Mechanism: evaluation takes the label
+    from the pair's max-concentration observation; the filter removes the neat-only positive replicate in Guelin
+    training data and the same removal leaves a 0 replicate standing at eval time, so the pair appears as a trivial
+    negative instead of a narrow positive. The 2×2 decomposition on matched pairs: (prior model / prior labels) = 0.8084
+    AUC / 0.1750 Brier (headline); (prior model / canonical labels) = 0.8244 / 0.1916 (label-shift alone: +1.60 pp AUC
+    trivialization); (canonical model / prior labels) = 0.7937 / 0.1652 (model alone: **−1.47 pp AUC regression, −0.98
+    pp Brier improvement**); (canonical model / canonical labels) = 0.8217 / 0.1435 (file headline). On matched labels,
+    the filter-trained model has LOWER discrimination than the pre-filter model; the headline AUC gain is entirely a
+    population-easier artifact. Brier gain partially survives the decomposition (−0.98 pp genuine) because removing
+    neat-only positives from training makes the model predict lower probability on those pairs, which is correct once
+    the eval label flips to 0. ECE did NOT drop under the filter (+0.7 pp), consistent with the filter sharpening the
+    decision surface on the remaining (non-neat-only) positives rather than removing systematically over-inflated
+    predictions — see CH09 notebook entry for the directional-miss analysis. The filter adoption is still justified
+    (Gaborieau 2024 Methods explicitly admits clearing at high titer can be non-productive — we're correcting a
+    label-policy defect, not a model defect; and the −0.98 pp Brier improvement survives decomposition) but future
+    CHISEL comparisons must disclose this label-shift explicitly and cite the on-matched-labels AUC (0.7937 vs 0.8084)
+    when making model-quality claims. The (CH02 → CH04 pre-filter) diagnostic decomposition was done on the pre-filter
+    labels where evaluation distribution was nearly unchanged (27.4% positive at max-conc vs 27.6% pair-level any_lysis
+    — ~47 pair labels flip from the per-row vs any_lysis training-unit change alone), so the CH02 → CH04 pre-filter ΔAUC
+    is still a training-side signal. Concentration feature is the #4 ranked feature by mean LightGBM importance (280.5
+    under the post-filter canonical, 328.7 pre-filter), retained by RFE in all 30 fold × seed fits. Subsequent CHISEL
+    tickets (CH05 phage-axis, CH07 both-axis, CH08 feature re-audit, CH09 calibration layer) all anchor to the
+    post-filter canonical. The filter default can be reversed via `--no-drop-high-titer-only-positives` for sensitivity
+    analysis. Canonical artifacts: lyzortx/generated_outputs/ch04_chisel_baseline/ch04_aggregate_metrics.json,
+    ch04_predictions.csv (pair-level), ch04_per_row_predictions.csv (per-row), and ch04_feature_importance.csv.*
 - **`spandex-final-baseline`**: HISTORICAL (SPANDEX-era). Superseded as the active canonical by chisel-baseline (CH04).
   SPANDEX final configuration — GT03 all_gates_rfe + AX02 per-phage blending on SX05-corrected MLC 0-3 labels, 10-fold
   CV bacteria-axis on the 369×96 panel: **AUC 0.8699 [0.8570, 0.8819], Brier 0.1248 [0.1187, 0.1309]** within-panel,
