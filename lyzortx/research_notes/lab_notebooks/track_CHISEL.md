@@ -2170,3 +2170,105 @@ pipeline is panel-independent).
   `lyzortx/generated_outputs/ch09_calibration_layer_post_filter/` — preserved
   post-filter (deprecated) artifacts for sensitivity comparison.
 - `.scratch/ch11_logs/ch05_rerun.log` — local CH05 run log.
+
+### 2026-04-21 20:53 CEST: CH12 — CH08 SX12/SX13 wave-2 re-audit under reverted pre-filter canonical
+
+#### Executive summary
+
+Re-ran `ch08_wave2_reaudit` with the CH10-reverted default
+(`drop_high_titer_only_positives=False`) and the pre-filter CH04 canonical (AUC
+0.8083) as the paired-bootstrap baseline reference. Two decisions:
+**SX12 reopened** (Moriniere 815-kmer phage-side slot lifts AUC by +0.72 pp,
+CI [+0.36, +1.05] — disjoint from zero, invalidates the SPANDEX-era
+"kmer-receptor-expansion-neutral" dead-end under CHISEL per-row training);
+**SX13 confirmed null** (host-OMP k-mer slot lifts AUC by +0.02 pp,
+CI [−0.13, +0.17] — CI spans zero, tightens the SPANDEX SX13 null under the
+CHISEL training unit).
+
+#### Changes
+
+- **CH08 rerun**: `python -m lyzortx.pipeline.autoresearch.ch08_wave2_reaudit`
+  with the (already CH10-flipped) `drop_high_titer_only_positives=False`
+  default. No code changes — the flag flip lives in the merged CH10 PR and
+  CH08's code paths consume it directly.
+- **Artifact swap**: `ch08_wave2_reaudit/` → `ch08_wave2_reaudit_post_filter/`
+  before the rerun; new pre-filter artifacts land at the canonical path.
+- **Knowledge model**:
+  `kmer-receptor-expansion-neutral` REOPENED (status dead-end → active;
+  statement + context rewritten to separate the SPANDEX failure mode from the
+  CHISEL re-audit findings; sources amended to include CH08/CH12).
+  `host-omp-variation-unpredictive` context amended with the CH08/CH12
+  pre-filter re-audit numbers; status remains dead-end (null confirmed).
+
+#### Results
+
+**CH12 re-audit deltas** (paired bacterium-level bootstrap, 1000 resamples,
+35,266 shared pairs, pre-filter CH04 canonical baseline):
+
+| Arm | Slot | Variant AUC | Δ AUC | 95% CI | Δ Brier | Δ Brier CI | Verdict |
+|---|---|---|---|---|---|---|---|
+| baseline | — | 0.8083 | — | — | — | — | reference |
+| **SX12** | phage_moriniere_kmer | 0.8154 | **+0.0072** | [+0.0036, +0.0105] | −0.00051 | [−0.0028, +0.0017] | **disjoint from zero; reopen** |
+| SX13 | host_omp_kmer | 0.8085 | +0.00018 | [−0.0013, +0.0017] | −0.00007 | [−0.0009, +0.0008] | null |
+
+**Post-filter sensitivity column** (CH08 original merged numbers, now at
+`ch08_wave2_reaudit_post_filter/`): SX12 +0.0116 AUC [+0.0072, +0.0155],
+SX13 +0.00173 AUC [+0.00049, +0.00303]. Pre-filter vs post-filter delta
+deltas: SX12 −0.0044 AUC (filter had been inflating the k-mer lift),
+SX13 −0.00156 AUC (filter had been making the null look marginally
+positive).
+
+**n_common_pairs**: 35,266 on both arms, matching CH04's `n_pairs_evaluated`
+(8,675 score='n' rows dropped as missing).
+
+**Elapsed**: 3,570 s (59.5 min).
+
+#### Interpretation
+
+- **SX12 reopen is the headline decision.** The SPANDEX-era SX12 null
+  (+0.23 pp, CIs overlap) was measured with pair-level `any_lysis` labels and
+  nDCG scoring on the MLC-graded frame. Under CHISEL per-row binary training
+  with concentration as a feature and AUC+Brier scoring, the same phage-side
+  k-mer slot delivers +0.72 pp AUC with disjoint-from-zero CI. The redundancy
+  argument from the original unit (k-mers overlap phage_projection TL17) is
+  partial rather than full under per-row training: with 9 rows per
+  (bacterium, phage) pair at different concentrations, the additional
+  k-mer presence signal adds discrimination that was invisible when the
+  rollup collapsed replicates. RFE still keeps only ~95/815 k-mers at ~5%
+  importance, so effect size is small but robust.
+- **Post-filter had been overselling.** Under CH08's original merged post-filter
+  frame, SX12 delta was +1.16 pp — the CH12 pre-filter re-audit shows
+  ~38% of that lift was label-shift artifact from the CH06-followup filter.
+  The remaining +0.72 pp is the honest CHISEL SX12 signal. This is a second
+  example (alongside the BASEL improvement in CH11) of the pre-filter
+  frame revealing that the merged post-filter numbers were inflated by
+  label-population trivialization.
+- **SX13 null is real.** +0.02 pp with CI spanning zero is the definitive
+  dismissal of host-OMP k-mer features under CHISEL — even tighter than
+  the post-filter +0.17 pp null. `host-omp-variation-unpredictive` remains
+  dead-end; the refinement noted in the original unit (host-range variance
+  lives downstream of OMP recognition) stands.
+- **CH13 implication.** SX12's survival under pre-filter means the Arm 3
+  per-receptor-fraction slot (CH06 validation) and the 815-kmer slot may
+  have partially overlapping signal. CH13's canonical migration should
+  benchmark (a) Arm 3 alone, (b) Arm 3 + 815-kmer, (c) 815-kmer alone vs
+  baseline TL17 to establish whether the two coexist or Arm 3 subsumes the
+  k-mer lift.
+
+#### Next steps
+
+- **CH12 remaining:** open PR closing #458; self-review via `review-ml-pr`
+  subagent; merge. Orchestrator ticks → CH13 dispatched.
+- **CH13:** canonical Arm 3 `phage_projection` migration + rerun CH04/CH05/
+  CH07/CH08/CH09 under the new slot. Scope includes benchmark of Arm 3 vs
+  Arm 3 + 815-kmer coexistence per CH12 SX12 reopen.
+
+#### Artifacts
+
+- `lyzortx/generated_outputs/ch08_wave2_reaudit/ch08_combined_summary.json`,
+  `ch08_summary.csv`, `ch08_sx12_delta.json`, `ch08_sx13_delta.json`,
+  `ch08_sx12_predictions.csv`, `ch08_sx13_predictions.csv` — pre-filter
+  CH12 canonical.
+- `lyzortx/generated_outputs/ch08_wave2_reaudit_post_filter/` — preserved
+  post-filter (deprecated) artifacts for sensitivity comparison.
+- `.scratch/ch12_logs/ch08_rerun.log` — local CH08 run log.

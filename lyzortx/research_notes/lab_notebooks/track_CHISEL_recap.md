@@ -14,7 +14,7 @@ one of its two root causes (phage-side TL17 bias) into a panel-independent featu
 
 **2026-04-21 CH11 rerun:** CH05 + CH09 isotonic refit completed under the reverted
 pre-filter canonical with the Arm 3 `phage_projection` slot override. Headline
-numbers below are now canonical; CH08 (CH12) is the last remaining rerun.
+numbers below are now canonical; all filter-revert reruns complete.
 
 Everything below is on the 369×96 Guelin panel (unified 148-phage panel for cross-
 source numbers). Canonical = per-row binary labels, `pair_concentration__log10_pfu_ml`
@@ -111,15 +111,20 @@ re-litigate):
 
 And what surprised us on re-audit:
 
-+ **CH08 SX12 (Moriniere 815 phage 5-mers, top-100 variance pre-filter)**: **non-null.**
-  +1.16 pp AUC [+0.82, +1.51] under CHISEL per-row training, disjoint CI. Reopens the
-  SPANDEX-era `kmer-receptor-expansion-neutral` null. Not a blocker for the Arm 3
-  migration — the two findings are complementary (Arm 3 = panel-independent aggregates;
-  SX12 kmers = raw-feature additive lift on Guelin).
-+ **CH08 SX13 (host OMP 5546 5-mers, top-100 variance pre-filter)**: barely-non-null.
-  +0.17 pp AUC [+0.03, +0.31]. Reopens `host-omp-variation-unpredictive` but the effect
-  is consistent with phylogroup-correlated lineage noise rather than OMP-specific
-  host-range signal.
++ **CH08 SX12 (Moriniere 815 phage 5-mers, top-100 variance pre-filter)**: **non-null,
+  re-audited under pre-filter canonical.** Post-filter (CH08 original) reported
+  +1.16 pp AUC [+0.82, +1.51]; CH12 pre-filter re-audit tightens to **+0.72 pp AUC
+  [+0.36, +1.05]** — still disjoint from zero but ~38% of the lift was
+  label-shift artifact from the CH06-followup filter. Reopens the SPANDEX-era
+  `kmer-receptor-expansion-neutral` null under CHISEL per-row training. Not a
+  blocker for the Arm 3 migration — the two findings are complementary (Arm 3 =
+  panel-independent aggregates; SX12 kmers = raw-feature additive lift on Guelin).
++ **CH08 SX13 (host OMP 5546 5-mers, top-100 variance pre-filter)**: **null
+  confirmed** under CH12 pre-filter re-audit. Post-filter reported marginally-positive
+  +0.17 pp AUC [+0.03, +0.31]; pre-filter tightens to **+0.02 pp AUC [−0.13, +0.17]**,
+  CI now spans zero. The marginal post-filter signal was entirely filter-driven
+  label-shift — `host-omp-variation-unpredictive` remains dead-end under both
+  label frames.
 
 ## Open follow-ups
 
