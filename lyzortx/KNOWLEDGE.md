@@ -3,7 +3,7 @@
 <!-- Last consolidated: 2026-04-19T16:00:00+02:00 -->
 <!-- Source: lyzortx/research_notes/lab_notebooks -->
 
-**67 knowledge units** across 7 themes (48 active, 19 dead ends)
+**67 knowledge units** across 7 themes (49 active, 18 dead ends)
 
 ## Data & Labels
 
@@ -656,26 +656,46 @@ Compressed lessons from approaches that didn't work.
   (37,788/37,788 pairs match after name normalization). Our data is already in their framework. No new training pairs
   available from GenoPHI for existing phages. [validated; source: GT09; see also: genophi-benchmark,
   raw-interactions-authority]
-- **`kmer-receptor-expansion-neutral`**: Moriniere 2026's 815 receptor-predictive 5-mers fail to lift performance
-  regardless of encoding path: as intermediate-classifier features (GT06: AUC 0.824 vs 0.823, delta CI [-0.005, +0.005])
-  or as direct phage-side features (SX12: AUC 0.8722 vs 0.8699, delta +0.23 pp, CIs overlap). The Moriniere 815-kmer
-  approach is exhausted on this panel. [validated; source: GT06, SX12; see also: omp-score-homogeneity,
-  pairwise-cross-terms-dead-end, receptor-specificity-solved, plm-rbp-redundant, narrow-host-prior-collapse,
-  panel-size-ceiling]
-  - *Two failure modes overlap. (1) The k-mers were selected to discriminate receptor class on K-12 derivatives
-    (BW25113/BL21) which lack capsule/O-antigen — they predict what we already know (receptor identity), not what we
-    need (strain-level capsule penetration). (2) The k-mers are information-redundant with phage_projection (TL17 BLAST)
-    — both encode phage sequence similarity at different granularities. SX12 RFE keeps 95/815 k-mers (11.7%) but they
-    contribute ~5% of total importance vs 22% for depo×capsule; zero k-mers appear in the top-20 features. Per-bacterium
-    analysis: ~10 genuine wins (e.g., IAI78 +0.12 nDCG, ECOR-25 +0.17) exactly offset by ~10 genuine losses (e.g.,
-    ECOR-19 -0.36, EDL933 -0.24). NILS53 (the canonical narrow-host case) gains +0.011 nDCG — k-mers do not break
-    narrow-host prior collapse. Not a LightGBM shortcoming; a feature-redundancy + panel-size ceiling.*
+- **`kmer-receptor-expansion-neutral`**: **REOPENED under CHISEL (CH08 wave-2 re-audit, CH12 pre-filter re-anchoring).**
+  On the SPANDEX panel with pair-level `any_lysis` training the 815-kmer slot was neutral (SX12: AUC 0.8722 vs 0.8699,
+  delta +0.23 pp, CIs overlap). Under CHISEL per-row binary training with the pre-filter CH04 canonical as baseline, the
+  same phage-side k-mer slot now delivers **+0.72 pp AUC (CI [+0.36, +1.05])** with disjoint-from-zero CI on 35,266
+  shared pairs (CH08 SX12 variant arm, CH12 rerun 2026-04-21). The delta is smaller than the post-filter CH08
+  measurement (+1.16 pp, CI [+0.72, +1.55]) — so a slice of the earlier headline was label-shift from the deprecated
+  filter — but the pre-filter +0.72 pp signal survives with CI disjoint from zero, which invalidates the SPANDEX-era
+  "neutral" framing under the CHISEL training unit. GT06 (k-mers as intermediate-classifier features for directed
+  cross-terms) remains null per its own delta CI [-0.005, +0.005] — that failure mode is about the host-side OMP
+  homogeneity blocking the cross-term, not about the k-mers themselves. Brier is unchanged in both directions (CH08
+  pre-filter SX12 Brier delta −0.0005, CI [−0.0028, +0.0017]), which means the lift is pure discrimination (AUC) with no
+  calibration side-effect. Downstream: the "feature-redundancy + panel-size ceiling" framing for k-mers stands for GT06
+  directed use, but the phage-side direct-slot use is NOT neutral under per-row binary training. [validated; source:
+  GT06, SX12, CH08, 2026-04-20 wave-2 re-audit, CH12, 2026-04-21 pre-filter re-anchoring; see also:
+  omp-score-homogeneity, pairwise-cross-terms-dead-end, receptor-specificity-solved, plm-rbp-redundant,
+  narrow-host-prior-collapse, panel-size-ceiling, moriniere-receptor-fractions-validated, chisel-baseline]
+  - *Original SPANDEX-era failure modes (retained, context-dependent): (1) the k-mers were selected to discriminate
+    receptor class on K-12 derivatives (BW25113/BL21) which lack capsule/O-antigen, so they primarily predict receptor
+    identity rather than strain-level capsule penetration; (2) information redundancy with phage_projection (TL17
+    BLAST). Under CHISEL per-row binary training the redundancy is partial rather than full — with concentration as a
+    feature and score ∈ {0, 1} per replicate, the additional phage-receptor signal from 815-kmer presence adds
+    discriminative power that was invisible when the rollup collapsed replicates into any_lysis. RFE still keeps only
+    ~95/815 kmers at ~5% importance, so the effect size is real but small. CH12 pre-filter re-audit preserves the
+    directional finding: lift is +0.72 pp with CI disjoint from zero even after demoting the filter (which had been
+    inflating it to +1.16 pp under post-filter). This makes the k-mer slot a live candidate for canonical inclusion
+    alongside Arm 3 per-receptor-fractions — CH13 should evaluate whether Arm 3 alone subsumes the k-mer signal or
+    whether both should coexist. Canonical artifacts:
+    lyzortx/generated_outputs/ch08_wave2_reaudit/ch08_combined_summary.json, ch08_sx12_delta.json,
+    ch08_sx12_predictions.csv. Sensitivity-column artifacts under ch08_wave2_reaudit_post_filter/.*
 - **`host-omp-variation-unpredictive`**: Host-side OMP allelic variation is substantial (369 clinical E. coli span BTUB
   28 MMseqs2 99%-identity clusters, OMPC 49, 5546 retained 5-mers across 12 core OMPs) but does not predict lysis. Four
   arms tested in SX13 (k-mers marginal, k-mers × phage k-mers cross-term, cluster IDs, plus baseline) all land within
-  ±0.4 pp of SX10 on all metrics. [validated; source: SX13; see also: omp-score-homogeneity,
+  ±0.4 pp of SX10 on all metrics. **CONFIRMED null under CHISEL (CH08 wave-2 re-audit; CH12 pre-filter re-anchoring,
+  2026-04-21):** the host-OMP k-mer slot variant delivers ΔAUC +0.02 pp (CI [−0.13, +0.17]) and ΔBrier −0.007 pp (CI
+  [−0.09, +0.08]) on 35,266 shared pairs against the pre-filter CH04 baseline — both CIs span zero, both deltas are
+  sub-pp. The null survives under per-row binary training with concentration as a feature; OMP-variation-matters-for-
+  narrow-phages remains biologically plausible but undetectable in this panel. [validated; source: SX13, CH08,
+  2026-04-20 wave-2 re-audit, CH12, 2026-04-21 pre-filter re-anchoring; see also: omp-score-homogeneity,
   pairwise-cross-terms-dead-end, kmer-receptor-expansion-neutral, narrow-host-prior-collapse,
-  same-receptor-uncorrelated-hosts]
+  same-receptor-uncorrelated-hosts, chisel-baseline]
   - *Permutation test on cross_term aggregate delta: 73% of random prediction swaps are as extreme — signal
     indistinguishable from noise. Small directional signal in the marginal arm for moderate-narrow-host deciles (lysis
     5-11%, mean +1-2 pp nDCG across ~70 bacteria), biologically consistent with OMP-variation-matters-for-narrow-phages
@@ -684,7 +704,11 @@ Compressed lessons from approaches that didn't work.
     rescue. Top-3 hit rate moves from 92.2% to 93.3% under cross_term (+4 strains). The finding refines
     omp-score-homogeneity: HMM-score homogeneity was real, but escalating to finer representations doesn't rescue
     prediction — host-range variance lives downstream of OMP recognition (polysaccharide access, intracellular defenses,
-    co-evolutionary dynamics).*
+    co-evolutionary dynamics). CH08/CH12 re-audit upholds the null under the CHISEL per-row training unit and under both
+    label-frame variants: post-filter CH08 reported ΔAUC +0.17 pp with CI spanning zero, and pre-filter CH12 tightens to
+    +0.02 pp (even more definitively null). Canonical artifacts:
+    lyzortx/generated_outputs/ch08_wave2_reaudit/ch08_sx13_delta.json, ch08_sx13_predictions.csv. Sensitivity-column
+    artifacts under ch08_wave2_reaudit_post_filter/.*
 - **`label-vision-reading-spot-checked-dead`**: Using a vision model to re-read the ambiguous 'n' plaque-image scores
   (the plate crops backing the ~10% of training rows labeled negative but with uninterpretable raw scores) was evaluated
   via manual spot checks before 2026-04 and did not look promising enough to justify a full re-read pipeline. Do not
