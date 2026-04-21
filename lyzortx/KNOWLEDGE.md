@@ -213,9 +213,15 @@ Architecture choices, calibration, and performance bounds.
   (0.8083 / 0.1751): +0.11 pp AUC, −0.01 pp Brier — essentially at-parity on Guelin-only evaluation because both TL17
   phage family presence vectors (33 cols) and Arm 3 per-receptor-class k-mer fractions (13 cols) encode the same
   underlying receptor-binding information for the 96 Guelin phages; Arm 3's panel-independence benefit shows up on BASEL
-  cross-source (see chisel-unified-kfold-baseline). This is the active reference point for all future CHISEL arms.
-  [validated; source: CH04, 2026-04-19 CHISEL baseline; CH10, 2026-04-21 filter revert; CH13, 2026-04-21 Arm 3 canonical
-  migration; see also: spandex-final-baseline, cv-group-leakage-fixed, label-policy-binary, ranking-metrics-retired,
+  cross-source (see chisel-unified-kfold-baseline). **Calibration shape (load-bearing for deployment):** the aggregate
+  Brier 0.1749 masks severe overconfidence at predicted-probability deciles 6-9 — d6 mean_p 0.520 vs actual 0.313 (gap
+  −0.207, n=3,526), d7 0.708 vs 0.391 (gap −0.317), d8 0.835 vs 0.569 (gap −0.266), d9 0.933 vs 0.748 (gap −0.185). Four
+  consecutive top deciles with |gap| ≥ 0.18 on >14k rows; ECE 0.122, max|gap| 0.317. Vs CH10 TL17 this shape is
+  approximately unchanged (d7 slightly worsened from −0.294 to −0.317). The CH09 isotonic post-hoc calibrator is
+  load-bearing before any threshold-based decisions on CH04 raw predictions — see `chisel-post-hoc-calibration-layer`
+  for the closure numbers. This is the active reference point for all future CHISEL arms. [validated; source: CH04,
+  2026-04-19 CHISEL baseline; CH10, 2026-04-21 filter revert; CH13, 2026-04-21 Arm 3 canonical migration; see also:
+  spandex-final-baseline, cv-group-leakage-fixed, label-policy-binary, ranking-metrics-retired,
   per-phage-retired-under-chisel, deployment-goal]
   - ***Baseline movement over CHISEL.** CH02 revalidated SX10 (pair-level any_lysis, 10-fold cv_group hashing, per-phage
     blending enabled) = AUC 0.8521, Brier 0.1317. CH04 initial canonical (per-row binary, all-pairs only, concentration
@@ -676,20 +682,22 @@ Compressed lessons from approaches that didn't work.
   raw-interactions-authority]
 - **`kmer-receptor-expansion-neutral`**: **REOPENED under CHISEL (CH08 wave-2 re-audit; CH12 pre-filter re-anchoring;
   CH13 Arm 3 canonical baseline).** On the SPANDEX panel with pair-level `any_lysis` training the 815-kmer slot was
-  neutral (SX12: AUC 0.8722 vs 0.8699, delta +0.23 pp, CIs overlap). Under CHISEL per-row binary training with the CH13
-  Arm 3 canonical baseline (CH04 AUC 0.8094), the same phage-side 815-kmer slot delivers **+0.58 pp AUC (CI [+0.20,
-  +0.94])** with disjoint-from-zero CI on 35,266 shared pairs. This invalidates the SPANDEX-era "neutral" framing under
-  the CHISEL training unit. GT06 (k-mers as intermediate-classifier features for directed cross-terms) remains null per
-  its own delta CI [−0.005, +0.005] — that failure mode is about host-side OMP homogeneity blocking the cross-term, not
-  about the k-mers themselves. Brier delta is null (−0.0002 CI [−0.0024, +0.0019]) — lift is pure discrimination with no
-  calibration side-effect. The delta size has shrunk across successive baselines: +1.16 pp (CH08 post-filter TL17
-  baseline) → +0.72 pp (CH12 pre-filter TL17 baseline, CI [+0.36, +1.05]) → **+0.58 pp (CH13 Arm 3 canonical
-  baseline)**. About 38% of the original headline was label-shift from the deprecated neat-only filter (closed in CH10);
-  another ~19% of the remaining signal is subsumed by Arm 3's 13-dim per-receptor-fraction aggregation of the same
-  k-mers — so ~81% of the TL17-baseline lift is genuinely incremental to Arm 3 aggregation. The 815-kmer slot coexists
-  with Arm 3 rather than being fully redundant with it. [validated; source: GT06, SX12, CH08, 2026-04-20 wave-2
-  re-audit; CH12, 2026-04-21 pre-filter re-anchoring; CH13, 2026-04-21 Arm 3 canonical migration; see also:
-  omp-score-homogeneity, pairwise-cross-terms-dead-end, receptor-specificity-solved, plm-rbp-redundant,
+  neutral (SX12: AUC 0.8722 vs 0.8699, delta +0.23 pp, CIs overlap). Under CHISEL per-row binary training on the Guelin
+  bacteria-axis (35,266 evaluation pairs, CH04 baseline) with the CH13 Arm 3 canonical `phage_projection` slot, the same
+  phage-side 815-kmer slot delivers **Guelin bact-axis Δ AUC +0.58 pp (CI [+0.20, +0.94])** with disjoint-from-zero CI.
+  This invalidates the SPANDEX-era "neutral" framing under the CHISEL training unit. GT06 (k-mers as
+  intermediate-classifier features for directed cross-terms) remains null per its own delta CI [−0.005, +0.005] — that
+  failure mode is about host-side OMP homogeneity blocking the cross-term, not about the k-mers themselves. Brier delta
+  is null (−0.0002 CI [−0.0024, +0.0019]) — lift is pure discrimination with no calibration side-effect. The delta size
+  has shrunk across successive baselines (all same axis, same 35,266 pairs): +1.16 pp (CH08 post-filter TL17 baseline) →
+  +0.72 pp (CH12 pre-filter TL17 baseline, CI [+0.36, +1.05]) → **+0.58 pp (CH13 pre-filter Arm 3 canonical baseline)**.
+  Decomposition vs the original +1.16 pp post-filter headline: ~38 pp was label-shift from the deprecated neat-only
+  filter (closed in CH10), ~12 pp was subsumed by Arm 3's 13-dim per-receptor-fraction aggregation of the same k-mers
+  when it replaced TL17 (CH13), ~50 pp is genuinely incremental — i.e. 81% of the *CH12 pre-filter TL17-baseline* lift
+  survives Arm 3 migration (0.58/0.72), and 50% of the *original CH08 post-filter* headline survives both CH10 and CH13.
+  The 815-kmer slot coexists with Arm 3 rather than being fully redundant with it. [validated; source: GT06, SX12, CH08,
+  2026-04-20 wave-2 re-audit; CH12, 2026-04-21 pre-filter re-anchoring; CH13, 2026-04-21 Arm 3 canonical migration; see
+  also: omp-score-homogeneity, pairwise-cross-terms-dead-end, receptor-specificity-solved, plm-rbp-redundant,
   narrow-host-prior-collapse, panel-size-ceiling, moriniere-receptor-fractions-validated, chisel-baseline]
   - *Original SPANDEX-era failure modes (retained, context-dependent): (1) the k-mers were selected to discriminate
     receptor class on K-12 derivatives (BW25113/BL21) which lack capsule/O-antigen, so they primarily predict receptor
@@ -711,13 +719,14 @@ Compressed lessons from approaches that didn't work.
   discrimination terms. Four arms tested in SX13 (k-mers marginal, k-mers × phage k-mers cross-term, cluster IDs, plus
   baseline) all land within ±0.4 pp of SX10 on all metrics. **CONFIRMED AUC-null under CHISEL (CH08 wave-2 re-audit;
   CH12 pre-filter TL17 baseline; CH13 Arm 3 canonical baseline, 2026-04-21):** the host-OMP k-mer slot variant delivers
-  ΔAUC in the [+0.02, +0.17] pp band with CI always spanning zero across three successive baselines. Under the CH13 Arm
-  3 canonical baseline the delta is ΔAUC +0.02 pp (CI [−0.11, +0.14]) and **ΔBrier −0.09 pp (CI [−0.15, −0.02], DISJOINT
-  below zero)** — a tiny but statistically significant calibration improvement. This is a new CH13-specific finding:
-  removing TL17's panel-specific phage encoding made the host-OMP k-mers the marginal owner of a calibration signal that
-  was previously masked. AUC-null stands; OMP-variation-matters-for-narrow-phages remains biologically plausible but
-  undetectable as a discrimination signal in this panel. [validated; source: SX13, CH08, 2026-04-20 wave-2 re-audit;
-  CH12, 2026-04-21 pre-filter re-anchoring; CH13, 2026-04-21 Arm 3 canonical migration; see also: omp-score-homogeneity,
+  Guelin bact-axis ΔAUC (CH04 baseline, 35,266 pairs) in the [+0.02, +0.17] pp band with CI always spanning zero across
+  three successive baselines. Under the CH13 Arm 3 canonical baseline the delta is Guelin bact-axis ΔAUC +0.02 pp (CI
+  [−0.11, +0.14]) and **Guelin bact-axis ΔBrier −0.09 pp (CI [−0.15, −0.02], DISJOINT below zero)** — a tiny but
+  statistically significant calibration improvement. This is a new CH13-specific finding: removing TL17's panel-specific
+  phage encoding made the host-OMP k-mers the marginal owner of a calibration signal that was previously masked.
+  AUC-null stands; OMP-variation-matters-for-narrow-phages remains biologically plausible but undetectable as a
+  discrimination signal in this panel. [validated; source: SX13, CH08, 2026-04-20 wave-2 re-audit; CH12, 2026-04-21
+  pre-filter re-anchoring; CH13, 2026-04-21 Arm 3 canonical migration; see also: omp-score-homogeneity,
   pairwise-cross-terms-dead-end, kmer-receptor-expansion-neutral, narrow-host-prior-collapse,
   same-receptor-uncorrelated-hosts, chisel-baseline]
   - *Permutation test on cross_term aggregate delta: 73% of random prediction swaps are as extreme — signal
