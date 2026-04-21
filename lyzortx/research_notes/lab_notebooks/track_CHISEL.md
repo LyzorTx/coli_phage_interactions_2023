@@ -1769,3 +1769,101 @@ rerunning under the same code path reproduces the numbers bit-for-bit.
 - `.../ch08_sx12_delta.json`, `.../ch08_sx13_delta.json` — per-arm delta reports.
 - `.../ch08_sx12_predictions.csv`, `.../ch08_sx13_predictions.csv` — per-arm
   pair-level predictions (max-concentration) for audit.
+
+### 2026-04-21 06:00 CEST: Post-close review — label-shift disclosure on `chisel-baseline`
+
+#### Executive summary
+
+External reviewer ran `review-ml-pr` + `case-by-case` on the
+post-filter CH04 canonical. All structural checks clean (headline
+AUC/Brier recompute to 6 dp, fold disjointness empirically 0 overlap,
+hygiene clean, reliability max|gap| 0.42 in 0.63-0.84 bucket matching the
+knowledge unit). One load-bearing finding: the CH06-followup filter
+adoption's headline +1.3 pp AUC / −3.2 pp Brier is not a pure model-quality
+gain — the filter flips 4,428 pair eval labels 1→0 (12.6% of the eval set)
+because evaluation pulls the label from the pair's max-concentration
+observation and the filter's training-row removal leaves a 0 replicate
+standing. On matched (pre-filter) labels the filter-trained model regresses
+−1.47 pp AUC and improves −0.98 pp Brier. Knowledge unit `chisel-baseline`
+has been amended to disclose the 2×2 decomposition and retire the
+"improvement is discrimination-only" framing that the original adoption
+note used.
+
+#### 2×2 decomposition on matched pairs
+
+Merging
+`lyzortx/generated_outputs/ch04_chisel_baseline/ch04_predictions.csv`
+(canonical) with the prior-encoding canonical predictions by `pair_id`:
+
+| Model  | Eval labels | AUC    | Brier  | Interpretation |
+|--------|-------------|--------|--------|----------------|
+| prior  | prior       | 0.8084 | 0.1750 | file headline (pre-filter) |
+| prior  | canonical   | 0.8244 | 0.1916 | label-shift alone: +1.60 pp AUC trivialization |
+| canon. | prior       | 0.7937 | 0.1652 | **model alone: −1.47 pp AUC regression, −0.98 pp Brier improvement** |
+| canon. | canonical   | 0.8217 | 0.1435 | file headline (post-filter) |
+
+The headline ΔAUC = +1.33 pp is almost exactly the label-shift component
+(+1.60 pp trivialization) minus the model regression (−1.47 pp), plus an
+interaction term. AUC gain does NOT survive decomposition on matched
+labels. Brier gain DOES survive: −0.98 pp is real model improvement
+(removing neat-only positives from training teaches the model to predict
+lower probability on those pairs, which is correct once the eval label
+flips to 0).
+
+Case-by-case on the same paired CSVs using the project's
+`compare_predictions.py` gives aggregate mean Δ nDCG −1.81 pp with
+permutation p ≈ 0 (171 losses vs 63 wins across 362 bacteria,
+narrow-host sign test p = 0.000 with mean Δ = −2.19 pp). nDCG is
+retired from the CHISEL scorecard, but the regression direction on
+per-bacterium nDCG is consistent with the on-matched-labels AUC
+regression: where the label does not flip, the filter-trained model
+is worse at ranking.
+
+#### Why the filter still stays adopted
+
+Two reasons survive the disclosure:
+
+1. **Label-policy correctness.** Gaborieau 2024 Methods explicitly
+   admits that clearing at high titer can be non-productive. A
+   neat-only positive is candidate-non-productive; the filter removes
+   it from training and re-labels it 0 at eval. That is the correct
+   label under the paper's own framing. The eval population shift is
+   a consequence of fixing the label policy, not a trick.
+2. **Brier on matched labels is genuinely better.** −0.98 pp Brier
+   gain survives the decomposition. Filter-trained model predicts lower
+   probability on the candidate-non-productive positives, which is an
+   honest calibration improvement even on the original labels.
+
+What does NOT survive:
+
+- The "discrimination-only (AUC/Brier)" claim in `chisel-baseline`'s
+  adoption note. Discrimination on matched labels is WORSE, not
+  better. Future comparisons against pre-filter numbers must cite the
+  on-matched-labels AUC 0.7937, not the file-headline 0.8217, when
+  making model-quality claims.
+- The BASEL-widens-deficit explanation in
+  `chisel-unified-kfold-baseline` ("Guelin sharpens more than BASEL
+  under the Guelin-only filter") has the mechanism right but was
+  silent on the magnitude: the Guelin sharpening is mostly
+  trivialization from label flip, not discrimination gain.
+
+#### Amendments made
+
+- `lyzortx/orchestration/knowledge.yml`: `chisel-baseline` context
+  paragraph rewritten to include the 2×2 decomposition, explicit
+  label-flip mechanism, and on-matched-labels AUC/Brier.
+  `kmer-receptor-expansion-neutral` and sibling units unchanged (CH08
+  SX12 deltas are paired bootstrap against the same post-filter
+  baseline, so they're internally consistent regardless of label-shift).
+- `lyzortx/research_notes/lab_notebooks/track_CHISEL_recap.md`: CH09
+  Arm 3 dead-end bullet updated to disclose label-shift and point at
+  the decomposition.
+- `lyzortx/KNOWLEDGE.md` re-rendered.
+
+#### Artifacts
+
+- `.scratch/chisel_review/audit_ch04.py` — review-ml-pr checklist
+  (hygiene, fold disjointness, reliability).
+- `.scratch/chisel_review/caseXcase_chisel.py`,
+  `caseXcase_prior_vs_canonical.md` — case-by-case comparison across
+  pre/post-filter predictions with 2×2 decomposition.
