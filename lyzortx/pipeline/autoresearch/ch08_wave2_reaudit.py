@@ -419,7 +419,7 @@ def run_ch08_eval(
     phage_kmer_slot_path: Path = DEFAULT_PHAGE_KMER_SLOT_PATH,
     host_omp_kmer_slot_path: Path = DEFAULT_HOST_OMP_KMER_SLOT_PATH,
     num_workers: int = 3,
-    drop_high_titer_only_positives: bool = True,
+    drop_high_titer_only_positives: bool = False,
     max_folds: Optional[int] = None,
 ) -> dict[str, object]:
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -602,7 +602,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--drop-high-titer-only-positives",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
+        help="Opt-in neat-only positive filter (CH10 demoted; default OFF).",
     )
     return parser.parse_args(argv)
 

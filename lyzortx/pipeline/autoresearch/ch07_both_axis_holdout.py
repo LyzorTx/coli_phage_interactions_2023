@@ -196,7 +196,7 @@ def run_ch07_eval(
     phage_slots_dir: Path = ARM3_SLOTS_DIR,
     basel_log10_pfu_ml: float = BASEL_LOG10_PFU_ML,
     num_workers: int = 3,
-    drop_high_titer_only_positives: bool = True,
+    drop_high_titer_only_positives: bool = False,
     max_cells: Optional[int] = None,
 ) -> dict[str, object]:
     """Run CH07 100-cell double cross-validation.
@@ -508,7 +508,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--drop-high-titer-only-positives",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
+        help="Opt-in neat-only positive filter (CH10 demoted; default OFF).",
     )
     parser.add_argument(
         "--max-cells",

@@ -99,7 +99,7 @@ BOOTSTRAP_RANDOM_STATE = 42
 def build_clean_row_training_frame(
     row_frame: pd.DataFrame,
     *,
-    drop_high_titer_only_positives: bool = True,
+    drop_high_titer_only_positives: bool = False,
 ) -> pd.DataFrame:
     """Drop score=='n' rows, cast score to {0, 1}, attach CH04 label + concentration feature.
 
@@ -343,7 +343,7 @@ def run_ch04_eval(
     candidate_dir: Path,
     max_folds: Optional[int] = None,
     num_workers: int = 3,
-    drop_high_titer_only_positives: bool = True,
+    drop_high_titer_only_positives: bool = False,
 ) -> dict[str, object]:
     """Run the full CH04 evaluation.
 
@@ -354,8 +354,11 @@ def run_ch04_eval(
     dispatches the three SEEDS through `multiprocessing.Pool`. Determinism is
     preserved across all valid `num_workers` values.
 
-    `drop_high_titer_only_positives` enables the CH09 Arm 3 label-threshold
-    sensitivity filter (see `build_clean_row_training_frame`).
+    `drop_high_titer_only_positives` (default False as of CH10) enables the
+    demoted neat-only sensitivity filter (see `build_clean_row_training_frame`).
+    The CH06-followup adopted it as canonical; CH10 reverted that decision —
+    callers that want the post-filter numbers for sensitivity comparison must
+    opt in explicitly.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     start_time = datetime.now(timezone.utc)
@@ -596,14 +599,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--drop-high-titer-only-positives",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
         help=(
             "Drop Guelin positive rows for pairs where every score='1' observation occurs "
-            "at log_dilution=0 (neat). Proxy for 'clearing at high titer, possibly "
-            "non-productive' (Gaborieau 2024). ENABLED BY DEFAULT as of the CH06 "
-            "follow-up filter adoption — CH09 Arm 3 showed this filter yields +1.3 pp AUC "
-            "and -3.2 pp Brier on the CH04 baseline. Pass --no-drop-high-titer-only-positives "
-            "to reproduce the pre-adoption baseline for sensitivity comparison."
+            "at log_dilution=0 (neat). Opt-in sensitivity analysis (CH10 demoted it from "
+            "canonical — see track_CHISEL notebook 2026-04-21 entry). The filter trivializes "
+            "4,428 pair eval labels 1→0 and regresses on-matched-labels AUC by 1.47 pp; the "
+            "headline post-filter AUC gain was a label-population artifact. Default OFF: "
+            "canonical training uses every interpretable score ∈ {0, 1} observation."
         ),
     )
     return parser.parse_args(argv)
