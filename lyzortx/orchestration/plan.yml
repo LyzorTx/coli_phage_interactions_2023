@@ -2494,7 +2494,7 @@ tracks:
       title: Wave-2 feature-family re-audit under CHISEL frame
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - CH04
       - CH06
