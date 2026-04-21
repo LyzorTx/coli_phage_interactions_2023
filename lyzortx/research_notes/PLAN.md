@@ -1636,7 +1636,7 @@ graph LR
   - GOAL: demote the CH06-followup neat-only positive filter from canonical to an opt-in sensitivity analysis. Four
     reviewer objections that must be documented in the chisel-baseline context paragraph so future tickets cannot
     re-propose the filter without having seen them: (i) WRONG PROXY — Gaborieau 2024 Methods flag plaques-vs-clearing as
-    the phenotype concern ("Clearing of the bacterial lawn at high phage concentration COULD result from productive
+    the phenotype concern ("Clearing of the bacterial lawn at high phage concentration *could* result from productive
     lysis … or from another mechanism such as lysis from without, or abortive infection"); our binary {0, 1, n} score
     cannot distinguish plaques from clearing, and "positive observed only at neat" is not the same as "ambiguous
     clearing". A narrow-host pair that barely lyses at max titer is dropped identically to an abortive- infection
@@ -1679,10 +1679,10 @@ graph LR
     notebook entry to track_CHISEL.md documenting the revert decision, the four objections, and a cross-reference to the
     reviewer artifacts at .scratch/chisel_review/. Update the recap's "open follow-ups" — the tentative "CH10" Arm 3
     migration reference now points to CH13.
-  - ACCEPTANCE: `python -m lyzortx.pipeline.autoresearch.ch04_eval` produces AUC within [0.794, 0.822] matching the
-    prior-encoding pre-filter canonical; CH07 aggregate.json AUC recomputes from its pair_predictions.csv to 6 dp;
-    knowledge_parser.validate_knowledge() passes; pymarkdown clean; unit tests green (CH04/CH05/CH07/CH08 tests must
-    still pass under the flipped default).
+  - ACCEPTANCE: `python -m lyzortx.pipeline.autoresearch.ch04_eval` produces AUC within [0.806, 0.811] (±0.25 pp around
+    the 0.8084 pre-filter canonical point estimate); CH07 aggregate.json AUC recomputes from its pair_predictions.csv to
+    6 dp; knowledge_parser.validate_knowledge() passes; pymarkdown clean; unit tests green (CH04/CH05/CH07/CH08 tests
+    must still pass under the flipped default).
 - [ ] **CH11** CH05 rerun + CH09 isotonic refit under reverted pre-filter canonical. Model: `claude-opus-4-6`. CI image
       profile: `base`. Depends on tasks: `CH10`.
   - GOAL: restore chisel-unified-kfold-baseline AND chisel-post-hoc- calibration-layer to numbers computed under the
