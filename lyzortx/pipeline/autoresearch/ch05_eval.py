@@ -527,6 +527,7 @@ def run_ch05_eval(
     max_folds: Optional[int] = None,
     num_workers: int = 3,
     drop_high_titer_only_positives: bool = False,
+    phage_slot_dir: Optional[Path] = None,
 ) -> dict[str, object]:
     """Run the full CH05 two-axis evaluation.
 
@@ -540,6 +541,25 @@ def run_ch05_eval(
     `--drop-high-titer-only-positives`) to reproduce the deprecated post-filter
     numbers.
     """
+    if phage_slot_dir is not None:
+        # sx03_eval.patch_context_with_extended_slots soft-falls-back (logs a warning and
+        # keeps the original slot) on any missing per-slot features.csv. A typoed
+        # --phage-slot-dir would then silently yield a self-consistent-but-wrong result
+        # with baseline slots. When the flag is explicitly supplied, require all three
+        # extended slot CSVs to exist so the run can be proven to have used the intended
+        # feature set. Checked before data loads to fail fast on config errors.
+        missing = [
+            name
+            for name in ("phage_projection", "phage_stats", "phage_rbp_struct")
+            if not (phage_slot_dir / name / "features.csv").exists()
+        ]
+        if missing:
+            raise FileNotFoundError(
+                f"--phage-slot-dir {phage_slot_dir} is missing extended slot "
+                f"features.csv for: {missing}. Refusing to silently fall back to the "
+                "baseline slot — a typoed override would produce a self-consistent "
+                "but wrong result."
+            )
     output_dir.mkdir(parents=True, exist_ok=True)
     start_time = datetime.now(timezone.utc)
     LOGGER.info(
@@ -567,7 +587,10 @@ def run_ch05_eval(
     phage_family = load_unified_phage_family_map()
     candidate_module = load_module_from_path("ch05_candidate", candidate_dir / "train.py")
     context = candidate_module.load_and_validate_cache(cache_dir=cache_dir, include_host_defense=True)
-    patch_context_with_extended_slots(context)
+    if phage_slot_dir is not None:
+        patch_context_with_extended_slots(context, slots_dir=phage_slot_dir)
+    else:
+        patch_context_with_extended_slots(context)
 
     bacteria_axis_per_row = run_bacteria_axis(
         candidate_module=candidate_module,
@@ -758,6 +781,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "canonical). Default OFF."
         ),
     )
+    parser.add_argument(
+        "--phage-slot-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Override the phage feature slots directory used by "
+            "patch_context_with_extended_slots. Default is the canonical "
+            ".scratch/basel/feature_slots/ (baseline TL17 phage_projection). Pass "
+            ".scratch/basel/feature_slots_arm3/ to swap in the Moriniere 2026 "
+            "per-receptor-class fraction slot (CH06 Arm 3; used by CH11 for the "
+            "pre-filter canonical rerun pending the CH13 migration)."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -773,6 +809,7 @@ def main(argv: list[str] | None = None) -> None:
         max_folds=args.max_folds,
         num_workers=args.num_workers,
         drop_high_titer_only_positives=args.drop_high_titer_only_positives,
+        phage_slot_dir=args.phage_slot_dir,
     )
 
 

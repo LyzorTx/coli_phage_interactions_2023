@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
@@ -16,6 +17,7 @@ from lyzortx.pipeline.autoresearch.ch05_eval import (
     _bootstrap_by_unit,
     assign_phage_folds,
     load_basel_as_row_frame,
+    run_ch05_eval,
 )
 
 
@@ -173,3 +175,26 @@ def test_bootstrap_by_unit_skips_degenerate_single_class_resamples() -> None:
     assert isinstance(cis["holdout_roc_auc"], BootstrapMetricCI)
     # Some resamples should have been skipped.
     assert cis["holdout_roc_auc"].bootstrap_samples_used < 200
+
+
+def test_run_ch05_eval_rejects_phage_slot_dir_with_missing_slots(tmp_path: Path) -> None:
+    """A typoed --phage-slot-dir must hard-raise, not silently fall back to baseline slots.
+
+    Without this guard, sx03_eval.patch_context_with_extended_slots logs a warning and
+    keeps the original slot, which would produce a self-consistent but wrong result
+    (training under a different phage feature set than the caller intended).
+    """
+    empty_slots = tmp_path / "nonexistent_slots"
+    empty_slots.mkdir()
+    # Create only one of the three expected slot subdirs to prove we check all three.
+    (empty_slots / "phage_projection").mkdir()
+    (empty_slots / "phage_projection" / "features.csv").write_text("phage\n")
+
+    with pytest.raises(FileNotFoundError, match="phage_stats.*phage_rbp_struct"):
+        run_ch05_eval(
+            device_type="cpu",
+            output_dir=tmp_path / "out",
+            cache_dir=tmp_path / "cache",  # Never reached — guard fires before cache load.
+            candidate_dir=tmp_path / "cand",
+            phage_slot_dir=empty_slots,
+        )
