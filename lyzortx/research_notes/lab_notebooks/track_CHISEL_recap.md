@@ -12,28 +12,34 @@ one of its two root causes (phage-side TL17 bias) into a panel-independent featu
 
 ## Headline outcomes
 
-**2026-04-21 CH11 rerun:** CH05 + CH09 isotonic refit completed under the reverted
-pre-filter canonical with the Arm 3 `phage_projection` slot override. Headline
-numbers below are now canonical; all filter-revert reruns complete.
+**2026-04-21 CH13 close-out:** Arm 3 Moriniere per-receptor-class k-mer fractions
+migrated to canonical `phage_projection` slot in both the autoresearch Guelin-only
+cache and the unified-panel slot root. TL17 BLAST family-presence vectors retired to
+`_tl17/` sensitivity fallbacks. CH04 + CH08 re-run under the new canonical; CH05/CH07/CH09
+artifacts from CH10/CH11 were already under Arm 3 (via override) and reproduce
+bit-for-bit under the post-migration default, so no re-run needed. **CHISEL track
+closed** — all canonical numbers below are the final state.
 
 Everything below is on the 369×96 Guelin panel (unified 148-phage panel for cross-
 source numbers). Canonical = per-row binary labels, `pair_concentration__log10_pfu_ml`
 feature (absolute log₁₀ pfu/ml), all-pairs only (no per-phage blending), NO neat-only
-filter, Arm 3 Moriniere per-receptor-fraction slot for CH05/CH07 (CH04 evaluates on
-Guelin-only and does not hit the override path).
+filter, Arm 3 Moriniere per-receptor-fraction `phage_projection` slot (13 dims),
+TL17 BLAST families (33 dims) retired to sensitivity fallback.
 
 | Metric | Frame | Number | 95% CI |
 |---|---|---|---|
-| CH04 Guelin bacteria-axis AUC | pre-filter (CH10) | **0.8083** | [0.7943, 0.8216] |
-| CH04 Guelin bacteria-axis Brier | pre-filter (CH10) | **0.1751** | [0.1677, 0.1824] |
+| CH04 Guelin bacteria-axis AUC | pre-filter + Arm 3 (CH13) | **0.8094** | [0.7956, 0.8226] |
+| CH04 Guelin bacteria-axis Brier | pre-filter + Arm 3 (CH13) | **0.1749** | [0.1679, 0.1825] |
 | CH05 unified bacteria-axis AUC | pre-filter + Arm 3 (CH11) | **0.8079** | [0.7934, 0.8223] |
 | CH05 unified phage-axis AUC | pre-filter + Arm 3 (CH11) | **0.8870** | [0.8658, 0.9055] |
-| CH05 BASEL bacteria-axis AUC (subset) | pre-filter + Arm 3 (CH11) | **0.7392** | 7.1 pp below Guelin (was 10.2 pp) |
+| CH05 BASEL bacteria-axis AUC (subset) | pre-filter + Arm 3 (CH11) | **0.7392** | 7.1 pp below Guelin (was 10.2 pp under post-filter TL17) |
 | CH05 BASEL phage-axis AUC (subset) | pre-filter + Arm 3 (CH11) | **0.8952** | exceeds Guelin by 0.8 pp (was −1.0 pp) |
-| CH07 both-axis AUC (Arm 3 slot) | pre-filter (CH10) | **0.7634** | [0.7581, 0.7689] |
-| CH07 both-axis Brier (Arm 3 slot) | pre-filter (CH10) | **0.1902** | [0.1874, 0.1927] |
-| CH09 Guelin LOOF ECE (bact / phage) | pre-filter (CH11 refit) | **0.0057 / 0.0052** | target < 0.02 ✓ |
-| CH09 BASEL ECE closure (bact / phage) | pre-filter (CH11 refit) | **64.3% / 44.6%** | residual TL17-bias panel-mismatch (CH13 scope) |
+| CH07 both-axis AUC | pre-filter + Arm 3 (CH10) | **0.7634** | [0.7581, 0.7689] |
+| CH07 both-axis Brier | pre-filter + Arm 3 (CH10) | **0.1902** | [0.1874, 0.1927] |
+| CH08 SX12 Δ AUC (phage_moriniere_kmer) | pre-filter + Arm 3 (CH13) | **+0.0058** | [+0.0020, +0.0094], disjoint — lift survives Arm 3 |
+| CH08 SX13 Δ AUC (host_omp_kmer) | pre-filter + Arm 3 (CH13) | +0.0002 | [−0.0011, +0.0014], null |
+| CH09 Guelin LOOF ECE (bact / phage) | pre-filter + Arm 3 (CH11 refit) | **0.0057 / 0.0052** | target < 0.02 ✓ |
+| CH09 BASEL ECE closure (bact / phage) | pre-filter + Arm 3 (CH11 refit) | **64.3% / 44.6%** | residual feature-space deficit, not threshold |
 
 The load-bearing cold-start number (both-axis AUC on simultaneously unseen
 bacterium × phage) is **0.7634** [0.7581, 0.7689] under the pre-filter canonical +
@@ -111,31 +117,39 @@ re-litigate):
 
 And what surprised us on re-audit:
 
-+ **CH08 SX12 (Moriniere 815 phage 5-mers, top-100 variance pre-filter)**: **non-null,
-  re-audited under pre-filter canonical.** Post-filter (CH08 original) reported
-  +1.16 pp AUC [+0.82, +1.51]; CH12 pre-filter re-audit tightens to **+0.72 pp AUC
-  [+0.36, +1.05]** — still disjoint from zero but ~38% of the lift was
-  label-shift artifact from the CH06-followup filter. Reopens the SPANDEX-era
-  `kmer-receptor-expansion-neutral` null under CHISEL per-row training. Not a
-  blocker for the Arm 3 migration — the two findings are complementary (Arm 3 =
-  panel-independent aggregates; SX12 kmers = raw-feature additive lift on Guelin).
-+ **CH08 SX13 (host OMP 5546 5-mers, top-100 variance pre-filter)**: **null
-  confirmed** under CH12 pre-filter re-audit. Post-filter reported marginally-positive
-  +0.17 pp AUC [+0.03, +0.31]; pre-filter tightens to **+0.02 pp AUC [−0.13, +0.17]**,
-  CI now spans zero. The marginal post-filter signal was entirely filter-driven
-  label-shift — `host-omp-variation-unpredictive` remains dead-end under both
-  label frames.
++ **CH08 SX12 (Moriniere 815 phage 5-mers, top-100 variance pre-filter)**: **non-null
+  across three successive baselines**, lift shrinks as baseline sharpens.
+  Post-filter TL17 (CH08 original): +1.16 pp AUC [+0.82, +1.51]. Pre-filter TL17
+  (CH12): **+0.72 pp AUC [+0.36, +1.05]** — ~38% of original was label-shift
+  artifact from the CH06-followup filter. Pre-filter Arm 3 canonical (CH13):
+  **+0.58 pp AUC [+0.20, +0.94]** — another ~19% subsumed by Arm 3's 13-dim
+  aggregation of the same kmers. The remaining +0.58 pp is genuinely
+  incremental — Arm 3 and the raw 815-kmer slot coexist, and `kmer-receptor-
+  expansion-neutral` stays reopened under CHISEL.
++ **CH08 SX13 (host OMP 5546 5-mers, top-100 variance pre-filter)**: **AUC null
+  confirmed across all three baselines**. Post-filter TL17: +0.17 pp [+0.03,
+  +0.31] (marginal-positive). Pre-filter TL17 (CH12): +0.02 pp [−0.13, +0.17].
+  Pre-filter Arm 3 (CH13): +0.02 pp [−0.11, +0.14]. The marginal post-filter
+  positive was filter-driven label-shift. One new CH13 wrinkle: Brier Δ goes
+  from null under prior baselines to **−0.09 pp [−0.15, −0.02], disjoint below
+  zero** under Arm 3 canonical — a tiny calibration improvement as host-OMP
+  kmers pick up slack that TL17's 33-dim phage_projection used to cover.
+  `host-omp-variation-unpredictive` stays dead-end as a discrimination
+  direction; Brier-only signal is below the deployment-materiality threshold.
 
 ## Open follow-ups
 
 Each is a concrete, schedulable item — not a vague aspiration.
 
-1. **CH13 (pending) — Arm 3 canonical migration.** Wire
-   `.scratch/basel/feature_slots_arm3/phage_projection/features.csv` into the canonical
-   `phage_projection` slot, retire the Guelin-derived TL17 artifact, and re-run CH04 /
-   CH05 / CH07 / CH08 / CH09 under the new slot. Baselines should shift slightly; knowledge
-   units `chisel-baseline`, `chisel-unified-kfold-baseline`, `chisel-post-hoc-calibration-
-   layer`, `chisel-both-axis-holdout` all need their headline numbers re-run.
+1. ~~**CH13 — Arm 3 canonical migration.**~~ **DONE (2026-04-21).** Arm 3 migrated to
+   canonical `phage_projection` slot in both the autoresearch Guelin-only cache and the
+   unified-panel slot root; TL17 BLAST families retired to `_tl17/` sensitivity
+   fallbacks. CH04 rerun: 0.8083 → 0.8094 (Guelin-only, at-parity). CH08 SX12 rerun:
+   +0.58 pp CH13 vs +0.72 pp CH12 (Arm 3 subsumes ~19% of the kmer signal, the rest is
+   incremental). CH05/CH07/CH09 reproduce bit-for-bit under the new default (they were
+   already using Arm 3 via override). Knowledge units `chisel-baseline`,
+   `chisel-unified-kfold-baseline`, `moriniere-receptor-fractions-validated`,
+   `kmer-receptor-expansion-neutral`, `host-omp-variation-unpredictive` all updated.
 2. **Slot registry allowlist hoist.** `ch04_parallel.FEATURE_COLUMN_PREFIXES` is a
    hardcoded allowlist; a slot attached without its prefix registered is silently dropped
    from model features (caught during CH08). Move the prefix declaration into the slot

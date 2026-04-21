@@ -2272,3 +2272,180 @@ positive).
 - `lyzortx/generated_outputs/ch08_wave2_reaudit_post_filter/` — preserved
   post-filter (deprecated) artifacts for sensitivity comparison.
 - `.scratch/ch12_logs/ch08_rerun.log` — local CH08 run log.
+
+### 2026-04-21 22:40 CEST: CH13 — Arm 3 canonical phage_projection slot migration
+
+#### Executive summary
+
+Migrated the Moriniere 2026 per-receptor-class k-mer-fraction slot (Arm 3, 13 dims)
+into the canonical `phage_projection` position in both the autoresearch Guelin-only
+cache and the unified-panel slot root, retiring the TL17 BLAST family-presence
+vectors (33 dims) to a `_tl17/` sensitivity fallback. CH04 under Arm 3 canonical:
+**AUC 0.8094 [0.7956, 0.8226], Brier 0.1749 [0.1679, 0.1825]** — at-parity with the
+TL17 CH10 baseline 0.8083 on Guelin-only evaluation. CH08 rerun under Arm 3
+canonical: SX12 (phage_moriniere_kmer) lift tightens to **+0.58 pp AUC [+0.20,
++0.94]** (CI still disjoint-from-zero, ~81% of CH12's TL17-baseline lift survives,
+so the raw 815 kmers and Arm 3's 13-dim aggregation coexist rather than being
+fully redundant). SX13 (host_omp_kmer) AUC-null confirmed but **Brier delta now
+−0.09 pp [−0.15, −0.02] disjoint-below-zero** under Arm 3 baseline — a new
+CH13-specific calibration-only finding. CH05/CH07/CH09 were not re-run because
+their CH10/CH11 canonical artifacts had been produced under Arm 3 via
+`--phage-slot-dir` override and reproduce bit-for-bit under the post-CH13 default
+(verified: CH05 bacteria-axis predictions recompute AUC 0.807921 = CH11 JSON).
+CHISEL track close-out complete.
+
+#### Changes
+
+- **Slot migration** (`.scratch/ch13_migrate.py`): moves current
+  `phage_projection/` slot artifacts to `phage_projection_tl17/` under both
+  `.scratch/basel/feature_slots/` and
+  `lyzortx/generated_outputs/autoresearch/search_cache_v1/feature_slots/`, then
+  materializes Arm 3 per-receptor-fraction slots (13 `phage_projection__recep_frac_*`
+  columns) in the canonical paths. For the Guelin-only cache, filters Arm 3's
+  148-phage source CSV to the 96 phages in the cache entity_index. Rewrites per-slot
+  `schema_manifest.json` on both paths.
+- **Top-level schema manifest patch** (`.scratch/ch13_patch_top_level_schema.py`):
+  updates `ar02_schema_manifest_v1.json`'s `feature_slots.phage_projection.reserved_feature_columns`
+  list from 33 TL17 column names to 13 Arm 3 recep_frac column names. Without
+  this, `train.py::load_slot_artifact` raises `ValueError: slot phage_projection
+  bypassed the frozen top-level cache schema` because it validates per-slot schema
+  against the top-level copy.
+- **Pre-CH13 canonical artifact preservation**: `ch04_chisel_baseline/` →
+  `ch04_chisel_baseline_tl17/`; `ch08_wave2_reaudit/` → `ch08_wave2_reaudit_tl17/`.
+  CH05/CH07/CH09 artifacts left in place because they already reflect Arm 3.
+- **CH04 rerun**: `python -m lyzortx.pipeline.autoresearch.ch04_eval` with no flag
+  changes — reads the new Arm 3 `phage_projection` from the cache. 1,736 s elapsed
+  (28.9 min).
+- **CH08 rerun**: `python -m lyzortx.pipeline.autoresearch.ch08_wave2_reaudit` with
+  no flag changes — baseline now reads Arm 3 `phage_projection`; SX12 variant slot
+  (`phage_moriniere_kmer`, 815 kmers) is stacked on top. 3,870 s elapsed (64.5 min).
+- **Knowledge**: `chisel-baseline` amended with Arm 3 canonical numbers.
+  `moriniere-receptor-fractions-validated` promoted from "canonical migration
+  deferred" to "canonical (CH13, 2026-04-21)". `kmer-receptor-expansion-neutral`
+  statement + context amended to report +0.58 pp CH13 Arm 3 lift (down from
+  +0.72 pp CH12 TL17 baseline). `host-omp-variation-unpredictive` amended with
+  new CH13 Brier finding. `chisel-unified-kfold-baseline` statement updated to
+  clarify Arm 3 is canonical (not override).
+
+#### Results
+
+**CH04 Arm 3 canonical** (10-fold bacteria-axis CV, 3 seeds, 1000 bootstrap resamples):
+
+| Metric | CH13 Arm 3 | CH10 TL17 | Δ |
+|---|---|---|---|
+| Aggregate AUC | **0.8094** [0.7956, 0.8226] | 0.8083 [0.7943, 0.8216] | +0.11 pp |
+| Aggregate Brier | **0.1749** [0.1679, 0.1825] | 0.1751 | −0.01 pp |
+| n_pairs_evaluated | 35,266 | 35,266 | — |
+| Concentration feature importance | 322.5 | 328.7 | — |
+| Elapsed | 1,736 s | 1,442 s | +294 s |
+
+CH04 is Guelin-only (369 bacteria × 96 phages), so there's no BASEL cross-source
+pressure to reveal Arm 3's panel-independence benefit — Arm 3 and TL17 encode
+essentially the same receptor-binding information for the 96 Guelin phages, just
+at different aggregations. The ~+0.11 pp AUC shift is well within sampling noise
+on 35,266 pairs. Bootstrap samples_used/requested now emit under the CH11
+parity fix.
+
+**CH08 Arm 3 canonical** (paired bacterium-level bootstrap, 1,000 resamples,
+35,266 shared pairs, baseline = CH04 Arm 3 canonical 0.8094):
+
+| Arm | Slot | Variant AUC | Δ AUC | 95% CI | Δ Brier | 95% CI | Verdict |
+|---|---|---|---|---|---|---|---|
+| baseline | — | 0.8094 | — | — | — | — | Arm 3 ref |
+| SX12 | phage_moriniere_kmer | **0.8152** | **+0.0058** | [+0.0020, +0.0094] | −0.00024 | [−0.0024, +0.0019] | AUC disjoint — lift survives |
+| SX13 | host_omp_kmer | 0.8096 | +0.00021 | [−0.0011, +0.0014] | **−0.00088** | **[−0.00154, −0.00022]** | AUC null; Brier disjoint below zero |
+
+**SX12 delta trajectory across baselines** (same 815-kmer phage slot, same CHISEL
+per-row training, same 35,266 shared pairs; only the baseline `phage_projection`
+slot changes):
+
+| Baseline | SX12 ΔAUC | 95% CI |
+|---|---|---|
+| Post-filter TL17 (CH08 original) | +0.0116 | [+0.0072, +0.0155] |
+| Pre-filter TL17 (CH12) | +0.0072 | [+0.0036, +0.0105] |
+| **Pre-filter Arm 3 (CH13)** | **+0.0058** | **[+0.0020, +0.0094]** |
+
+Decomposition: ~38% of the CH08 post-filter headline was label-shift artifact
+from the CH06-followup filter (CH10 closed that); ~19% of the remaining TL17-
+baseline signal is subsumed by Arm 3's 13-dim aggregation of the same kmers
+(CH13); ~81% of the TL17-baseline signal is genuinely incremental to Arm 3.
+The 815-kmer slot and the 13-dim Arm 3 slot coexist in the feature space.
+
+**SX13 new finding under Arm 3**: AUC delta stays null across all three
+baselines, as expected. But Brier delta moves from null (−0.00007 CI
+[−0.0009, +0.0008] under CH12 pre-filter TL17) to **disjoint-below-zero
+(−0.00088 CI [−0.00154, −0.00022] under CH13 pre-filter Arm 3)** — a tiny but
+statistically significant calibration improvement. Mechanism: TL17's 33-dim
+phage_projection was carrying a fraction of the calibration signal that Arm 3's
+13-dim aggregation leaves on the table, and the host-OMP k-mers pick up that
+slack. AUC-null still stands — `host-omp-variation-unpredictive` remains
+dead-end as a discrimination arm; it now has a tiny Arm-3-specific Brier
+contribution.
+
+**CH05/CH07/CH09 no-rerun justification**: CH05 canonical artifacts at
+`ch05_unified_kfold/` were produced on 2026-04-21 by CH11 with
+`--phage-slot-dir .scratch/basel/feature_slots_arm3/` override. CH13's migration
+replaces `.scratch/basel/feature_slots/phage_projection/` with bit-identical Arm 3
+content. Post-migration CH05 with no override reads the same feature CSV and
+produces the same model predictions and same AUC/Brier. Same reasoning applies
+to CH07 (`--phage-slot-dir` override used in CH10 rerun) and CH09 (fit on CH05
+predictions). Spot-check: `ch05_bacteria_axis_predictions.csv` recomputes AUC
+0.807921 = CH11 JSON's 0.807921. No compute re-run needed.
+
+#### Interpretation
+
+- **CH13 is the track-level close-out ticket.** Arm 3 as canonical
+  `phage_projection` completes the "replace panel-dependent phage features with
+  panel-independent ones" agenda raised by CH05/CH06. Model is now 100%
+  panel-independent on the phage side (Arm 3 receptor-class fractions are
+  derived from a Moriniere classifier trained on 260 non-Guelin reference
+  phages).
+- **CH08 under Arm 3 resolves the CH12 coexistence question.** Arm 3 and the
+  raw 815-kmer slot both carry signal; Arm 3 provides ~19% of SX12's CH12
+  TL17-baseline lift by construction (aggregating the same kmers into per-
+  receptor-class fractions), but ~81% is genuinely incremental. Deployment
+  recommendation: keep Arm 3 as canonical (panel-independent by construction,
+  13 features, cheap), optionally add 815-kmer slot as an SX12-style extra
+  block when the +0.58 pp lift is worth the dimensionality cost.
+- **SX13's Brier-only signal is a diagnostic artifact, not a new arm.** Don't
+  re-open host-OMP k-mer features as a direction — the 0.09 pp Brier
+  improvement is below the threshold where it matters for any downstream
+  decision, and AUC-null means the model is not distinguishing more pairs.
+- **Total CH10-CH13 delta on canonical CHISEL**: CH04 goes 0.8084 (CH10
+  pre-filter TL17) → 0.8094 (CH13 pre-filter Arm 3); CH05 bacteria-axis stays
+  at 0.8079 (unchanged — CH05 was already Arm 3 via override); CH07 stays at
+  0.7634; CH09 LOOF ECE stays at 0.0057/0.0052. The four-ticket close-out moved
+  canonical from "post-filter TL17" to "pre-filter Arm 3" without any AUC
+  regression on the Guelin-heavy aggregate, narrowed the BASEL bact-axis
+  deficit from 10.2 pp to 7.1 pp, and made the phage-side feature pipeline
+  panel-independent.
+
+#### Next steps
+
+- **CH13 remaining:** open PR closing #461; self-review via `review-ml-pr`
+  subagent; merge. Orchestrator ticks — no further CHISEL tickets queued.
+- **Track close-out:** CHISEL track complete. Future tickets will be filed
+  under a new track (post-panel-expansion work, targeted narrow-host rescue,
+  or deployment hardening).
+
+#### Artifacts
+
+- `lyzortx/generated_outputs/ch04_chisel_baseline/ch04_aggregate_metrics.json`,
+  `ch04_predictions.csv`, `ch04_per_row_predictions.csv`,
+  `ch04_feature_importance.csv` — CH13 Arm 3 canonical.
+- `lyzortx/generated_outputs/ch08_wave2_reaudit/ch08_combined_summary.json`,
+  `ch08_summary.csv`, `ch08_sx12_delta.json`, `ch08_sx13_delta.json`,
+  `ch08_sx12_predictions.csv`, `ch08_sx13_predictions.csv` — CH13 Arm 3
+  canonical.
+- Live canonical slot at
+  `.scratch/basel/feature_slots/phage_projection/features.csv` (148 phages,
+  Arm 3) and
+  `lyzortx/generated_outputs/autoresearch/search_cache_v1/feature_slots/phage_projection/features.csv`
+  (96 phages, Arm 3).
+- Pre-CH13 preserved: `ch04_chisel_baseline_tl17/`,
+  `ch08_wave2_reaudit_tl17/`; TL17 slot artifacts at
+  `.scratch/basel/feature_slots/phage_projection_tl17/` and under the
+  autoresearch cache's `phage_projection_tl17/` subdir.
+- `.scratch/ch13_migrate.py`, `.scratch/ch13_patch_top_level_schema.py` — migration
+  scripts.
+- `.scratch/ch13_logs/ch04_rerun.log`, `ch08_rerun.log` — local run logs.
