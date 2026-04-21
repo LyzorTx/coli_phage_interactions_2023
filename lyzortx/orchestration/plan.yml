@@ -2660,7 +2660,7 @@ tracks:
       title: CH05 rerun + CH09 isotonic refit under reverted pre-filter canonical
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - CH10
       acceptance_criteria:

@@ -1683,7 +1683,7 @@ graph LR
     the 0.8084 pre-filter canonical point estimate); CH07 aggregate.json AUC recomputes from its pair_predictions.csv to
     6 dp; knowledge_parser.validate_knowledge() passes; pymarkdown clean; unit tests green (CH04/CH05/CH07/CH08 tests
     must still pass under the flipped default).
-- [ ] **CH11** CH05 rerun + CH09 isotonic refit under reverted pre-filter canonical. Model: `claude-opus-4-6`. CI image
+- [x] **CH11** CH05 rerun + CH09 isotonic refit under reverted pre-filter canonical. Model: `claude-opus-4-6`. CI image
       profile: `base`. Depends on tasks: `CH10`.
   - GOAL: restore chisel-unified-kfold-baseline AND chisel-post-hoc- calibration-layer to numbers computed under the
     pre-filter canonical established by CH10. Bundled per reviewer note: the CH09 isotonic refit is 5 min of compute on
