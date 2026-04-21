@@ -30,14 +30,19 @@ filter.
 | CH05 unified bacteria-axis AUC | post-filter (pending CH11) | 0.8218 | [0.8063, 0.8368] |
 | CH05 unified phage-axis AUC | post-filter (pending CH11) | 0.8919 | [0.8650, 0.9166] |
 | CH05 BASEL bacteria-axis AUC (subset) | post-filter (pending CH11) | 0.7229 | 10.2 pp below Guelin |
-| CH07 both-axis AUC (Arm 3 slot) | pre-filter (CH10) | _CH10 rerun in flight_ | TBD |
+| CH07 both-axis AUC (Arm 3 slot) | pre-filter (CH10) | **0.7634** | [0.7581, 0.7689] |
+| CH07 both-axis Brier (Arm 3 slot) | pre-filter (CH10) | **0.1902** | [0.1874, 0.1927] |
 | CH09 Guelin LOOF ECE (bact / phage) | post-filter (pending CH11) | 0.0074 / 0.0063 | target < 0.02 ✓ |
 | CH09 BASEL ECE closure (bact / phage) | post-filter (pending CH11) | 79.5% / 53.2% | retains large residual TL17-bias mechanism |
 
 The load-bearing cold-start number (both-axis AUC on simultaneously unseen
-bacterium × phage) was 0.7749 under the deprecated post-filter frame with the Arm 3
-slot. CH10 re-runs CH07 under the pre-filter canonical + Arm 3; the value will
-update when the rerun lands.
+bacterium × phage) is **0.7634** [0.7581, 0.7689] under the pre-filter canonical +
+Arm 3 slot (CH10). Post-filter CH07 reported 0.7749; the −1.15 pp gap vs the
+post-filter number is consistent with the label-shift mechanism documented in the
+CH10 entry — the filter trivialised ~12.6 % of pair eval labels 1→0, producing a
+label-population-easier AUC. Cross-source: Guelin 0.7654 [0.7600, 0.7710] vs BASEL
+0.7193 [0.6822, 0.7580]; per-cell AUC mean 0.7663, std 0.0438, min 0.6378, max
+0.8989 across 100 cells (10 bacteria folds × 10 phage folds).
 
 ## What changed in the canonical pipeline
 

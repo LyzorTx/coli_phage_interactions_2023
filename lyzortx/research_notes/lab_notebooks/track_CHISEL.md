@@ -1878,9 +1878,11 @@ positive filter from "canonical training policy" to "opt-in sensitivity analysis
 Re-ran CH04 canonical under the reverted default: **AUC 0.8083 [0.7943, 0.8216], Brier
 0.1751 [0.1677, 0.1824]** (n=35,266 pairs, 8,675 score='n' rows dropped, elapsed 1,442 s)
 — reproduces the prior-encoding pre-filter canonical (0.8084 / 0.1750) to 4 decimal
-places. Acceptance band [0.806, 0.811] ✓. CH07 100-cell both-axis rerun with the Arm 3
-slot is in flight (~4 h estimated). Supersedes PR #453 framing — the label-shift was
-real, but CH10 argues the correct remedy is removing the filter, not disclosing its
+places. Acceptance band [0.806, 0.811] ✓. CH07 100-cell both-axis rerun completed
+(elapsed 4h 43min): **aggregate AUC 0.7634 [0.7581, 0.7689], Brier 0.1902 [0.1874,
+0.1927]** on 36,643 pairs; −1.15 pp vs the deprecated post-filter 0.7749 — directionally
+consistent with the label-shift mechanism. Supersedes PR #453 framing — the label-shift
+was real, but CH10 argues the correct remedy is removing the filter, not disclosing its
 shift.
 
 #### Problem
@@ -1966,9 +1968,31 @@ places, confirming (a) the encoding is deterministic under the flipped default a
 (b) no silent dependency on the filter leaked into CH04 intermediate steps between
 the CH04 initial and CH10 reruns.
 
-CH07 rerun was launched at 13:11 CEST with `--drop-high-titer-only-positives=False`
-and the Arm 3 phage_projection slot; expected ~4 h. Results will be folded into this
-entry when the run completes.
+CH07 rerun numbers (10×10 both-axis CV, Arm 3 phage_projection slot, 3 seeds per cell,
+1000 pair-level bootstrap resamples):
+
+| Metric | Value | 95% CI |
+|---|---|---|
+| Aggregate AUC | 0.763444 | [0.758131, 0.768938] |
+| Aggregate Brier | 0.190156 | [0.187399, 0.192666] |
+| Guelin AUC | 0.765402 | [0.759986, 0.771000] |
+| BASEL AUC | 0.719314 | [0.682223, 0.758009] |
+| Per-cell AUC mean | 0.7663 | std 0.0438, median 0.7686 |
+| Per-cell AUC range | [0.6378, 0.8989] | 100 cells, all with defined AUC |
+| n_pairs | 36,643 | (35,403 Guelin + 1,240 BASEL) |
+| Elapsed | 17,018 s | ~4 h 43 min |
+
+Aggregate AUC recomputed from `ch07_pair_predictions.csv` matches `ch07_aggregate.json`
+to 6 dp (0.763444 / 0.190156). Acceptance criterion ✓.
+
+Delta vs the deprecated post-filter CH07 (0.7749 aggregate AUC): **−1.15 pp**,
+disjoint from the post-filter band. Directionally consistent with the label-shift
+decomposition: the filter trivialized ~12.6 % of pair eval labels 1→0 (easier
+population); removing the filter restores those 4,428 positives as eval-time
+positives and the model re-prices discrimination at a noisier but honest level. The
+per-cell distribution is broad (min 0.6378, max 0.8989) — cold-start on
+simultaneously unseen bacteria × phage is high-variance by construction, and the
+pre-filter frame is the calibrated reporting point.
 
 #### Interpretation
 
@@ -1989,8 +2013,8 @@ entry when the run completes.
 
 #### Next steps
 
-- **CH10 remaining:** monitor CH07 rerun (~4 h). Update this entry with CH07
-  aggregate AUC + per-cell distribution when the run completes. Open PR.
+- **CH10 remaining:** open PR closing #455, self-review via `review-ml-pr`
+  subagent, merge.
 - **CH11:** CH05 rerun + CH09 isotonic refit under pre-filter canonical.
 - **CH12:** CH08 SX12/SX13 rerun.
 - **CH13:** Arm 3 canonical `phage_projection` slot migration (previously
@@ -2003,7 +2027,10 @@ entry when the run completes.
 - `lyzortx/generated_outputs/ch04_chisel_baseline/ch04_predictions.csv`,
   `ch04_per_row_predictions.csv`, `ch04_feature_importance.csv` — pre-filter
   pair-level / per-row predictions + feature importance.
-- `lyzortx/generated_outputs/ch07_both_axis_holdout/` — pending CH07 rerun.
+- `lyzortx/generated_outputs/ch07_both_axis_holdout/ch07_aggregate.json`,
+  `ch07_pair_predictions.csv`, `ch07_per_row_predictions.csv`, `ch07_cell_metrics.csv`,
+  `ch07_cross_source_breakdown.csv`, `ch07_cell_distribution.png` — pre-filter
+  CH07 canonical (in place of post-filter artifacts).
 - `.scratch/chisel_review/caseXcase_chisel.py`,
   `caseXcase_prior_vs_canonical.md` — 2×2 decomposition from PR #453 (retained
   as evidence for the label-shift finding that motivated the revert).

@@ -444,22 +444,31 @@ themes:
           without the label-policy cost. Reviewer artifacts:
           .scratch/chisel_review/caseXcase_chisel.py, caseXcase_prior_vs_canonical.md.
 
-          **Downstream impact.** CH05 (CH11 rerun), CH07 (rerun bundled into CH10), CH08
-          (CH12 rerun), and CH09 isotonic refit (bundled into CH11) were all anchored to
-          the deprecated post-filter canonical and are re-running under the reverted
-          pre-filter default. CH11/CH12 preserve the deprecated post-filter artifacts in
-          `_post_filter/` side-directories for sensitivity comparison. The filter remains
-          available as an opt-in CLI flag (`--drop-high-titer-only-positives`) but is not
-          the default in any eval script. The `moriniere-receptor-fractions-validated`
-          knowledge unit cites post-filter CH05 numbers; CH11 will re-cite under the
-          reverted canonical. **SUPERSEDES: PR #453** (commit c22faf7, merged
-          2026-04-21) — #453 amended the knowledge unit to disclose the label-shift
-          artifact but kept the filter as canonical. CH10 demotes the filter entirely.
+          **Downstream impact.** CH05 (CH11 rerun), CH08 (CH12 rerun), and CH09 isotonic
+          refit (bundled into CH11) were anchored to the deprecated post-filter canonical
+          and are re-running under the reverted pre-filter default. CH07 rerun was
+          bundled into CH10 and completed 2026-04-21: aggregate 10×10 both-axis AUC
+          **0.7634 [0.7581, 0.7689]**, Brier **0.1902 [0.1874, 0.1927]** on 36,643
+          unified-panel pairs under the Arm 3 phage_projection slot — −1.15 pp vs the
+          deprecated post-filter 0.7749, directionally consistent with the label-shift
+          mechanism (filter trivialized eval labels) and now the load-bearing cold-
+          start deployability number. CH11/CH12 preserve the deprecated post-filter
+          artifacts in `_post_filter/` side-directories for sensitivity comparison. The
+          filter remains available as an opt-in CLI flag
+          (`--drop-high-titer-only-positives`) but is not the default in any eval
+          script. The `moriniere-receptor-fractions-validated` knowledge unit cites
+          post-filter CH05 numbers; CH11 will re-cite under the reverted canonical.
+          **SUPERSEDES: PR #453** (commit c22faf7, merged 2026-04-21) — #453 amended
+          the knowledge unit to disclose the label-shift artifact but kept the filter
+          as canonical. CH10 demotes the filter entirely.
 
           **Canonical artifacts:**
           lyzortx/generated_outputs/ch04_chisel_baseline/ch04_aggregate_metrics.json,
-          ch04_predictions.csv (pair-level), ch04_per_row_predictions.csv (per-row), and
-          ch04_feature_importance.csv.
+          ch04_predictions.csv (pair-level), ch04_per_row_predictions.csv (per-row),
+          ch04_feature_importance.csv;
+          lyzortx/generated_outputs/ch07_both_axis_holdout/ch07_aggregate.json,
+          ch07_pair_predictions.csv, ch07_per_row_predictions.csv, ch07_cell_metrics.csv,
+          ch07_cross_source_breakdown.csv, ch07_cell_distribution.png.
         relates_to: [spandex-final-baseline, cv-group-leakage-fixed, label-policy-binary,
                      ranking-metrics-retired, per-phage-retired-under-chisel,
                      deployment-goal]
