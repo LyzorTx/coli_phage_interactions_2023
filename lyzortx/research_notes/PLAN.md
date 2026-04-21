@@ -1709,7 +1709,7 @@ graph LR
     create chisel-post-hoc-calibration-layer with refit numbers.
   - Record the rerun results, the pre-filter/post-filter sensitivity comparison, and the refit calibrator transfer
     numbers in track_CHISEL.md.
-- [ ] **CH12** Rerun CH08 SX12/SX13 wave-2 re-audit under reverted pre-filter canonical. Model: `claude-opus-4-6`. CI
+- [x] **CH12** Rerun CH08 SX12/SX13 wave-2 re-audit under reverted pre-filter canonical. Model: `claude-opus-4-6`. CI
       image profile: `base`. Depends on tasks: `CH10`.
   - GOAL: restore CH08's SX12/SX13 delta headlines to the pre-filter baseline. The merged CH08 reported SX12 +1.16 pp
     AUC / SX13 +0.17 pp AUC against the CH04 POST-filter canonical predictions. The paired bacterium-level bootstrap is
