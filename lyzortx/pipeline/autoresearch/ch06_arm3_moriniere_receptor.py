@@ -206,7 +206,7 @@ def run_arm3_training_eval(
     device_type: str = "cpu",
     max_folds: int | None = None,
     num_workers: int = 3,
-    drop_high_titer_only_positives: bool = True,
+    drop_high_titer_only_positives: bool = False,
 ) -> dict[str, object]:
     """Run CH05's two-axis evaluation with the Arm 3 phage_projection slot."""
     from lyzortx.pipeline.autoresearch.candidate_replay import load_module_from_path

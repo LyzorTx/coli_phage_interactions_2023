@@ -1867,3 +1867,144 @@ What does NOT survive:
 - `.scratch/chisel_review/caseXcase_chisel.py`,
   `caseXcase_prior_vs_canonical.md` — case-by-case comparison across
   pre/post-filter predictions with 2×2 decomposition.
+
+### 2026-04-21 13:15 CEST: CH10 — Revert neat-only positive filter to sensitivity analysis (supersedes #453)
+
+#### Executive summary
+
+Flipped `drop_high_titer_only_positives` from `True` to `False` as the default across
+CH04/CH05/CH07/CH08 and the three CH06 arm scripts, demoting the CH06-followup neat-only
+positive filter from "canonical training policy" to "opt-in sensitivity analysis".
+Re-ran CH04 canonical under the reverted default: **AUC 0.8083 [0.7943, 0.8216], Brier
+0.1751 [0.1677, 0.1824]** (n=35,266 pairs, 8,675 score='n' rows dropped, elapsed 1,442 s)
+— reproduces the prior-encoding pre-filter canonical (0.8084 / 0.1750) to 4 decimal
+places. Acceptance band [0.806, 0.811] ✓. CH07 100-cell both-axis rerun with the Arm 3
+slot is in flight (~4 h estimated). Supersedes PR #453 framing — the label-shift was
+real, but CH10 argues the correct remedy is removing the filter, not disclosing its
+shift.
+
+#### Problem
+
+PR #444 (CH06-followup) adopted a training-side filter that dropped Guelin positive
+rows for pairs whose every score='1' observation occurred only at log_dilution=0
+(neat, ~5×10⁸ pfu/ml). Stated rationale: Gaborieau 2024 Methods flagged "clearing at
+high titer can be non-productive". PR #453 disclosed that the filter's headline
++1.33 pp AUC was partly a label-shift artifact (4,428 pair eval labels flipped 1→0
+at max-conc, because the filter removed the neat-only positive replicate from
+training and the same rows act as label sources at eval) but kept the filter as
+canonical because the −0.98 pp on-matched-labels Brier improvement and the paper's
+label-policy framing justified it.
+
+On second review, four objections held up:
+
+1. **Wrong proxy.** Gaborieau 2024 flag plaques-vs-clearing as the phenotype concern
+   (`"Clearing of the bacterial lawn at high phage concentration *could* result from
+   productive lysis … or from another mechanism such as lysis from without, or
+   abortive infection"`). Our binary {0, 1, n} score cannot distinguish plaques from
+   clearing; "positive observed only at neat" is not the same as "ambiguous clearing".
+   A narrow-host pair that barely lyses at max titer is dropped identically to an
+   abortive-infection artifact.
+2. **Testing-completeness bias.** "Positive only at neat" is also "positive at neat
+   AND either untested or negative at lower dilutions". A pair with sparser dilution
+   sampling is more likely to be filtered than one with richer sampling — that is a
+   data-collection selection, not biology.
+3. **BASEL inconsistency.** BASEL single-titer at >10⁹ pfu/ml is HIGHER than Guelin's
+   neat 5×10⁸, but the filter exempts BASEL wholesale. If "high titer is suspect" were
+   the biological rationale, BASEL positives would be MORE suspect, not exempt. The
+   real reason BASEL is exempt is structural (single-titer design), which confirms
+   the filter is about Guelin-specific dilution sampling density, not biology.
+4. **Paper does not drop.** Gaborieau's MLC score treats MLC=1 ("lytic at highest
+   titer only") as a valid included rung in the published interaction matrix and in
+   the "average MLC upon infection" / "productive lysis %" downstream analyses. We
+   unilaterally reclassified ~20% of Guelin positives as non-lytic, contrary to the
+   paper's own convention.
+
+Plus the quantitative finding from PR #453 that also points at revert: on matched
+pre-filter eval labels, the filter-trained model regresses −1.47 pp AUC
+(0.8084 → 0.7937). The Brier gain that survives decomposition (−0.98 pp) is
+addressable by the CH09 isotonic calibrator without the label-policy cost.
+
+#### Design decisions
+
+- **Flip defaults, keep flag.** The filter logic in `build_clean_row_training_frame`
+  stays intact; every CLI keeps `--drop-high-titer-only-positives` (default False)
+  so sensitivity analyses can opt in. Changed files:
+  `ch04_eval.py`, `ch05_eval.py`, `ch07_both_axis_holdout.py`, `ch08_wave2_reaudit.py`,
+  `ch06_arm2_mmseqs_proteome.py`, `ch06_arm3_moriniere_receptor.py`,
+  `ch06_arm4_tail_restricted_tl17.py`. Help-text updated to point at the CH10 revert.
+- **CH04 + CH07 rerun in this ticket.** CH07's 0.7749 AUC is the recap's load-bearing
+  cold-start deployability number; cannot leave it citing a deprecated label frame.
+  Bundled both reruns into CH10 per reviewer guidance. CH05 (CH11) and CH08 (CH12)
+  are scheduled as follow-ups because they are longer (CH05 has a 40-fold structure;
+  CH08 was RFE-expensive historically). CH09 isotonic refit is bundled into CH11 so
+  the calibrator is refit on CH05-post-revert predictions in one PR.
+- **Knowledge amendment.** `chisel-baseline` statement + context rewritten: canonical
+  is pre-filter; the four objections verbatim in the context. `chisel-unified-kfold-
+  baseline` and `moriniere-receptor-fractions-validated` gain "post-filter frame,
+  pending CH11 rerun" caveats because they cite CH05-derived numbers that will
+  change when CH11 lands.
+- **CH06 arm defaults flipped.** Three arm scripts had the filter kwarg as `True` but
+  no CLI flag — all three were called via `run_ch05_with_...` helpers and would have
+  silently inherited the filter if re-run. Flipped to False for consistency with the
+  reverted canonical.
+
+#### Results
+
+CH04 rerun numbers (10-fold bacteria-axis CV, 3 seeds, 1000 bootstrap resamples):
+
+| Metric | Value | 95% CI |
+|---|---|---|
+| Aggregate AUC | 0.808276 | [0.794313, 0.821614] |
+| Aggregate Brier | 0.175055 | [0.167748, 0.182384] |
+| n_pairs_evaluated | 35,266 | — |
+| n_training_rows_dropped (score='n') | 8,675 | — |
+| Concentration feature importance | 328.7 | #4 mean rank across 30 fits |
+| Elapsed | 1,442 s | — |
+
+Reproduces the prior-encoding pre-filter canonical (0.8084 / 0.1750) to 4 decimal
+places, confirming (a) the encoding is deterministic under the flipped default and
+(b) no silent dependency on the filter leaked into CH04 intermediate steps between
+the CH04 initial and CH10 reruns.
+
+CH07 rerun was launched at 13:11 CEST with `--drop-high-titer-only-positives=False`
+and the Arm 3 phage_projection slot; expected ~4 h. Results will be folded into this
+entry when the run completes.
+
+#### Interpretation
+
+- The four objections are structural, not quantitative. Even if the filter's
+  on-matched-labels AUC regression were smaller, (i)-(iv) stand as label-policy
+  defects. The quantitative finding (−1.47 pp AUC regression) only strengthens the
+  structural case.
+- The Brier-on-matched-labels gain (−0.98 pp) survives because removing neat-only
+  positives makes the model predict lower probability on those pairs, which is
+  correct once the label flips to 0. But isotonic calibration (CH09) gets the same
+  Brier gain without losing the 4,428 pairs of training signal or the paper's MLC=1
+  rung. Two different fixes for the same miscalibration; isotonic is the cleaner
+  one.
+- Downstream: CH11 reruns CH05 + refits the CH09 isotonic calibrator under the
+  reverted canonical; CH12 reruns CH08 SX12/SX13. Both preserve the deprecated
+  post-filter artifacts under `_post_filter/` side-directories so the sensitivity
+  comparison is reproducible.
+
+#### Next steps
+
+- **CH10 remaining:** monitor CH07 rerun (~4 h). Update this entry with CH07
+  aggregate AUC + per-cell distribution when the run completes. Open PR.
+- **CH11:** CH05 rerun + CH09 isotonic refit under pre-filter canonical.
+- **CH12:** CH08 SX12/SX13 rerun.
+- **CH13:** Arm 3 canonical `phage_projection` slot migration (previously
+  tentatively referred to as "CH10" in merged docs pre-revert; PR #454 renumbered).
+
+#### Artifacts
+
+- `lyzortx/generated_outputs/ch04_chisel_baseline/ch04_aggregate_metrics.json` —
+  pre-filter CH04 canonical (replaces the post-filter artifacts in place).
+- `lyzortx/generated_outputs/ch04_chisel_baseline/ch04_predictions.csv`,
+  `ch04_per_row_predictions.csv`, `ch04_feature_importance.csv` — pre-filter
+  pair-level / per-row predictions + feature importance.
+- `lyzortx/generated_outputs/ch07_both_axis_holdout/` — pending CH07 rerun.
+- `.scratch/chisel_review/caseXcase_chisel.py`,
+  `caseXcase_prior_vs_canonical.md` — 2×2 decomposition from PR #453 (retained
+  as evidence for the label-shift finding that motivated the revert).
+- `.scratch/ch10_logs/ch04_rerun.log`, `ch07_rerun.log` — local run logs.

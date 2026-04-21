@@ -526,7 +526,7 @@ def run_ch05_eval(
     basel_log10_pfu_ml: float = BASEL_LOG10_PFU_ML,
     max_folds: Optional[int] = None,
     num_workers: int = 3,
-    drop_high_titer_only_positives: bool = True,
+    drop_high_titer_only_positives: bool = False,
 ) -> dict[str, object]:
     """Run the full CH05 two-axis evaluation.
 
@@ -535,9 +535,10 @@ def run_ch05_eval(
     see `run_ch04_eval` for the contract.
 
     `drop_high_titer_only_positives` inherits from CH04 — see
-    `build_clean_row_training_frame`. Enabled by default under the CH06 follow-up
-    filter adoption; pass `False` (CLI: `--no-drop-high-titer-only-positives`) to
-    reproduce the pre-adoption baseline.
+    `build_clean_row_training_frame`. Disabled by default as of CH10 (filter
+    demoted to opt-in sensitivity analysis); pass `True` (CLI:
+    `--drop-high-titer-only-positives`) to reproduce the deprecated post-filter
+    numbers.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     start_time = datetime.now(timezone.utc)
@@ -750,11 +751,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--drop-high-titer-only-positives",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
         help=(
             "Drop Guelin positive rows for pairs where every score='1' observation occurs "
-            "at log_dilution=0 (neat). ENABLED BY DEFAULT as of the CH06 follow-up filter "
-            "adoption. Pass --no-drop-high-titer-only-positives for the pre-adoption baseline."
+            "at log_dilution=0 (neat). Opt-in sensitivity analysis (CH10 demoted it from "
+            "canonical). Default OFF."
         ),
     )
     return parser.parse_args(argv)

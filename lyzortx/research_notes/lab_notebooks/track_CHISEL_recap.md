@@ -12,58 +12,65 @@ one of its two root causes (phage-side TL17 bias) into a panel-independent featu
 
 ## Headline outcomes
 
+**2026-04-21 CH10 revert:** CH04 and CH07 were re-run under the reverted pre-filter
+canonical (neat-only positive filter demoted to opt-in sensitivity analysis — see
+the CH10 section below). CH05/CH08/CH09 numbers in the table below are still under
+the deprecated post-filter frame and are scheduled to be refreshed by CH11 (CH05
++ CH09 refit) and CH12 (CH08).
+
 Everything below is on the 369×96 Guelin panel (unified 148-phage panel for cross-
-source numbers). "Post-filter canonical" = CH04 + CH06-followup: per-row binary labels,
-`pair_concentration__log10_pfu_ml` feature, all-pairs only (no per-phage blending),
-neat-only filter on Guelin training positives.
+source numbers). Canonical = per-row binary labels, `pair_concentration__log10_pfu_ml`
+feature (absolute log₁₀ pfu/ml), all-pairs only (no per-phage blending), NO neat-only
+filter.
 
-| Metric | Baseline | Number | 95% CI |
+| Metric | Frame | Number | 95% CI |
 |---|---|---|---|
-| CH04 Guelin bacteria-axis AUC | post-filter canonical | **0.8217** | [0.8054, 0.8365] |
-| CH04 Guelin bacteria-axis Brier | " | **0.1435** | [0.1363, 0.1508] |
-| CH05 unified bacteria-axis AUC | " (148-phage panel) | 0.8218 | [0.8063, 0.8368] |
-| CH05 unified phage-axis AUC | " | **0.8919** | [0.8650, 0.9166] |
-| CH05 BASEL bacteria-axis AUC (subset) | " | 0.7229 | 10.2 pp below Guelin |
-| CH07 both-axis AUC (Arm 3 slot) | post-filter + Moriniere receptor fractions | 0.7749 | [0.7687, 0.7814] |
-| CH07 per-cell AUC distribution | 100 cells | mean 0.781, median 0.780, std 0.053 | min 0.63, max 0.92 |
-| CH09 Guelin LOOF ECE (bact / phage) | post-hoc isotonic | 0.0074 / 0.0063 | target < 0.02 ✓ |
-| CH09 BASEL ECE closure (bact / phage) | cross-panel transfer | 79.5% / 53.2% | retains large residual TL17-bias mechanism |
+| CH04 Guelin bacteria-axis AUC | pre-filter (CH10) | **0.8083** | [0.7943, 0.8216] |
+| CH04 Guelin bacteria-axis Brier | pre-filter (CH10) | **0.1751** | [0.1677, 0.1824] |
+| CH05 unified bacteria-axis AUC | post-filter (pending CH11) | 0.8218 | [0.8063, 0.8368] |
+| CH05 unified phage-axis AUC | post-filter (pending CH11) | 0.8919 | [0.8650, 0.9166] |
+| CH05 BASEL bacteria-axis AUC (subset) | post-filter (pending CH11) | 0.7229 | 10.2 pp below Guelin |
+| CH07 both-axis AUC (Arm 3 slot) | pre-filter (CH10) | _CH10 rerun in flight_ | TBD |
+| CH09 Guelin LOOF ECE (bact / phage) | post-filter (pending CH11) | 0.0074 / 0.0063 | target < 0.02 ✓ |
+| CH09 BASEL ECE closure (bact / phage) | post-filter (pending CH11) | 79.5% / 53.2% | retains large residual TL17-bias mechanism |
 
-The load-bearing number for deployment: **cold-start AUC on simultaneously unseen
-bacterium × phage = 0.7749**, retaining 93% of the single-axis discrimination.
+The load-bearing cold-start number (both-axis AUC on simultaneously unseen
+bacterium × phage) was 0.7749 under the deprecated post-filter frame with the Arm 3
+slot. CH10 re-runs CH07 under the pre-filter canonical + Arm 3; the value will
+update when the rerun lands.
 
 ## What changed in the canonical pipeline
 
 Against the SPANDEX starting point:
 
-- **Training label**: any_lysis (pair-level rollup) → per-row binary, score ∈ {0, 1},
++ **Training label**: any_lysis (pair-level rollup) → per-row binary, score ∈ {0, 1},
   `score == "n"` dropped as missing (see `label-policy-binary`). Each (bacterium, phage,
   log_dilution, replicate) observation is a training row.
-- **Concentration**: implicit in the rollup → explicit numeric feature
++ **Concentration**: implicit in the rollup → explicit numeric feature
   `pair_concentration__log10_pfu_ml` with Guelin steps {4.7, 6.7, 7.7, 8.7} and BASEL
   constant 9.0 (absolute log₁₀ pfu/ml; conservative lower bound on Maffei 2021/2025
   >10⁹ pfu/ml working titer).
-- **Per-phage blending (AX02)**: dominant SPANDEX architectural gain +2 pp AUC →
++ **Per-phage blending (AX02)**: dominant SPANDEX architectural gain +2 pp AUC →
   **retired track-wide** (`per-phage-retired-under-chisel`). Not deployable for unseen
   phages, and the SPANDEX +2 pp was partly leakage and partly per-phage-head artifacts
   under per-row training.
-- **Fold hashing**: name-hashed (leaked 45/48 multi-bacterium cv_groups across folds) →
++ **Fold hashing**: name-hashed (leaked 45/48 multi-bacterium cv_groups across folds) →
   cv_group-hashed (see `cv-group-leakage-fixed`). All subsequent CHISEL results sit
   downstream of this fix.
-- **Scorecard**: nDCG + mAP + top-k + AUC + Brier → **AUC + Brier only**. Ranking
++ **Scorecard**: nDCG + mAP + top-k + AUC + Brier → **AUC + Brier only**. Ranking
   metrics are a product-layer concern; a biological model predicts `P(lysis | host, phage,
   concentration)` and downstream code turns calibrated probabilities into rankings
   (see `ranking-metrics-retired`).
-- **Calibration layer**: none → CH09 isotonic calibrator fitted on Guelin training-fold
++ **Calibration layer**: none → CH09 isotonic calibrator fitted on Guelin training-fold
   predictions, persisted as `ch09_calibrator.pkl`, closes Guelin ECE from 0.13 to
   0.007/0.006 on both axes (see `chisel-unified-kfold-baseline`).
-- **Phage-side feature slot**: Guelin-derived TL17 BLAST projection (zero-vector for
++ **Phage-side feature slot**: Guelin-derived TL17 BLAST projection (zero-vector for
   13/52 BASEL phages) → Moriniere per-receptor k-mer fractions (CH06 Arm 3,
   panel-independent 13-dim, BASEL zero-vec phage-axis +4.36 pp; see
   `moriniere-receptor-fractions-validated`). Canonical migration deferred to the
   follow-up CH13 ticket (currently a side-materialized artifact at
   `.scratch/basel/feature_slots_arm3/`).
-- **Both-axis cold-start**: never previously measured → CH07 reports 0.7749 on 100 cells
++ **Both-axis cold-start**: never previously measured → CH07 reports 0.7749 on 100 cells
   with pair-level bootstrap.
 
 ## Dead ends and null arms
@@ -71,40 +78,40 @@ Against the SPANDEX starting point:
 What was tested and found not to lift (one-liners for future tracks that might otherwise
 re-litigate):
 
-- **CH06 Arm 1 (OOD shrinkage toward base rate)**: null. Feature-space-level
++ **CH06 Arm 1 (OOD shrinkage toward base rate)**: null. Feature-space-level
   out-of-distribution-detector + shrinkage on phage projection features did not rescue
   BASEL calibration on either axis.
-- **CH06 Arm 2 (MMseqs2 pairwise proteome similarity, PCA-32)**: null on BASEL non-zero-
++ **CH06 Arm 2 (MMseqs2 pairwise proteome similarity, PCA-32)**: null on BASEL non-zero-
   projection phages (cannibalized RBP-specific signal), null on Guelin. Partially rescued
   the zero-projection subset but at the cost of the non-zero-projection group.
-- **CH06 Arm 4 (tail-protein-restricted TL17 BLAST)**: null. Strict subset of baseline
++ **CH06 Arm 4 (tail-protein-restricted TL17 BLAST)**: null. Strict subset of baseline
   TL17 hits — smaller matched region, no new information, no lift on any subset.
-- **SX11 ordinal losses**: not retired in CHISEL, but out of scope (chased MLC-graded
++ **SX11 ordinal losses**: not retired in CHISEL, but out of scope (chased MLC-graded
   potency which doesn't exist in the CHISEL label frame). Already null under SPANDEX.
-- **CH09 Arm 2 (cross-panel calibrator transfer)**: Guelin-fitted isotonic applied to
++ **CH09 Arm 2 (cross-panel calibrator transfer)**: Guelin-fitted isotonic applied to
   BASEL closes 79.5% of bacteria-axis ECE and 53.2% of phage-axis ECE, but residual BASEL
   ECE 0.044/0.111 is 6-17× Guelin's calibrated ECE — TL17-bias is a feature-level
   problem, not a threshold-level one.
-- **CH09 Arm 3 (label-threshold sensitivity)**: directional miss + label-shift artifact.
++ **CH09 Arm 3 (label-threshold sensitivity) — REVERTED by CH10 (2026-04-21).**
   Dropping Guelin neat-only positives gives headline +1.3 pp AUC, −3.2 pp Brier, +0.7 pp
   ECE — but a 2026-04-21 post-hoc decomposition found the filter also flips 4,428 pair
   eval labels 1→0 (12.6% of eval set), because evaluation pulls the label from the
   pair's max-concentration observation and the removed neat-only positive leaves a 0
   replicate standing. On matched (pre-filter) labels the filter-trained model has
   −1.47 pp AUC (regression) but −0.98 pp Brier (genuine improvement survives).
-  Adopted as canonical on Gaborieau-2024 label-policy grounds (neat-only positives
-  are candidate-non-productive) plus the Brier-on-matched-labels gain, NOT on
-  discrimination. See `chisel-baseline` knowledge unit for the 2×2 decomposition and
-  the corrected framing.
+  CH10 rolled the filter back to an opt-in sensitivity analysis after four reviewer
+  objections (wrong proxy, testing-completeness bias, BASEL inconsistency, paper
+  does not drop) — see the CH10 section in `track_CHISEL.md` and the revised
+  `chisel-baseline` unit for the full decomposition + objections.
 
 And what surprised us on re-audit:
 
-- **CH08 SX12 (Moriniere 815 phage 5-mers, top-100 variance pre-filter)**: **non-null.**
++ **CH08 SX12 (Moriniere 815 phage 5-mers, top-100 variance pre-filter)**: **non-null.**
   +1.16 pp AUC [+0.82, +1.51] under CHISEL per-row training, disjoint CI. Reopens the
   SPANDEX-era `kmer-receptor-expansion-neutral` null. Not a blocker for the Arm 3
   migration — the two findings are complementary (Arm 3 = panel-independent aggregates;
   SX12 kmers = raw-feature additive lift on Guelin).
-- **CH08 SX13 (host OMP 5546 5-mers, top-100 variance pre-filter)**: barely-non-null.
++ **CH08 SX13 (host OMP 5546 5-mers, top-100 variance pre-filter)**: barely-non-null.
   +0.17 pp AUC [+0.03, +0.31]. Reopens `host-omp-variation-unpredictive` but the effect
   is consistent with phylogroup-correlated lineage noise rather than OMP-specific
   host-range signal.
@@ -146,32 +153,34 @@ Each is a concrete, schedulable item — not a vague aspiration.
 
 Canonical generated-outputs directories (under `lyzortx/generated_outputs/`):
 
-- `ch02_cv_group_fix/` — CV fold-hashing fix + SX10 revalidation.
-- `ch03_row_expansion/` — per-row training matrix + any_lysis regression check.
-- `ch04_chisel_baseline/ch04_aggregate_metrics.json` — post-filter baseline,
-  bacteria-axis AUC 0.8217.
-- `ch05_unified_kfold/ch05_combined_summary.json` — unified Guelin+BASEL two-axis
++ `ch02_cv_group_fix/` — CV fold-hashing fix + SX10 revalidation.
++ `ch03_row_expansion/` — per-row training matrix + any_lysis regression check.
++ `ch04_chisel_baseline/ch04_aggregate_metrics.json` — CH10 pre-filter canonical,
+  bacteria-axis AUC 0.8083 [0.7943, 0.8216].
++ `ch05_unified_kfold/ch05_combined_summary.json` — unified Guelin+BASEL two-axis
   baseline.
-- `ch06_arm1_ood_shrinkage/`, `ch06_arm2_mmseqs_proteome/`,
++ `ch06_arm1_ood_shrinkage/`, `ch06_arm2_mmseqs_proteome/`,
   `ch06_arm3_moriniere_receptor/`, `ch06_arm4_tail_restricted_tl17/` — per-arm metrics
   JSON, prediction CSVs, cross-source breakdowns.
-- `ch07_both_axis_holdout/ch07_aggregate.json`, `.../ch07_cell_metrics.csv`,
++ `ch07_both_axis_holdout/ch07_aggregate.json`, `.../ch07_cell_metrics.csv`,
   `.../ch07_cell_distribution.png`.
-- `ch08_wave2_reaudit/ch08_summary.csv`, `.../ch08_sx12_delta.json`,
++ `ch08_wave2_reaudit/ch08_summary.csv`, `.../ch08_sx12_delta.json`,
   `.../ch08_sx13_delta.json`.
-- `ch09_calibration_layer/ch09_calibrator.pkl`, `.../ch09_calibration_report.json`,
++ `ch09_calibration_layer/ch09_calibrator.pkl`, `.../ch09_calibration_report.json`,
   `.../ch09_label_threshold_sensitivity.json`.
 
 Scripts that reproduce headline numbers:
 
-- `lyzortx/pipeline/autoresearch/ch04_eval.py` — CH04 post-filter canonical.
-- `lyzortx/pipeline/autoresearch/ch05_eval.py` — unified Guelin+BASEL k-fold.
-- `lyzortx/pipeline/autoresearch/ch06_arm3_moriniere_receptor.py` — Moriniere per-
++ `lyzortx/pipeline/autoresearch/ch04_eval.py` — CH04 pre-filter canonical (CH10);
+  pass `--drop-high-titer-only-positives` to reproduce the deprecated post-filter
+  numbers for sensitivity analysis.
++ `lyzortx/pipeline/autoresearch/ch05_eval.py` — unified Guelin+BASEL k-fold.
++ `lyzortx/pipeline/autoresearch/ch06_arm3_moriniere_receptor.py` — Moriniere per-
   receptor k-mer-fraction slot materializer + eval driver.
-- `lyzortx/pipeline/autoresearch/ch07_both_axis_holdout.py` — 100-cell both-axis CV.
-- `lyzortx/pipeline/autoresearch/ch08_wave2_reaudit.py` — SX12 + SX13 re-audit with
++ `lyzortx/pipeline/autoresearch/ch07_both_axis_holdout.py` — 100-cell both-axis CV.
++ `lyzortx/pipeline/autoresearch/ch08_wave2_reaudit.py` — SX12 + SX13 re-audit with
   top-100 variance pre-filter + paired bacterium-level bootstrap.
-- `lyzortx/pipeline/autoresearch/ch09_calibration_layer.py`,
++ `lyzortx/pipeline/autoresearch/ch09_calibration_layer.py`,
   `lyzortx/pipeline/autoresearch/ch09_arm3_analysis.py` — isotonic calibrator + label-
   threshold sensitivity.
 
