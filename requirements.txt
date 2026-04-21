@@ -10,6 +10,7 @@ matplotlib==3.10.8
 mdmparis-defense-finder==2.0.1
 notebook==7.5.5
 numpy==2.4.2
+openpyxl==3.1.5
 optuna==4.8.0
 pandas==3.0.1
 pre-commit==4.5.1

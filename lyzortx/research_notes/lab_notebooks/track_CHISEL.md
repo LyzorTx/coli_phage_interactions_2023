@@ -1590,3 +1590,182 @@ well without any specific training pair.
   Brier and CIs.
 - `.../ch07_cell_distribution.png` — histogram of per-cell AUC with mean and median
   markers.
+
+### 2026-04-21 05:37 CEST: CH08 — Wave-2 feature-family re-audit under CHISEL frame
+
+#### Executive summary
+
+Re-audited SPANDEX wave-2 nulls (SX12 Moriniere 815 phage 5-mers;
+SX13 host OMP 5546 5-mers) under the CHISEL training frame: per-row binary labels,
+`pair_concentration__log10_pfu_ml` feature, all-pairs only (no per-phage blending),
+neat-only positive filter, 10-fold bacteria-axis CV over the 369×96 Guelin panel. Each
+kmer slot was pre-filtered to the **top-100 features by binary variance** before RFE
+to keep per-fold wallclock tractable on a 281K-row training frame (unfiltered RFE on
+1281 total features had run at ~60 min/fold — 20 folds = 20 h+). Paired bacterium-level
+bootstrap (1000 resamples) on the CH04-canonical baseline predictions vs each arm's
+variant predictions:
+
+| Arm | Extra slot | Arm AUC | Arm Brier | Δ AUC (CI) | Δ Brier (CI) | Knowledge-unit verdict |
+|---|---|---|---|---|---|---|
+| baseline | — | 0.8217 | 0.1435 | — | — | — |
+| sx12 | phage_moriniere_kmer (top-100 var) | **0.8333** | 0.1415 | **+1.16 pp [+0.82, +1.51]** | **−0.20 pp [−0.41, ≈0]** | **`kmer-receptor-expansion-neutral` reopens** |
+| sx13 | host_omp_kmer (top-100 var) | 0.8234 | 0.1423 | +0.17 pp [+0.03, +0.31] | −0.12 pp [−0.20, −0.06] | **`host-omp-variation-unpredictive` reopens** |
+
+Both arms land with delta CIs disjoint from zero, so per plan.yml's "CRITIC RESPONSE: if
+either re-audit shows non-null lift (CI disjoint from zero), this reopens the wave-2
+feature-family conclusions … Do not suppress unexpected positives", **both wave-2
+null knowledge units must be reverted from validated-null to open**. SX12's effect
+size (+1.16 pp) is ~7× SX13's (+0.17 pp) — the Moriniere phage k-mers contribute a
+meaningful signal under CHISEL that they did not contribute under SPANDEX; the host
+OMP k-mers still barely move the needle but the CI is technically disjoint.
+
+#### Bug caught during CH08 development
+
+The initial CH08 run silently dropped BOTH extra slots because
+`ch04_parallel.FEATURE_COLUMN_PREFIXES` was a hardcoded allowlist of slot column
+prefixes that did not include `phage_moriniere_kmer__` or `host_omp_kmer__`. The
+slots were attached to the `context.slot_artifacts` dict, the columns showed up in
+the design matrix, but `prepare_fold_design_matrices` filtered `feature_columns` by
+the hardcoded prefix tuple, so the kmer columns never reached RFE or LightGBM. The
+symptom was SX13 predictions bit-identical to the CH04 baseline (max pred diff 0.0)
+and SX12 predictions differing only via deterministic dataframe-ordering artifacts
+that happened to bias probabilities downstream (spurious +1.0 pp point estimate
+driven entirely by column-order side effects). Fix: added `host_omp_kmer__`,
+`host_omp_cluster__`, and `phage_moriniere_kmer__` to `FEATURE_COLUMN_PREFIXES` with
+a docstring calling out the allowlist contract. Re-running under the fix produced
+the real numbers above.
+
+This is a canonical silent-fail shape — slot attached, columns present in DataFrame,
+model never sees them. If a future ticket adds a new slot family with its own
+prefix, the onus is on the implementer to register the prefix in
+`FEATURE_COLUMN_PREFIXES`. Consider hoisting that allowlist into the slot registry
+so attaching a slot automatically declares its prefix.
+
+#### Why pre-filtering to top-100 by variance
+
+The SX12 slot has 815 5-mers; the SX13 slot has 5546 5-mers. RFECV (step=0.1, cv=5
+internal folds, on 281K-row training frames) does ~41 iterations for 788 input
+features, each fitting LightGBM 5 times → ~60 minutes per CV fold. 10 folds per arm
+× 2 arms × 60 min = 20 h wallclock, violating plan.yml's "estimate before running
+and confirm wallclock is feasible". Top-K-by-variance pre-filtering (K=100) rank-
+orders features by entity-level binary variance and keeps the K most-variable. This
+preserves:
+
+- sparse receptor-class-specific kmers (support ≈ 10% of phages → binary variance
+  0.09, rank-competitive with medium-support kmers)
+- maximally-balanced OMP kmers (support ≈ 50% of bacteria → variance 0.25, the
+  theoretical max for binary features)
+
+It drops near-constant kmers (support 1/369 or 368/369 → variance → 0) which
+contribute no discriminative signal anyway. Pre-filter is deterministic, leakage-
+free (computed over entities, not over training/test pair splits), runs once before
+any fold split. Arm AUC deltas are measured under the pre-filter, so the arm-level
+conclusion "does any meaningful subset of the kmer slot help?" is answered without
+the 20h-wallclock cost of the unfiltered RFE. Caveat: the pre-filter is NOT identical
+to the SPANDEX SX12/SX13 runs, which saw the full 815 / 5546 kmers. So the CH08
+deltas are not direct apples-to-apples replacements for SPANDEX SX12/SX13 deltas —
+they're CHISEL-frame estimates on the top-100-variance subset.
+
+#### SX12 result interpretation
+
+SX12 reopens: **+1.16 pp [+0.82, +1.51] AUC, −0.20 pp Brier, CIs disjoint from zero**.
+Under SPANDEX (pair-level any_lysis training, per-phage blending enabled, pre-fix
+cv_group folds, full 815 kmers), SX12 was null: "+0.23 pp AUC, CIs overlap baseline"
+(`kmer-receptor-expansion-neutral`). Under CHISEL (per-row binary, concentration
+feature, per-phage retired, fixed cv_group folds, top-100 variance-filtered kmers),
+the same slot contributes a statistically significant lift. Several plausible
+mechanisms for the shift; the data does not decide among them:
+
+1. **Per-row training exposes concentration-dependent signal** the pair-level rollup
+   erased. Kmers that predict graded dilution response may correlate with receptor-
+   class strength in a way pair-level labels averaged out.
+2. **Pre-filter to top-100 variance** happens to select the receptor-class-
+   discriminative kmers and drops ~700 near-constant features that just added noise
+   to RFE under SPANDEX. Note this is consistent with Arm 3's finding: per-class
+   Moriniere features help once aggregated appropriately — here "aggregation" is the
+   variance-rank filter keeping the features that matter.
+3. **cv_group fold fix** removed ANI-duplicate leakage; both baseline and variant
+   gain under the fix, but the variant's ability to exploit receptor-class signal
+   may benefit differently than baseline's ability to memorize host-side priors.
+4. **Per-phage blending retired** shifts attribution from bacterium-level memorization
+   to all-pairs mechanism; SX12 kmers may carry phage-mechanism signal that per-phage
+   blending was otherwise double-counting.
+
+The SPANDEX `kmer-receptor-expansion-neutral` unit framed SX12 as null on mechanism-
+level grounds ("k-mers were selected to discriminate receptor class on K-12 … they
+predict what we already know, not what we need"). That framing is still directionally
+right — the +1.16 pp lift doesn't close the BASEL bacteria-axis 10-pp deficit or the
+panel-size-ceiling gap — but the unit needs updating: SX12 kmers are NOT null under
+CHISEL, they're a modest additive feature-family lift.
+
+**Does this supersede CH06 Arm 3?** No. CH06 Arm 3 (per-receptor k-mer-fraction
+vectors, 13-dim, panel-independent) beat CH06 Arm 2 and Arm 4 on the BASEL
+deployability axis (+4.36 pp zero-vec BASEL phage-axis). SX12 kmer slot here is a
+different feature shape (100 individual k-mer presence/absence features, not per-
+class aggregates) and is evaluated on the Guelin bacteria-axis, not BASEL. The two
+findings are complementary: Arm 3 says "aggregate to per-class fractions for panel
+independence"; CH08 SX12 says "even the raw kmers, if variance-filtered, give a
+~1 pp lift under CHISEL". A future experiment could test Arm 3 + SX12-kmer jointly,
+but plan.yml has no such ticket and the Arm 3 + Arm 3 → canonical migration is
+higher priority.
+
+#### SX13 result interpretation
+
+SX13 reopens: **+0.17 pp [+0.03, +0.31] AUC, −0.12 pp Brier, CIs barely disjoint
+from zero**. Under SPANDEX, SX13 was null across four arms (marginal, cross_term,
+path1_cluster, and baseline — all within ±0.4 pp). Under CHISEL, the marginal arm
+shows a tiny CI-disjoint lift, but 0.17 pp is far smaller than any ordinary signal
+and smaller than the typical run-to-run variance on other tickets (±0.5 pp).
+
+The underlying `host-omp-variation-unpredictive` knowledge unit framed SX13 as
+null because "host-range variance lives downstream of OMP recognition" and the
+loop-level kmer escalation did not rescue prediction. That framing is still
+essentially correct — +0.17 pp is not the "host OMP variation actually predicts
+lysis" story. Likely mechanism: top-100 variance-filtered OMP kmers include kmers
+that happen to correlate with phylogroup (lineage-confounding effect similar to
+`defense-lineage-confounding`), and the filter captured a noise-level amount of
+host-phylogroup marginal information. The Brier improvement of 0.12 pp is barely
+detectable.
+
+Update `host-omp-variation-unpredictive` with the CHISEL-frame note: under the
+top-100 variance-filtered subset, the host OMP kmer slot contributes a tiny but
+CI-disjoint +0.17 pp lift; this is consistent with phylogroup-correlated lineage
+signal, not with OMP-specific host-range prediction.
+
+#### Compute
+
+6938 s (~1.9 h) on laptop after orphan subprocess cleanup (earlier runs left
+residual RFECV worker pools that starved CPU and made fold wallclocks meaningless).
+SX12 arm: 10 folds × ~2.4 min = 24 min; SX13 arm: 10 folds × ~2.8 min = 28 min;
+bootstrap: ~1 min per arm. Full determinism (SEEDS, RFE seed, pre-filter rank) —
+rerunning under the same code path reproduces the numbers bit-for-bit.
+
+#### Open follow-ups
+
+1. **Hoist the slot-prefix allowlist into a slot registry** so attaching a slot
+   auto-declares its prefix. The current `FEATURE_COLUMN_PREFIXES` allowlist bug
+   pattern will recur otherwise.
+2. **Ablate pre-filter top-K** — repeat SX12 at K=50, K=200, K=400 to check whether
+   the +1.16 pp is K-stable or K-sensitive. If K-sensitive, the lift is
+   filter-artefactual and should be demoted.
+3. **SX13 phylogroup-confound check** — permute the OMP kmer values within
+   phylogroup and re-run; if the +0.17 pp lift survives, the effect is
+   OMP-specific; if it vanishes, it's phylogroup-marginal noise.
+4. **CHISEL-frame comparison vs SX12/SX13 unfiltered** — nice-to-have if compute
+   budget allows, but the wallclock (20 h+) is prohibitive without either
+   cell-level parallelism or a faster RFE variant.
+
+#### Artifacts
+
+- `lyzortx/pipeline/autoresearch/ch08_wave2_reaudit.py` — eval driver, pre-filter,
+  paired-bootstrap helpers.
+- `lyzortx/pipeline/autoresearch/ch04_parallel.py` — FEATURE_COLUMN_PREFIXES fix
+  adding `host_omp_kmer__`, `host_omp_cluster__`, `phage_moriniere_kmer__`.
+- `lyzortx/tests/test_ch08_wave2_reaudit.py` — unit tests for paired bootstrap.
+- `lyzortx/generated_outputs/ch08_wave2_reaudit/ch08_summary.csv` — one row per arm
+  (baseline, sx12, sx13) with AUC/Brier point + CIs and delta CIs.
+- `.../ch08_combined_summary.json` — full report (task_id, scorecard, per-arm
+  paired-bootstrap output with baseline/variant/delta blocks).
+- `.../ch08_sx12_delta.json`, `.../ch08_sx13_delta.json` — per-arm delta reports.
+- `.../ch08_sx12_predictions.csv`, `.../ch08_sx13_predictions.csv` — per-arm
+  pair-level predictions (max-concentration) for audit.
