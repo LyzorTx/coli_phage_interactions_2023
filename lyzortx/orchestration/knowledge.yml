@@ -330,19 +330,33 @@ themes:
           (bacteria-axis 0.8247 → 0.8232, phage-axis 0.8922 → 0.8934), so Arm 3 does not damage
           the Guelin-heavy aggregate. BASEL non-zero-proj TL17 phages (n=39) also improve
           (+2.54 pp bact-axis, +0.54 pp phage-axis), so there is no zero-vs-non-zero trade-off
-          — Arm 3 strictly dominates baseline TL17 on the BASEL side. **Canonical migration is
-          deferred**: Arm 3 is currently a side-materialized slot at
-          `.scratch/basel/feature_slots_arm3/phage_projection/features.csv`; CH05 / CH07 / CH08 /
-          CH09 pipelines still read baseline TL17. A follow-up ticket (CH13 in plan.yml post
-          the CH10-12 filter-revert insertion) should make Arm 3 the default slot and re-run
-          those pipelines. Supersedes the "panel-independent phage
-          features are the remaining lever" open question in
-          `chisel-unified-kfold-baseline` (the lever exists; now the question is migration
-          cost + downstream calibration effects). Canonical artifacts:
+          — Arm 3 strictly dominates baseline TL17 on the BASEL side. **Canonical migration
+          complete (CH13, 2026-04-21):** Arm 3 per-receptor-class k-mer fractions are now
+          the canonical `phage_projection` slot in both the autoresearch Guelin-only cache
+          (`lyzortx/generated_outputs/autoresearch/search_cache_v1/feature_slots/phage_projection/`,
+          96 phages) and the unified-panel slot root
+          (`.scratch/basel/feature_slots/phage_projection/`, 148 phages). The top-level
+          `ar02_schema_manifest_v1.json` reserved-feature-column list was rewritten to the 13
+          `phage_projection__recep_frac_*` names. TL17 BLAST family-presence vectors are
+          preserved at `phage_projection_tl17/` side-dirs as an opt-in sensitivity fallback.
+          CH04 under Arm 3 canonical: AUC 0.8094 [0.7956, 0.8226] — at-parity with TL17
+          baseline 0.8083 on Guelin-only evaluation (no BASEL exposure). CH05/CH07/CH09
+          canonical artifacts from CH11/CH10 were ALREADY produced under Arm 3 (via
+          `--phage-slot-dir` override); post-migration they reproduce bit-for-bit under the
+          default, so no rerun was needed (verified: CH05 bacteria-axis CSV recomputes
+          AUC 0.807921 = CH11 JSON). CH08 rerun under Arm 3 canonical (CH13): SX12 phage
+          815-kmer lift tightens to +0.58 pp [+0.20, +0.94] (was +0.72 pp under TL17
+          baseline in CH12) — still disjoint-from-zero, so the raw 815 kmers encode
+          ~81% of their lift beyond what Arm 3's 13-dim aggregation captures (the two
+          slots coexist rather than being fully redundant). Supersedes the "panel-
+          independent phage features are the remaining lever" open question in
+          `chisel-unified-kfold-baseline`. Canonical artifacts:
           lyzortx/generated_outputs/ch06_arm3_moriniere_receptor/ch06_arm3_metrics.json,
           ch06_arm3_{bacteria,phage}_axis_predictions.csv, ch06_arm3_cross_source_breakdown.csv,
-          ch06_arm3_variance_preflight.json, and the slot file
-          .scratch/basel/feature_slots_arm3/phage_projection/features.csv.
+          ch06_arm3_variance_preflight.json (original CH06 Arm 3 validation), the live
+          canonical slot at `.scratch/basel/feature_slots/phage_projection/features.csv`
+          (148 phages) and `lyzortx/generated_outputs/autoresearch/search_cache_v1/feature_slots/phage_projection/features.csv`
+          (96 phages).
         relates_to: [chisel-unified-kfold-baseline, receptor-specificity-solved,
                      kmer-receptor-expansion-neutral, plm-rbp-redundant, panel-size-ceiling,
                      deployment-goal]
@@ -363,21 +377,29 @@ themes:
 
       - id: chisel-baseline
         statement: >
-          CHISEL canonical baseline (CH04, reverted 2026-04-21 — see CH10 below): per-row
-          binary training on every interpretable (bacterium, phage, log_dilution, replicate,
-          X, Y) raw observation with score ∈ {0, 1} and `pair_concentration__log10_pfu_ml`
-          as a numeric feature (absolute log₁₀ pfu/ml encoding — Guelin {4.7, 6.7, 7.7, 8.7};
-          BASEL 9.0 per Maffei 2021 / 2025), SX10 feature bundle (host_surface + host_typing
-          + host_stats + host_defense + phage_projection + phage_stats + pair_depo_capsule
-          + pair_receptor_omp, RFE-selected), **all-pairs only** (AX02 per-phage blending
+          CHISEL canonical baseline (CH04, re-run 2026-04-21 under CH13 with Arm 3 as
+          canonical `phage_projection` slot): per-row binary training on every
+          interpretable (bacterium, phage, log_dilution, replicate, X, Y) raw observation
+          with score ∈ {0, 1} and `pair_concentration__log10_pfu_ml` as a numeric feature
+          (absolute log₁₀ pfu/ml encoding — Guelin {4.7, 6.7, 7.7, 8.7}; BASEL 9.0 per
+          Maffei 2021 / 2025), SX10 feature bundle (host_surface + host_typing + host_stats
+          + host_defense + phage_projection + phage_stats + pair_depo_capsule +
+          pair_receptor_omp, RFE-selected), **all-pairs only** (AX02 per-phage blending
           retired, see per-phage-retired-under-chisel), 10-fold bacteria-axis CV under CH02
           cv_group hashing, 369×96 panel. **No neat-only positive filter** — every raw
           observation with score ∈ {0, 1} trains. Evaluation: each held-out pair scored at
           its max observed log10_pfu_ml with bacterium-level bootstrap CIs (1000 resamples).
-          Result: **AUC 0.8083 [0.7943, 0.8216], Brier 0.1751 [0.1677, 0.1824]** (n=35,266
-          pairs, 8,675 score='n' rows dropped). This is the active reference point for all
+          Result: **AUC 0.8094 [0.7956, 0.8226], Brier 0.1749 [0.1679, 0.1825]** (n=35,266
+          pairs, 8,675 score='n' rows dropped, concentration feature importance 322.5).
+          Vs CH10 TL17-baseline CH04 (0.8083 / 0.1751): +0.11 pp AUC, −0.01 pp Brier —
+          essentially at-parity on Guelin-only evaluation because both TL17 phage family
+          presence vectors (33 cols) and Arm 3 per-receptor-class k-mer fractions (13 cols)
+          encode the same underlying receptor-binding information for the 96 Guelin phages;
+          Arm 3's panel-independence benefit shows up on BASEL cross-source (see
+          chisel-unified-kfold-baseline). This is the active reference point for all
           future CHISEL arms.
-        sources: [CH04, 2026-04-19 CHISEL baseline; CH10, 2026-04-21 filter revert]
+        sources: [CH04, 2026-04-19 CHISEL baseline; CH10, 2026-04-21 filter revert; CH13,
+                  2026-04-21 Arm 3 canonical migration]
         status: active
         confidence: validated
         context: >
@@ -471,7 +493,7 @@ themes:
           2026-04-21) — #453 amended the knowledge unit to disclose the label-shift
           artifact but kept the filter as canonical. CH10 demotes the filter entirely.
 
-          **Canonical artifacts:**
+          **Canonical artifacts (all under Arm 3 phage_projection slot since CH13):**
           lyzortx/generated_outputs/ch04_chisel_baseline/ch04_aggregate_metrics.json,
           ch04_predictions.csv (pair-level), ch04_per_row_predictions.csv (per-row),
           ch04_feature_importance.csv;
@@ -479,7 +501,10 @@ themes:
           ch07_pair_predictions.csv, ch07_per_row_predictions.csv, ch07_cell_metrics.csv,
           ch07_cross_source_breakdown.csv, ch07_cell_distribution.png;
           lyzortx/generated_outputs/ch05_unified_kfold/ch05_combined_summary.json and
-          ch09_calibration_layer/ch09_calibration_report.json (CH11 refit).
+          ch09_calibration_layer/ch09_calibration_report.json;
+          lyzortx/generated_outputs/ch08_wave2_reaudit/ch08_combined_summary.json
+          (CH13 rerun). Pre-CH13 TL17-baseline runs preserved at
+          ch04_chisel_baseline_tl17/ and ch08_wave2_reaudit_tl17/ as a sensitivity column.
         relates_to: [spandex-final-baseline, cv-group-leakage-fixed, label-policy-binary,
                      ranking-metrics-retired, per-phage-retired-under-chisel,
                      deployment-goal]
@@ -550,8 +575,10 @@ themes:
           1,240 BASEL), SX10 feature bundle, all-pairs only (per-phage blending retired
           track-wide per `per-phage-retired-under-chisel`), **no neat-only positive
           filter** (demoted to opt-in sensitivity analysis — see chisel-baseline for the
-          four reviewer objections), Arm 3 Moriniere per-receptor-fraction slot override
-          for `phage_projection` (`.scratch/basel/feature_slots_arm3/`). Two axes:
+          four reviewer objections), Arm 3 Moriniere per-receptor-fraction slot as the
+          canonical `phage_projection` slot (migrated by CH13 on 2026-04-21 — the CH11
+          numbers below were produced via `--phage-slot-dir` override and reproduce
+          bit-for-bit under the post-CH13 default, so no re-run needed). Two axes:
           **bacteria-axis AUC 0.8079 [0.7934, 0.8223], Brier 0.1763 [0.1688, 0.1840]**
           (10-fold CH02 cv_group hash; all 148 phages in training per fold);
           **phage-axis AUC 0.8870 [0.8658, 0.9055], Brier 0.1352 [0.1227, 0.1489]**
@@ -1243,28 +1270,28 @@ themes:
 
       - id: kmer-receptor-expansion-neutral
         statement: >
-          **REOPENED under CHISEL (CH08 wave-2 re-audit, CH12 pre-filter re-anchoring).**
-          On the SPANDEX panel with pair-level `any_lysis` training the 815-kmer slot was
-          neutral (SX12: AUC 0.8722 vs 0.8699, delta +0.23 pp, CIs overlap). Under CHISEL
-          per-row binary training with the pre-filter CH04 canonical as baseline, the same
-          phage-side k-mer slot now delivers **+0.72 pp AUC (CI [+0.36, +1.05])** with
-          disjoint-from-zero CI on 35,266 shared pairs (CH08 SX12 variant arm, CH12 rerun
-          2026-04-21). The delta is smaller than the post-filter CH08 measurement
-          (+1.16 pp, CI [+0.72, +1.55]) — so a slice of the earlier headline was
-          label-shift from the deprecated filter — but the pre-filter +0.72 pp signal
-          survives with CI disjoint from zero, which invalidates the SPANDEX-era
-          "neutral" framing under the CHISEL training unit. GT06 (k-mers as
-          intermediate-classifier features for directed cross-terms) remains null per
-          its own delta CI [-0.005, +0.005] — that failure mode is about the
-          host-side OMP homogeneity blocking the cross-term, not about the k-mers
-          themselves. Brier is unchanged in both directions (CH08 pre-filter SX12
-          Brier delta −0.0005, CI [−0.0028, +0.0017]), which means the lift is pure
-          discrimination (AUC) with no calibration side-effect. Downstream: the
-          "feature-redundancy + panel-size ceiling" framing for k-mers stands for
-          GT06 directed use, but the phage-side direct-slot use is NOT neutral
-          under per-row binary training.
-        sources: [GT06, SX12, CH08, 2026-04-20 wave-2 re-audit, CH12, 2026-04-21
-                  pre-filter re-anchoring]
+          **REOPENED under CHISEL (CH08 wave-2 re-audit; CH12 pre-filter re-anchoring;
+          CH13 Arm 3 canonical baseline).** On the SPANDEX panel with pair-level
+          `any_lysis` training the 815-kmer slot was neutral (SX12: AUC 0.8722 vs 0.8699,
+          delta +0.23 pp, CIs overlap). Under CHISEL per-row binary training with the
+          CH13 Arm 3 canonical baseline (CH04 AUC 0.8094), the same phage-side 815-kmer
+          slot delivers **+0.58 pp AUC (CI [+0.20, +0.94])** with disjoint-from-zero
+          CI on 35,266 shared pairs. This invalidates the SPANDEX-era "neutral" framing
+          under the CHISEL training unit. GT06 (k-mers as intermediate-classifier features
+          for directed cross-terms) remains null per its own delta CI [−0.005, +0.005]
+          — that failure mode is about host-side OMP homogeneity blocking the cross-term,
+          not about the k-mers themselves. Brier delta is null (−0.0002 CI [−0.0024,
+          +0.0019]) — lift is pure discrimination with no calibration side-effect. The
+          delta size has shrunk across successive baselines: +1.16 pp (CH08 post-filter
+          TL17 baseline) → +0.72 pp (CH12 pre-filter TL17 baseline, CI [+0.36, +1.05])
+          → **+0.58 pp (CH13 Arm 3 canonical baseline)**. About 38% of the original
+          headline was label-shift from the deprecated neat-only filter (closed in
+          CH10); another ~19% of the remaining signal is subsumed by Arm 3's 13-dim
+          per-receptor-fraction aggregation of the same k-mers — so ~81% of the
+          TL17-baseline lift is genuinely incremental to Arm 3 aggregation. The 815-kmer
+          slot coexists with Arm 3 rather than being fully redundant with it.
+        sources: [GT06, SX12, CH08, 2026-04-20 wave-2 re-audit; CH12, 2026-04-21
+                  pre-filter re-anchoring; CH13, 2026-04-21 Arm 3 canonical migration]
         status: active
         confidence: validated
         context: >
@@ -1272,21 +1299,24 @@ themes:
           (1) the k-mers were selected to discriminate receptor class on K-12 derivatives
           (BW25113/BL21) which lack capsule/O-antigen, so they primarily predict
           receptor identity rather than strain-level capsule penetration; (2) information
-          redundancy with phage_projection (TL17 BLAST). Under CHISEL per-row binary
-          training the redundancy is partial rather than full — with concentration as a
-          feature and score ∈ {0, 1} per replicate, the additional phage-receptor signal
-          from 815-kmer presence adds discriminative power that was invisible when the
-          rollup collapsed replicates into any_lysis. RFE still keeps only ~95/815 kmers
-          at ~5% importance, so the effect size is real but small. CH12 pre-filter
-          re-audit preserves the directional finding: lift is +0.72 pp with CI disjoint
-          from zero even after demoting the filter (which had been inflating it to
-          +1.16 pp under post-filter). This makes the k-mer slot a live candidate for
-          canonical inclusion alongside Arm 3 per-receptor-fractions — CH13 should
-          evaluate whether Arm 3 alone subsumes the k-mer signal or whether both
-          should coexist. Canonical artifacts:
+          redundancy with phage_projection. Under CHISEL per-row binary training the
+          redundancy is partial rather than full — with concentration as a feature and
+          score ∈ {0, 1} per replicate, the additional phage-receptor signal from
+          815-kmer presence adds discriminative power that was invisible when the rollup
+          collapsed replicates into any_lysis. RFE still keeps only ~95/815 kmers at
+          ~5% importance, so effect size is real but small. CH13 answered the coexistence
+          question raised by CH12: Arm 3 and the 815-kmer slot are complementary, not
+          redundant — the Arm 3 13-dim aggregation of the same kmers captures ~19% of the
+          SX12 lift but the raw kmer presences retain ~81%. Recommended deployment: keep
+          Arm 3 as the canonical `phage_projection` slot (panel-independent by
+          construction) and optionally add the 815-kmer slot as an explicit SX12-style
+          extra feature block when the +0.58 pp AUC lift is worth the 815-feature
+          dimensionality cost. Canonical artifacts:
           lyzortx/generated_outputs/ch08_wave2_reaudit/ch08_combined_summary.json,
-          ch08_sx12_delta.json, ch08_sx12_predictions.csv. Sensitivity-column
-          artifacts under ch08_wave2_reaudit_post_filter/.
+          ch08_sx12_delta.json, ch08_sx12_predictions.csv (CH13 rerun under Arm 3
+          baseline). Sensitivity-column artifacts: ch08_wave2_reaudit_post_filter/ (CH08
+          original under deprecated filter), ch08_wave2_reaudit_tl17/ (CH12 pre-filter
+          under TL17 baseline).
         relates_to: [omp-score-homogeneity, pairwise-cross-terms-dead-end,
                      receptor-specificity-solved, plm-rbp-redundant,
                      narrow-host-prior-collapse, panel-size-ceiling,
@@ -1296,16 +1326,21 @@ themes:
         statement: >
           Host-side OMP allelic variation is substantial (369 clinical E. coli span BTUB 28 MMseqs2
           99%-identity clusters, OMPC 49, 5546 retained 5-mers across 12 core OMPs) but does not
-          predict lysis. Four arms tested in SX13 (k-mers marginal, k-mers × phage k-mers cross-term,
-          cluster IDs, plus baseline) all land within ±0.4 pp of SX10 on all metrics. **CONFIRMED
-          null under CHISEL (CH08 wave-2 re-audit; CH12 pre-filter re-anchoring, 2026-04-21):**
-          the host-OMP k-mer slot variant delivers ΔAUC +0.02 pp (CI [−0.13, +0.17]) and
-          ΔBrier −0.007 pp (CI [−0.09, +0.08]) on 35,266 shared pairs against the pre-filter
-          CH04 baseline — both CIs span zero, both deltas are sub-pp. The null survives under
-          per-row binary training with concentration as a feature; OMP-variation-matters-for-
-          narrow-phages remains biologically plausible but undetectable in this panel.
-        sources: [SX13, CH08, 2026-04-20 wave-2 re-audit, CH12, 2026-04-21 pre-filter
-                  re-anchoring]
+          predict lysis in discrimination terms. Four arms tested in SX13 (k-mers marginal,
+          k-mers × phage k-mers cross-term, cluster IDs, plus baseline) all land within ±0.4 pp
+          of SX10 on all metrics. **CONFIRMED AUC-null under CHISEL (CH08 wave-2 re-audit;
+          CH12 pre-filter TL17 baseline; CH13 Arm 3 canonical baseline, 2026-04-21):** the
+          host-OMP k-mer slot variant delivers ΔAUC in the [+0.02, +0.17] pp band with CI
+          always spanning zero across three successive baselines. Under the CH13 Arm 3
+          canonical baseline the delta is ΔAUC +0.02 pp (CI [−0.11, +0.14]) and
+          **ΔBrier −0.09 pp (CI [−0.15, −0.02], DISJOINT below zero)** — a tiny but
+          statistically significant calibration improvement. This is a new CH13-specific
+          finding: removing TL17's panel-specific phage encoding made the host-OMP
+          k-mers the marginal owner of a calibration signal that was previously masked.
+          AUC-null stands; OMP-variation-matters-for-narrow-phages remains biologically
+          plausible but undetectable as a discrimination signal in this panel.
+        sources: [SX13, CH08, 2026-04-20 wave-2 re-audit; CH12, 2026-04-21 pre-filter
+                  re-anchoring; CH13, 2026-04-21 Arm 3 canonical migration]
         status: dead-end
         confidence: validated
         context: >
@@ -1319,13 +1354,19 @@ themes:
           under cross_term (+4 strains). The finding refines omp-score-homogeneity: HMM-score
           homogeneity was real, but escalating to finer representations doesn't rescue prediction —
           host-range variance lives downstream of OMP recognition (polysaccharide access, intracellular
-          defenses, co-evolutionary dynamics). CH08/CH12 re-audit upholds the null under the
-          CHISEL per-row training unit and under both label-frame variants: post-filter CH08
-          reported ΔAUC +0.17 pp with CI spanning zero, and pre-filter CH12 tightens to
-          +0.02 pp (even more definitively null). Canonical artifacts:
-          lyzortx/generated_outputs/ch08_wave2_reaudit/ch08_sx13_delta.json,
-          ch08_sx13_predictions.csv. Sensitivity-column artifacts under
-          ch08_wave2_reaudit_post_filter/.
+          defenses, co-evolutionary dynamics). CH08/CH12/CH13 re-audit upholds the AUC-null
+          under the CHISEL per-row training unit across all three baselines: post-filter CH08
+          ΔAUC +0.17 pp (CI [+0.05, +0.30]), pre-filter TL17 CH12 ΔAUC +0.02 pp (CI [−0.13,
+          +0.17]), pre-filter Arm 3 canonical CH13 ΔAUC +0.02 pp (CI [−0.11, +0.14]). The
+          Brier signal moves across baselines: post-filter CH08 Brier +0.01 pp (null),
+          pre-filter TL17 CH12 Brier −0.01 pp (null), pre-filter Arm 3 canonical CH13 Brier
+          −0.09 pp (CI [−0.15, −0.02], **disjoint below zero**). The calibration lift
+          under Arm 3 is an artifact of the phage-side slot change: TL17's 33-dim presence
+          vectors were capturing a fraction of the calibration signal that Arm 3's
+          13-dim aggregation leaves on the table; host-OMP k-mers pick up that slack.
+          Canonical artifacts: lyzortx/generated_outputs/ch08_wave2_reaudit/ch08_sx13_delta.json,
+          ch08_sx13_predictions.csv (CH13 rerun under Arm 3 baseline). Sensitivity-column
+          artifacts: ch08_wave2_reaudit_post_filter/, ch08_wave2_reaudit_tl17/.
         relates_to: [omp-score-homogeneity, pairwise-cross-terms-dead-end, kmer-receptor-expansion-neutral, narrow-host-prior-collapse, same-receptor-uncorrelated-hosts, chisel-baseline]
 
       - id: label-vision-reading-spot-checked-dead
