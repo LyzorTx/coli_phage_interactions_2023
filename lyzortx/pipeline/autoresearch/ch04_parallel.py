@@ -42,13 +42,24 @@ RFE_SEED = 42
 
 HOST_SLOTS = ("host_surface", "host_typing", "host_stats", "host_defense")
 PHAGE_SLOTS = ("phage_projection", "phage_stats")
+# Allowlist of design-matrix column prefixes that reach RFE + LightGBM. Any slot
+# whose columns are not covered here is silently filtered out of the feature set
+# (columns remain in the design matrix for downstream joins, but no model ever
+# sees them). CH08 caught this: earlier wave-2 ablation tickets attached
+# `host_omp_kmer` and `phage_moriniere_kmer` slots to the context but their
+# features were silently dropped because the prefixes were missing here. When
+# adding a new slot family whose columns carry a distinct prefix, register it
+# below.
 FEATURE_COLUMN_PREFIXES = (
     "host_surface__",
     "host_typing__",
     "host_stats__",
     "host_defense__",
+    "host_omp_kmer__",
+    "host_omp_cluster__",
     "phage_projection__",
     "phage_stats__",
+    "phage_moriniere_kmer__",
     "pair_depo_capsule__",
     "pair_receptor_omp__",
     "pair_concentration__",
