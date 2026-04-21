@@ -1726,7 +1726,7 @@ graph LR
   - ARTIFACTS: replace ch08_wave2_reaudit/ artifacts with the rerun. Keep the post-filter run at
     ch08_wave2_reaudit_post_filter/ for sensitivity.
   - Record the rerun deltas and the reopen/close decision in track_CHISEL.md.
-- [ ] **CH13** Arm 3 canonical phage_projection slot migration. Model: `claude-opus-4-6`. CI image profile: `base`.
+- [x] **CH13** Arm 3 canonical phage_projection slot migration. Model: `claude-opus-4-6`. CI image profile: `base`.
       Depends on tasks: `CH10`, `CH11`, `CH12`.
   - GOAL: wire CH06 Arm 3 (Moriniere per-receptor k-mer fractions) into the canonical `phage_projection` slot. Currently
     Arm 3 lives at .scratch/basel/feature_slots_arm3/phage_projection/features.csv and is consumed only via
