@@ -39,10 +39,17 @@ Detailed coding, testing, scientific review, CI, and orchestration policies live
 
 # Environment Policy
 
+- **Canonical env manager is micromamba, everywhere.** Local dev, Codex shells, and CI all use `micromamba`. Never use
+  `conda` or `miniconda` as the activation/install tool for this repo — `.envrc` wires `micromamba activate phage_env`
+  inline, and both manifest-based creation and `run -n` paths go through micromamba. If `which python` points at a
+  `miniconda3/envs/phage_env/bin/python` during local work, the env source is wrong — fix `.envrc` or the shell, do not
+  work around it. Single env manager = single source of truth for dependencies.
 - **Local development:** The `phage_env` micromamba env is auto-activated via direnv (`.envrc`). No `micromamba run`
-  needed locally.
-- **Codex shells:** If `python`/`pytest` are not from `phage_env`, source micromamba explicitly first, then
-  `micromamba activate phage_env`.
+  needed locally. If a package lands in `requirements.txt` or `environment.yml` after your env was created, re-sync
+  with `micromamba env create -f environment.yml -n phage_env --force` (rebuild) — pre-existing envs do NOT auto-sync
+  on manifest change.
+- **Codex shells:** If `python`/`pytest` are not from the micromamba `phage_env`, source micromamba explicitly first,
+  then `micromamba activate phage_env`.
 - **GitHub Actions:** Bootstrap with `micromamba env create -f environment.yml -n phage_env`, then use
   `micromamba run -n phage_env ...` (always `-n`, never `-p <path>`).
 - **Prebaked CI images:** If a tool is missing, add the dependency to the appropriate `environment*.yml` manifest.
