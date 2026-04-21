@@ -12,28 +12,28 @@ one of its two root causes (phage-side TL17 bias) into a panel-independent featu
 
 ## Headline outcomes
 
-**2026-04-21 CH10 revert:** CH04 and CH07 were re-run under the reverted pre-filter
-canonical (neat-only positive filter demoted to opt-in sensitivity analysis — see
-the CH10 section below). CH05/CH08/CH09 numbers in the table below are still under
-the deprecated post-filter frame and are scheduled to be refreshed by CH11 (CH05
-+ CH09 refit) and CH12 (CH08).
+**2026-04-21 CH11 rerun:** CH05 + CH09 isotonic refit completed under the reverted
+pre-filter canonical with the Arm 3 `phage_projection` slot override. Headline
+numbers below are now canonical; CH08 (CH12) is the last remaining rerun.
 
 Everything below is on the 369×96 Guelin panel (unified 148-phage panel for cross-
 source numbers). Canonical = per-row binary labels, `pair_concentration__log10_pfu_ml`
 feature (absolute log₁₀ pfu/ml), all-pairs only (no per-phage blending), NO neat-only
-filter.
+filter, Arm 3 Moriniere per-receptor-fraction slot for CH05/CH07 (CH04 evaluates on
+Guelin-only and does not hit the override path).
 
 | Metric | Frame | Number | 95% CI |
 |---|---|---|---|
 | CH04 Guelin bacteria-axis AUC | pre-filter (CH10) | **0.8083** | [0.7943, 0.8216] |
 | CH04 Guelin bacteria-axis Brier | pre-filter (CH10) | **0.1751** | [0.1677, 0.1824] |
-| CH05 unified bacteria-axis AUC | post-filter (pending CH11) | 0.8218 | [0.8063, 0.8368] |
-| CH05 unified phage-axis AUC | post-filter (pending CH11) | 0.8919 | [0.8650, 0.9166] |
-| CH05 BASEL bacteria-axis AUC (subset) | post-filter (pending CH11) | 0.7229 | 10.2 pp below Guelin |
+| CH05 unified bacteria-axis AUC | pre-filter + Arm 3 (CH11) | **0.8079** | [0.7934, 0.8223] |
+| CH05 unified phage-axis AUC | pre-filter + Arm 3 (CH11) | **0.8870** | [0.8658, 0.9055] |
+| CH05 BASEL bacteria-axis AUC (subset) | pre-filter + Arm 3 (CH11) | **0.7392** | 7.1 pp below Guelin (was 10.2 pp) |
+| CH05 BASEL phage-axis AUC (subset) | pre-filter + Arm 3 (CH11) | **0.8952** | exceeds Guelin by 0.8 pp (was −1.0 pp) |
 | CH07 both-axis AUC (Arm 3 slot) | pre-filter (CH10) | **0.7634** | [0.7581, 0.7689] |
 | CH07 both-axis Brier (Arm 3 slot) | pre-filter (CH10) | **0.1902** | [0.1874, 0.1927] |
-| CH09 Guelin LOOF ECE (bact / phage) | post-filter (pending CH11) | 0.0074 / 0.0063 | target < 0.02 ✓ |
-| CH09 BASEL ECE closure (bact / phage) | post-filter (pending CH11) | 79.5% / 53.2% | retains large residual TL17-bias mechanism |
+| CH09 Guelin LOOF ECE (bact / phage) | pre-filter (CH11 refit) | **0.0057 / 0.0052** | target < 0.02 ✓ |
+| CH09 BASEL ECE closure (bact / phage) | pre-filter (CH11 refit) | **64.3% / 44.6%** | residual TL17-bias panel-mismatch (CH13 scope) |
 
 The load-bearing cold-start number (both-axis AUC on simultaneously unseen
 bacterium × phage) is **0.7634** [0.7581, 0.7689] under the pre-filter canonical +

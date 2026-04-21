@@ -2035,3 +2035,138 @@ pre-filter frame is the calibrated reporting point.
   `caseXcase_prior_vs_canonical.md` — 2×2 decomposition from PR #453 (retained
   as evidence for the label-shift finding that motivated the revert).
 - `.scratch/ch10_logs/ch04_rerun.log`, `ch07_rerun.log` — local run logs.
+
+### 2026-04-21 19:42 CEST: CH11 — CH05 rerun + CH09 isotonic refit under reverted pre-filter canonical
+
+#### Executive summary
+
+Re-ran the unified CH05 pipeline (Guelin + BASEL, 10-fold bacteria-axis + phage-axis
+StratifiedKFold) under the CH10-reverted default (`drop_high_titer_only_positives=False`)
+with the Arm 3 `phage_projection` slot override, then refit the CH09 isotonic
+calibrator on the fresh Guelin training-fold predictions. **Bacteria-axis AUC 0.8079
+[0.7934, 0.8223], phage-axis AUC 0.8870 [0.8658, 0.9055]**; Guelin LOOF ECE 0.0057
+bacteria / 0.0052 phage (both pass the <0.02 target). Key finding: the filter revert
+*improves* BASEL discrimination by +1.6 pp on bacteria-axis (0.7229→0.7392) and +1.3 pp
+on phage-axis (0.8822→0.8952), narrowing the BASEL bacteria-axis deficit from 10.2 pp
+to 7.1 pp. The filter had been Guelin-specific sharpening that did not transfer; removing
+it lets BASEL recover. Post-filter artifacts preserved under `_post_filter/` side-dirs
+for sensitivity reference. Also hardened the CH05 `--phage-slot-dir` CLI to fail fast
+on missing extended-slot subdirs (per CH10 review finding #4) and backported
+`bootstrap_samples_used/_requested` emission to CH04's aggregate JSON for parity with
+CH05/CH07 (review finding #3).
+
+#### Changes
+
+- **CH05 CLI addition** (`ch05_eval.py`): new `--phage-slot-dir` flag routes through
+  `patch_context_with_extended_slots(slots_dir=...)`. Pre-validates that all three
+  extended-slot `features.csv` files exist; hard-raises `FileNotFoundError` otherwise
+  to prevent silent fallback to baseline slots on a typo. Unit test added.
+- **CH04 aggregate JSON parity**: `ch04_aggregate_metrics.json` now emits
+  `bootstrap_samples_requested` / `bootstrap_samples_used` on both `holdout_roc_auc`
+  and `holdout_brier_score` blocks, matching CH05 / CH07's schema.
+- **Post-filter artifact preservation**: `ch05_unified_kfold/` → `ch05_unified_kfold_post_filter/`,
+  `ch09_calibration_layer/` → `ch09_calibration_layer_post_filter/` before running the
+  CH11 canonical. CH11 writes to the canonical paths.
+- **Knowledge model**: `chisel-unified-kfold-baseline` rewritten with pre-filter + Arm 3
+  slot numbers as the canonical; post-filter preserved as a sensitivity column.
+  `moriniere-receptor-fractions-validated` caveat retired. New
+  `chisel-post-hoc-calibration-layer` unit documents the refit calibrator.
+
+#### Results
+
+**CH05 aggregate two-axis performance** (unified 148×369 panel, 36,643 pairs):
+
+| Axis | Metric | CH11 pre-filter | CH06-followup post-filter | Δ |
+|---|---|---|---|---|
+| Bact | Aggregate AUC | 0.8079 [0.7934, 0.8223] | 0.8218 | −1.39 pp |
+| Bact | Aggregate Brier | 0.1763 [0.1688, 0.1840] | 0.1466 | +2.97 pp |
+| Phage | Aggregate AUC | 0.8870 [0.8658, 0.9055] | 0.8919 | −0.49 pp |
+| Phage | Aggregate Brier | 0.1352 [0.1227, 0.1489] | 0.1181 | +1.71 pp |
+
+Direction is uniformly consistent with the CH10 label-shift decomposition: the filter
+had been trivializing training-side positives at max-conc, making predictions look
+sharper and better-calibrated than the honest training set supported. Removing it
+restores the noisier-but-honest baseline.
+
+**CH05 cross-source breakdown** (per-source recomputed from the per-axis
+`predictions.csv`):
+
+| Axis | Source | CH11 AUC | Post-filter AUC | Δ |
+|---|---|---|---|---|
+| Bact | Guelin (n=35,403) | 0.8104 | 0.8247 | −1.43 pp |
+| Bact | **BASEL** (n=1,240) | **0.7392** | 0.7229 | **+1.63 pp** ⬆ |
+| Phage | Guelin (n=35,403) | 0.8871 | 0.8922 | −0.51 pp |
+| Phage | **BASEL** (n=1,240) | **0.8952** | 0.8822 | **+1.30 pp** ⬆ |
+
+BASEL bact-axis deficit narrows from 10.2 pp (post-filter) to 7.1 pp (pre-filter
+CH11). Phage-axis cross-source |ΔAUC| drops from 0.010 to 0.008. **This is the key
+CH11 finding**: the filter was a Guelin-side intervention that, by artificially
+sharpening Guelin, inflated the apparent cross-source gap; reverting lets BASEL
+recover without any BASEL-specific intervention.
+
+**CH09 isotonic refit** (LOOF Guelin + cross-panel BASEL transfer):
+
+| Metric | CH11 pre-filter | Post-filter (deprecated) |
+|---|---|---|
+| Guelin bact-axis LOOF ECE (raw→calibrated) | 0.122 → **0.0057** (95.3% closure ✓) | 0.130 → 0.0074 |
+| Guelin phage-axis LOOF ECE | 0.111 → **0.0052** (95.3% closure ✓) | 0.130 → 0.0063 |
+| BASEL bact-axis ECE transfer closure | 64.3% | 79.5% |
+| BASEL phage-axis ECE transfer closure | 44.6% | 53.2% |
+
+Guelin calibration is *cleaner* under the pre-filter canonical (lower absolute ECE
+on both axes). BASEL transfer closure is *lower* because the post-filter Guelin
+distribution was artificially narrowed in a way that happened to overlap BASEL's
+P-range more tightly — a feature-space coincidence, not genuine cross-panel
+transferability. Residual BASEL ECE 0.073 bact / 0.104 phage remains ~13-20× Guelin's
+LOOF-calibrated ECE and is the TL17-bias panel-mismatch signal that CH13
+(Arm 3 canonical migration) will address.
+
+**Reliability shape under raw CH11 Guelin predictions** (per reviewer finding #1 —
+name the shape, don't hide behind aggregate Brier): deciles 6-9 systematically
+overpredict lysis by 18-31 pp on >10k rows combined (weighted by bin population).
+This upper-P overconfidence is what the isotonic layer specifically targets — and
+the ECE 0.122 → 0.0057 closure is direct evidence it works. The underlying cause is
+Gaborieau 2024's own Methods caveat: clearing at high titer can be non-productive,
+so the training label is more permissive than the deployment target. CH10 rejected
+the training-side filter remedy on the four objections (see CH10 entry above);
+CH09/CH11 keep the isotonic post-hoc remedy as the sole calibration fix.
+
+#### Interpretation
+
+The CH11 rerun resolves the CH10 follow-up bookkeeping and delivers an unexpected
+positive result: the filter's headline calibration advantage on BASEL was an
+artifact of Guelin distribution narrowing, not a real transferability gain. Removing
+the filter narrowed the BASEL deficit by 3.1 pp on bact-axis with zero
+BASEL-specific intervention — the cleanest "filter was a liability" signal that's
+emerged since the label-shift decomposition landed.
+
+The 7.1 pp residual BASEL bact-axis deficit is now the load-bearing panel-mismatch
+signal. CH13's Arm 3 canonical-slot migration is the scoped intervention for it
+(Arm 3 slot already live in this run via `--phage-slot-dir`, but the full migration
+updates feature-cache consumers across CH04/CH05/CH07/CH08/CH09 so the whole
+pipeline is panel-independent).
+
+#### Next steps
+
+- **CH11 remaining:** open PR closing #457; self-review via `review-ml-pr` subagent
+  (writes artifacts under generated_outputs/, cites AUC/Brier/CI numbers).
+- **CH12:** rerun CH08 SX12/SX13 wave-2 re-audit under the reverted default and
+  re-anchor deltas to the pre-filter CH04 baseline.
+- **CH13:** migrate the Arm 3 Moriniere per-receptor-fraction slot to the canonical
+  `.scratch/basel/feature_slots/phage_projection` artifact path so downstream
+  pipelines pick it up without needing the CH05 `--phage-slot-dir` override each run.
+
+#### Artifacts
+
+- `lyzortx/generated_outputs/ch05_unified_kfold/ch05_combined_summary.json`,
+  `ch05_bacteria_axis_metrics.json`, `ch05_phage_axis_metrics.json`,
+  `ch05_cross_source_breakdown.csv`, `ch05_bacteria_axis_predictions.csv`,
+  `ch05_phage_axis_predictions.csv`, and per-row versions — pre-filter CH11
+  canonical, Arm 3 phage_projection slot.
+- `lyzortx/generated_outputs/ch09_calibration_layer/ch09_calibration_report.json`,
+  `ch09_calibrator.pkl`, `ch09_reliability_tables.csv` — refit CH09 on pre-filter
+  CH05 predictions.
+- `lyzortx/generated_outputs/ch05_unified_kfold_post_filter/`,
+  `lyzortx/generated_outputs/ch09_calibration_layer_post_filter/` — preserved
+  post-filter (deprecated) artifacts for sensitivity comparison.
+- `.scratch/ch11_logs/ch05_rerun.log` — local CH05 run log.
