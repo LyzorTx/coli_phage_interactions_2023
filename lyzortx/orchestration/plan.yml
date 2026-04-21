@@ -2581,90 +2581,81 @@ tracks:
       title: Revert neat-only positive filter to sensitivity analysis + rerun CH04/CH07
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - CH09
       acceptance_criteria:
-      - 'GOAL: demote the CH06-followup neat-only positive filter from canonical
-        to an opt-in sensitivity analysis. Four reviewer objections that must be
-        documented in the chisel-baseline context paragraph so future tickets
-        cannot re-propose the filter without having seen them: (i) WRONG PROXY
-        — Gaborieau 2024 Methods flag plaques-vs-clearing as the phenotype
-        concern ("Clearing of the bacterial lawn at high phage concentration
-        *could* result from productive lysis … or from another mechanism such as
-        lysis from without, or abortive infection"); our binary {0, 1, n} score
-        cannot distinguish plaques from clearing, and "positive observed only
-        at neat" is not the same as "ambiguous clearing". A narrow-host pair
-        that barely lyses at max titer is dropped identically to an abortive-
-        infection artifact. (ii) TESTING-COMPLETENESS BIAS — "positive only at
-        neat" is also "positive at neat and either untested or negative at
-        lower dilutions". A pair with sparser dilution sampling is more likely
-        to be filtered than one with richer sampling; that is a data-collection
-        selection, not biology. (iii) BASEL INCONSISTENCY — BASEL single-titer
-        at >10⁹ pfu/ml is HIGHER than Guelin''s neat 5×10⁸ pfu/ml, but the
-        filter exempts BASEL wholesale. If "high titer is suspect" is the
-        biological rationale, BASEL positives would be MORE suspect, not
-        exempt. The real reason BASEL is exempt is structural (single-titer
-        design), which confirms the filter is about Guelin-specific dilution
-        sampling density, not biology. (iv) PAPER DOES NOT DROP — Gaborieau''s
-        MLC score has MLC=1 as a valid "lytic at highest titer only" rung
-        included in the published interaction matrix and in the "average MLC
-        upon infection" and "productive lysis %" downstream analyses. We
-        unilaterally reclassified ~20% of Guelin positives (7,574 rows across
-        4,428 pairs) as non-lytic, contrary to the paper''s convention. On
-        top of that: on matched (pre-filter) eval labels, the filter-trained
-        model REGRESSES −1.47 pp AUC (0.8084 → 0.7937). The headline +1.33 pp
-        AUC is entirely a label-population-easier artifact (4,428 pairs flip
-        1→0 at eval because evaluation pulls the label from the pair''s
-        max-concentration observation and the filter removed the neat-positive
-        replicate). Brier on matched labels is a genuine −0.98 pp improvement
-        but isotonic calibration (CH09) is the cleaner remedy without the
-        label-policy cost.'
-      - 'SUPERSEDES: the merged PR #453 (commit c22faf7, "label-shift disclosure
-        under filter-stays-canonical framing"). This ticket replaces #453 —
-        #453 amended the knowledge unit to disclose the artifact but kept the
-        filter as canonical. CH10 demotes the filter entirely. The PR
-        description must explicitly name "Supersedes PR #453" and explain why.'
-      - 'CODE: flip `drop_high_titer_only_positives` default to False in
-        ch04_eval.py, ch05_eval.py, ch07_both_axis_holdout.py,
-        ch08_wave2_reaudit.py, and any CH06 arm scripts that inherit it. Keep
-        the CLI flag so users can opt in as `--drop-high-titer-only-positives`
-        for sensitivity analysis. Keep `build_clean_row_training_frame` filter
-        logic intact (still invokable; just not the default).'
-      - 'CH04 RERUN: rerun CH04 canonical under pre-filter + current absolute
-        log₁₀ pfu/ml encoding. Replace the canonical artifacts at
-        lyzortx/generated_outputs/ch04_chisel_baseline/ with fresh numbers.
-        Expected: AUC ≈ 0.8084 (matched to the prior-encoding pre-filter
-        canonical within sampling noise; minor shift from the absolute-log
-        encoding), Brier ≈ 0.175. ~25 min wallclock, 3 seed workers,
-        bacterium-level bootstrap.'
-      - 'CH07 RERUN: rerun CH07 both-axis 10×10 under pre-filter + CH06 Arm 3
-        phage_projection slot. CH07''s 0.7749 AUC is the load-bearing cold-
-        start deployability number the recap headline rests on; cannot leave
-        it citing a number computed under the deprecated label frame.
-        Bundled in this ticket (not a later one) per reviewer direction.
-        ~4 h wallclock, can run in background while doc work proceeds.
-        Reproduce the full 100-cell grid: cell_metrics.csv + aggregate.json +
-        cross_source_breakdown.csv + cell_distribution.png.'
-      - 'KNOWLEDGE AMENDMENT: rewrite chisel-baseline statement + context.
-        Remove the "filter is canonical" framing; canonical is pre-filter.
-        Include the four reviewer objections (i)-(iv) verbatim. Update
-        chisel-unified-kfold-baseline and (when it exists) chisel-both-axis-
-        holdout with a "under deprecated post-filter frame; pending pre-filter
-        rerun" caveat — those reruns are CH11 (CH05) and CH12 (CH08), with
-        CH09 calibrator refit folded into CH11 per reviewer bundling note.'
-      - 'DOCS: update track_CHISEL_recap.md with the reverted canonical and
-        the SUPERSEDED pointer. Add a dated post-close notebook entry to
-        track_CHISEL.md documenting the revert decision, the four objections,
-        and a cross-reference to the reviewer artifacts at
-        .scratch/chisel_review/. Update the recap''s "open follow-ups" —
-        the tentative "CH10" Arm 3 migration reference now points to CH13.'
-      - 'ACCEPTANCE: `python -m lyzortx.pipeline.autoresearch.ch04_eval`
-        produces AUC within [0.806, 0.811] (±0.25 pp around the 0.8084
-        pre-filter canonical point estimate); CH07 aggregate.json AUC recomputes from its
-        pair_predictions.csv to 6 dp; knowledge_parser.validate_knowledge()
-        passes; pymarkdown clean; unit tests green (CH04/CH05/CH07/CH08 tests
-        must still pass under the flipped default).'
+      - 'GOAL: demote the CH06-followup neat-only positive filter from canonical to
+        an opt-in sensitivity analysis. Four reviewer objections that must be documented
+        in the chisel-baseline context paragraph so future tickets cannot re-propose
+        the filter without having seen them: (i) WRONG PROXY — Gaborieau 2024 Methods
+        flag plaques-vs-clearing as the phenotype concern ("Clearing of the bacterial
+        lawn at high phage concentration *could* result from productive lysis … or
+        from another mechanism such as lysis from without, or abortive infection");
+        our binary {0, 1, n} score cannot distinguish plaques from clearing, and "positive
+        observed only at neat" is not the same as "ambiguous clearing". A narrow-host
+        pair that barely lyses at max titer is dropped identically to an abortive-
+        infection artifact. (ii) TESTING-COMPLETENESS BIAS — "positive only at neat"
+        is also "positive at neat and either untested or negative at lower dilutions".
+        A pair with sparser dilution sampling is more likely to be filtered than one
+        with richer sampling; that is a data-collection selection, not biology. (iii)
+        BASEL INCONSISTENCY — BASEL single-titer at >10⁹ pfu/ml is HIGHER than Guelin''s
+        neat 5×10⁸ pfu/ml, but the filter exempts BASEL wholesale. If "high titer
+        is suspect" is the biological rationale, BASEL positives would be MORE suspect,
+        not exempt. The real reason BASEL is exempt is structural (single-titer design),
+        which confirms the filter is about Guelin-specific dilution sampling density,
+        not biology. (iv) PAPER DOES NOT DROP — Gaborieau''s MLC score has MLC=1 as
+        a valid "lytic at highest titer only" rung included in the published interaction
+        matrix and in the "average MLC upon infection" and "productive lysis %" downstream
+        analyses. We unilaterally reclassified ~20% of Guelin positives (7,574 rows
+        across 4,428 pairs) as non-lytic, contrary to the paper''s convention. On
+        top of that: on matched (pre-filter) eval labels, the filter-trained model
+        REGRESSES −1.47 pp AUC (0.8084 → 0.7937). The headline +1.33 pp AUC is entirely
+        a label-population-easier artifact (4,428 pairs flip 1→0 at eval because evaluation
+        pulls the label from the pair''s max-concentration observation and the filter
+        removed the neat-positive replicate). Brier on matched labels is a genuine
+        −0.98 pp improvement but isotonic calibration (CH09) is the cleaner remedy
+        without the label-policy cost.'
+      - 'SUPERSEDES: the merged PR #453 (commit c22faf7, "label-shift disclosure under
+        filter-stays-canonical framing"). This ticket replaces #453 — #453 amended
+        the knowledge unit to disclose the artifact but kept the filter as canonical.
+        CH10 demotes the filter entirely. The PR description must explicitly name
+        "Supersedes PR #453" and explain why.'
+      - 'CODE: flip `drop_high_titer_only_positives` default to False in ch04_eval.py,
+        ch05_eval.py, ch07_both_axis_holdout.py, ch08_wave2_reaudit.py, and any CH06
+        arm scripts that inherit it. Keep the CLI flag so users can opt in as `--drop-high-titer-only-positives`
+        for sensitivity analysis. Keep `build_clean_row_training_frame` filter logic
+        intact (still invokable; just not the default).'
+      - 'CH04 RERUN: rerun CH04 canonical under pre-filter + current absolute log₁₀
+        pfu/ml encoding. Replace the canonical artifacts at lyzortx/generated_outputs/ch04_chisel_baseline/
+        with fresh numbers. Expected: AUC ≈ 0.8084 (matched to the prior-encoding
+        pre-filter canonical within sampling noise; minor shift from the absolute-log
+        encoding), Brier ≈ 0.175. ~25 min wallclock, 3 seed workers, bacterium-level
+        bootstrap.'
+      - 'CH07 RERUN: rerun CH07 both-axis 10×10 under pre-filter + CH06 Arm 3 phage_projection
+        slot. CH07''s 0.7749 AUC is the load-bearing cold- start deployability number
+        the recap headline rests on; cannot leave it citing a number computed under
+        the deprecated label frame. Bundled in this ticket (not a later one) per reviewer
+        direction. ~4 h wallclock, can run in background while doc work proceeds.
+        Reproduce the full 100-cell grid: cell_metrics.csv + aggregate.json + cross_source_breakdown.csv
+        + cell_distribution.png.'
+      - 'KNOWLEDGE AMENDMENT: rewrite chisel-baseline statement + context. Remove
+        the "filter is canonical" framing; canonical is pre-filter. Include the four
+        reviewer objections (i)-(iv) verbatim. Update chisel-unified-kfold-baseline
+        and (when it exists) chisel-both-axis- holdout with a "under deprecated post-filter
+        frame; pending pre-filter rerun" caveat — those reruns are CH11 (CH05) and
+        CH12 (CH08), with CH09 calibrator refit folded into CH11 per reviewer bundling
+        note.'
+      - 'DOCS: update track_CHISEL_recap.md with the reverted canonical and the SUPERSEDED
+        pointer. Add a dated post-close notebook entry to track_CHISEL.md documenting
+        the revert decision, the four objections, and a cross-reference to the reviewer
+        artifacts at .scratch/chisel_review/. Update the recap''s "open follow-ups"
+        — the tentative "CH10" Arm 3 migration reference now points to CH13.'
+      - 'ACCEPTANCE: `python -m lyzortx.pipeline.autoresearch.ch04_eval` produces
+        AUC within [0.806, 0.811] (±0.25 pp around the 0.8084 pre-filter canonical
+        point estimate); CH07 aggregate.json AUC recomputes from its pair_predictions.csv
+        to 6 dp; knowledge_parser.validate_knowledge() passes; pymarkdown clean; unit
+        tests green (CH04/CH05/CH07/CH08 tests must still pass under the flipped default).'
     - id: CH11
       title: CH05 rerun + CH09 isotonic refit under reverted pre-filter canonical
       model: claude-opus-4-6
@@ -2673,43 +2664,37 @@ tracks:
       depends_on_tasks:
       - CH10
       acceptance_criteria:
-      - 'GOAL: restore chisel-unified-kfold-baseline AND chisel-post-hoc-
-        calibration-layer to numbers computed under the pre-filter canonical
-        established by CH10. Bundled per reviewer note: the CH09 isotonic
-        refit is 5 min of compute on CH05 predictions, and keeping it in a
-        separate PR would leave the CH11 merge citing a stale calibrator in
-        chisel-unified-kfold-baseline. Merging them gives one atomic "CH05
-        under reverted canonical, with calibrator refit" deliverable.'
-      - 'CH05 RERUN: run `python -m lyzortx.pipeline.autoresearch.ch05_eval`
-        with the flipped default. Two axes: bacteria-axis 10-fold + phage-axis
-        StratifiedKFold. Use CH06 Arm 3 phage_projection slot override,
-        absolute log₁₀ pfu/ml encoding. Cross-source decomposition on phage-
-        axis. ~50 min wallclock.'
-      - 'CH09 ISOTONIC REFIT: refit
-        lyzortx/generated_outputs/ch09_calibration_layer/ch09_calibrator.pkl
-        on pre-filter Guelin training-fold predictions from the CH05 rerun.
-        LOOF evaluation, Guelin LOOF ECE target < 0.02 on both axes. Report
-        BASEL cross-panel ECE closure under the refit; replicate or
-        invalidate the 79.5% / 53.2% numbers currently in chisel-unified-
-        kfold-baseline. ~5 min wallclock after CH05 artifacts land.'
-      - 'METRICS: report new headline bacteria-axis AUC, phage-axis AUC,
-        cross-source AUC (Guelin vs BASEL), BASEL bacteria-axis deficit,
-        reliability tables. Compare to the post-filter CH05 numbers as a
-        sensitivity column. Report isotonic LOOF ECE on both axes.'
-      - 'ARTIFACTS: replace ch05_unified_kfold/ and ch09_calibration_layer/
-        artifacts with pre-filter reruns. Preserve the post-filter artifacts
-        at ch05_unified_kfold_post_filter/ and
-        ch09_calibration_layer_post_filter/ for side-by-side sensitivity
-        reference (both gitignored via generated_outputs/).'
-      - 'KNOWLEDGE: rewrite chisel-unified-kfold-baseline with new canonical
-        numbers. The "filter lift" paragraph is retired in favor of a brief
-        sensitivity note ("neat-only filter applied as training-data ablation
-        gives Δ AUC Y / Δ Brier Z, but CH10 demoted the filter to sensitivity-
-        analysis-only per reviewer findings — see chisel-baseline"). Update
-        or create chisel-post-hoc-calibration-layer with refit numbers.'
-      - Record the rerun results, the pre-filter/post-filter sensitivity
-        comparison, and the refit calibrator transfer numbers in
-        track_CHISEL.md.
+      - 'GOAL: restore chisel-unified-kfold-baseline AND chisel-post-hoc- calibration-layer
+        to numbers computed under the pre-filter canonical established by CH10. Bundled
+        per reviewer note: the CH09 isotonic refit is 5 min of compute on CH05 predictions,
+        and keeping it in a separate PR would leave the CH11 merge citing a stale
+        calibrator in chisel-unified-kfold-baseline. Merging them gives one atomic
+        "CH05 under reverted canonical, with calibrator refit" deliverable.'
+      - 'CH05 RERUN: run `python -m lyzortx.pipeline.autoresearch.ch05_eval` with
+        the flipped default. Two axes: bacteria-axis 10-fold + phage-axis StratifiedKFold.
+        Use CH06 Arm 3 phage_projection slot override, absolute log₁₀ pfu/ml encoding.
+        Cross-source decomposition on phage- axis. ~50 min wallclock.'
+      - 'CH09 ISOTONIC REFIT: refit lyzortx/generated_outputs/ch09_calibration_layer/ch09_calibrator.pkl
+        on pre-filter Guelin training-fold predictions from the CH05 rerun. LOOF evaluation,
+        Guelin LOOF ECE target < 0.02 on both axes. Report BASEL cross-panel ECE closure
+        under the refit; replicate or invalidate the 79.5% / 53.2% numbers currently
+        in chisel-unified- kfold-baseline. ~5 min wallclock after CH05 artifacts land.'
+      - 'METRICS: report new headline bacteria-axis AUC, phage-axis AUC, cross-source
+        AUC (Guelin vs BASEL), BASEL bacteria-axis deficit, reliability tables. Compare
+        to the post-filter CH05 numbers as a sensitivity column. Report isotonic LOOF
+        ECE on both axes.'
+      - 'ARTIFACTS: replace ch05_unified_kfold/ and ch09_calibration_layer/ artifacts
+        with pre-filter reruns. Preserve the post-filter artifacts at ch05_unified_kfold_post_filter/
+        and ch09_calibration_layer_post_filter/ for side-by-side sensitivity reference
+        (both gitignored via generated_outputs/).'
+      - 'KNOWLEDGE: rewrite chisel-unified-kfold-baseline with new canonical numbers.
+        The "filter lift" paragraph is retired in favor of a brief sensitivity note
+        ("neat-only filter applied as training-data ablation gives Δ AUC Y / Δ Brier
+        Z, but CH10 demoted the filter to sensitivity- analysis-only per reviewer
+        findings — see chisel-baseline"). Update or create chisel-post-hoc-calibration-layer
+        with refit numbers.'
+      - Record the rerun results, the pre-filter/post-filter sensitivity comparison,
+        and the refit calibrator transfer numbers in track_CHISEL.md.
     - id: CH12
       title: Rerun CH08 SX12/SX13 wave-2 re-audit under reverted pre-filter canonical
       model: claude-opus-4-6
@@ -2718,30 +2703,26 @@ tracks:
       depends_on_tasks:
       - CH10
       acceptance_criteria:
-      - 'GOAL: restore CH08''s SX12/SX13 delta headlines to the pre-filter
-        baseline. The merged CH08 reported SX12 +1.16 pp AUC / SX13 +0.17 pp
-        AUC against the CH04 POST-filter canonical predictions. The paired
-        bacterium-level bootstrap is internally consistent (same pairs, same
-        labels on both sides), so the deltas are valid AS MEASURED. But the
-        BASELINE reference is now the pre-filter canonical (CH10), so the arm
-        vs baseline comparison table needs to be recomputed with the pre-
-        filter CH04 predictions as the baseline reference.'
-      - 'DESIGN: rerun
-        `python -m lyzortx.pipeline.autoresearch.ch08_wave2_reaudit` with the
-        flipped default and the pre-filter CH04 canonical predictions as the
-        baseline reference. Keep the top-100 variance pre-filter on kmer
-        slots — that choice was validated under the merged CH08 and is
-        independent of the neat-only filter. ~1 h wallclock.'
-      - 'METRICS: report new SX12 and SX13 deltas with paired bacterium-level
-        bootstrap CIs. Knowledge-unit update logic from the merged CH08 still
-        applies: if either CI disjoint from zero, reopen the wave-2 null
-        (kmer-receptor-expansion-neutral / host-omp-variation-unpredictive);
-        if null, close it under CHISEL pre-filter frame.'
-      - 'ARTIFACTS: replace ch08_wave2_reaudit/ artifacts with the rerun. Keep
-        the post-filter run at ch08_wave2_reaudit_post_filter/ for
-        sensitivity.'
-      - Record the rerun deltas and the reopen/close decision in
-        track_CHISEL.md.
+      - 'GOAL: restore CH08''s SX12/SX13 delta headlines to the pre-filter baseline.
+        The merged CH08 reported SX12 +1.16 pp AUC / SX13 +0.17 pp AUC against the
+        CH04 POST-filter canonical predictions. The paired bacterium-level bootstrap
+        is internally consistent (same pairs, same labels on both sides), so the deltas
+        are valid AS MEASURED. But the BASELINE reference is now the pre-filter canonical
+        (CH10), so the arm vs baseline comparison table needs to be recomputed with
+        the pre- filter CH04 predictions as the baseline reference.'
+      - 'DESIGN: rerun `python -m lyzortx.pipeline.autoresearch.ch08_wave2_reaudit`
+        with the flipped default and the pre-filter CH04 canonical predictions as
+        the baseline reference. Keep the top-100 variance pre-filter on kmer slots
+        — that choice was validated under the merged CH08 and is independent of the
+        neat-only filter. ~1 h wallclock.'
+      - 'METRICS: report new SX12 and SX13 deltas with paired bacterium-level bootstrap
+        CIs. Knowledge-unit update logic from the merged CH08 still applies: if either
+        CI disjoint from zero, reopen the wave-2 null (kmer-receptor-expansion-neutral
+        / host-omp-variation-unpredictive); if null, close it under CHISEL pre-filter
+        frame.'
+      - 'ARTIFACTS: replace ch08_wave2_reaudit/ artifacts with the rerun. Keep the
+        post-filter run at ch08_wave2_reaudit_post_filter/ for sensitivity.'
+      - Record the rerun deltas and the reopen/close decision in track_CHISEL.md.
     - id: CH13
       title: Arm 3 canonical phage_projection slot migration
       model: claude-opus-4-6
@@ -2752,29 +2733,27 @@ tracks:
       - CH11
       - CH12
       acceptance_criteria:
-      - 'GOAL: wire CH06 Arm 3 (Moriniere per-receptor k-mer fractions) into
-        the canonical `phage_projection` slot. Currently Arm 3 lives at
-        .scratch/basel/feature_slots_arm3/phage_projection/features.csv and
-        is consumed only via `--phage-slots-dir` overrides. Canonical
-        migration makes it the default, retires the Guelin-derived TL17
-        BLAST projection artifact (or demotes it to a sensitivity-analysis
-        fallback), and re-runs downstream tickets under the new slot. Note:
-        this ticket was originally referenced as the tentative "CH10" in
-        merged docs (knowledge.yml moriniere-receptor-fractions-validated,
-        track_CHISEL_recap.md, KNOWLEDGE.md) before the CH10-CH12 insertion
-        for the filter revert. CH10 (revert) updates those references to
-        point at this ticket as CH13.'
-      - 'DESIGN: replace the canonical `phage_projection` slot artifacts in
-        the autoresearch feature cache with the Arm 3 Moriniere per-receptor
-        fraction matrix. Retire the TL17 BLAST pipeline or demote it to a
-        sensitivity-analysis fallback. Update the feature cache manifest.'
-      - 'RERUN: under the new canonical slot, rerun CH04, CH05, CH07, CH08,
-        CH09 (calibrator refit). Total ~6 h wallclock. Reuse the same code
-        paths under the flipped slot default.'
-      - 'KNOWLEDGE: rewrite moriniere-receptor-fractions-validated to reflect
-        canonical status. Update chisel-baseline, chisel-unified-kfold-
-        baseline, chisel-both-axis-holdout (if that unit exists by now) with
-        the new numbers. Retire the "canonical migration is deferred" note.'
-      - Record the migration, the before/after numbers on all downstream
-        tickets, and the TL17 retirement in track_CHISEL.md. Add a dedicated
-        section to track_CHISEL_recap.md or extend the open-follow-ups list.
+      - 'GOAL: wire CH06 Arm 3 (Moriniere per-receptor k-mer fractions) into the canonical
+        `phage_projection` slot. Currently Arm 3 lives at .scratch/basel/feature_slots_arm3/phage_projection/features.csv
+        and is consumed only via `--phage-slots-dir` overrides. Canonical migration
+        makes it the default, retires the Guelin-derived TL17 BLAST projection artifact
+        (or demotes it to a sensitivity-analysis fallback), and re-runs downstream
+        tickets under the new slot. Note: this ticket was originally referenced as
+        the tentative "CH10" in merged docs (knowledge.yml moriniere-receptor-fractions-validated,
+        track_CHISEL_recap.md, KNOWLEDGE.md) before the CH10-CH12 insertion for the
+        filter revert. CH10 (revert) updates those references to point at this ticket
+        as CH13.'
+      - 'DESIGN: replace the canonical `phage_projection` slot artifacts in the autoresearch
+        feature cache with the Arm 3 Moriniere per-receptor fraction matrix. Retire
+        the TL17 BLAST pipeline or demote it to a sensitivity-analysis fallback. Update
+        the feature cache manifest.'
+      - 'RERUN: under the new canonical slot, rerun CH04, CH05, CH07, CH08, CH09 (calibrator
+        refit). Total ~6 h wallclock. Reuse the same code paths under the flipped
+        slot default.'
+      - 'KNOWLEDGE: rewrite moriniere-receptor-fractions-validated to reflect canonical
+        status. Update chisel-baseline, chisel-unified-kfold- baseline, chisel-both-axis-holdout
+        (if that unit exists by now) with the new numbers. Retire the "canonical migration
+        is deferred" note.'
+      - Record the migration, the before/after numbers on all downstream tickets,
+        and the TL17 retirement in track_CHISEL.md. Add a dedicated section to track_CHISEL_recap.md
+        or extend the open-follow-ups list.

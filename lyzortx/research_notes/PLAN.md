@@ -1631,7 +1631,7 @@ graph LR
     GT09 + CH09.
   - Record the production calibration layer, its transfer limit, and the label- threshold sensitivity verdict in
     track_CHISEL.md.
-- [ ] **CH10** Revert neat-only positive filter to sensitivity analysis + rerun CH04/CH07. Model: `claude-opus-4-6`. CI
+- [x] **CH10** Revert neat-only positive filter to sensitivity analysis + rerun CH04/CH07. Model: `claude-opus-4-6`. CI
       image profile: `base`. Depends on tasks: `CH09`.
   - GOAL: demote the CH06-followup neat-only positive filter from canonical to an opt-in sensitivity analysis. Four
     reviewer objections that must be documented in the chisel-baseline context paragraph so future tickets cannot
