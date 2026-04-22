@@ -2889,7 +2889,7 @@ tracks:
       title: Per-pair SHAP drill-down
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - EX03
       acceptance_criteria:

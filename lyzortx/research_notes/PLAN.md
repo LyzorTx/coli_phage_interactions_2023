@@ -1828,7 +1828,7 @@ graph LR
     *. Attach screenshots of all six tabs to the PR.
   - ACCEPTANCE: both workflows pass in CI on this PR; release tag created; live Pages URL matches local preview numbers
     exactly.
-- [ ] **EX04** Per-pair SHAP drill-down. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on tasks: `EX03`.
+- [x] **EX04** Per-pair SHAP drill-down. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on tasks: `EX03`.
   - GOAL: add a seventh "Pair explorer" tab where the user clicks a row in the predictions table (or enters a bacterium
     and phage) and sees: feature values for that pair, SHAP waterfall, and the pair's predicted P in the context of the
     full P distribution.
