@@ -268,7 +268,7 @@
     Snapshot generated at
     <code x-text="summary?.snapshot_generated_at ?? 'unknown'"></code>.
   </span>
-  <span x-show="dataSource.mode === 'release' && releaseMeta">
+  <span x-show="releaseMeta">
     Release:
     <a :href="releaseMeta?.html_url" target="_blank" rel="noopener">
       <code x-text="releaseMeta?.tag"></code>

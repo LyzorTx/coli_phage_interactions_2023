@@ -22,7 +22,7 @@ jobs:
   deploy:
     name: Deploy UI to GitHub Pages
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -34,7 +34,7 @@ jobs:
       - name: Stage UI files at /explainability/
         run: |
           set -euo pipefail
-          mkdir -p _site/explainability
+          mkdir -p _site/explainability/data
           cp lyzortx/explainability_ui/index.html _site/explainability/
           cp lyzortx/explainability_ui/main.js _site/explainability/
           cp lyzortx/explainability_ui/style.css _site/explainability/
@@ -46,6 +46,27 @@ jobs:
           <title>CHISEL explainability — redirect</title>
           <p>Redirecting to <a href="./explainability/">./explainability/</a>…</p>
           HTML
+
+      - name: Bundle latest release data assets (same-origin, bypasses CORS)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # GitHub release asset URLs do not serve Access-Control-Allow-Origin, so the browser
+          # cannot fetch them cross-origin from a Pages site. We bake the release assets into
+          # the Pages deployment artifact so the UI can fetch them same-origin via ./data/.
+          tag=$(gh release view --json tagName -q .tagName || true)
+          if [ -z "$tag" ]; then
+            echo "::warning::No GitHub release found; deploying UI without data. Publish a release with gh release create to populate ./data/."
+          else
+            echo "Downloading assets from release $tag"
+            gh release download "$tag" \
+              --pattern '*.json' \
+              --pattern '*.parquet' \
+              --dir _site/explainability/data
+            echo "Bundled data files:"
+            ls -la _site/explainability/data
+          fi
           ls -R _site
 
       - name: Configure Pages

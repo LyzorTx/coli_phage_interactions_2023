@@ -1,15 +1,13 @@
 // main.js — vanilla JS + Alpine.js glue for the CHISEL explainability UI.
 //
-// Loads the seven snapshot JSONs (either ./data on local dev or a GitHub Release
-// download URL when served from GitHub Pages) and drives six Plotly views. No build
-// step; no module system; runs as-is in any modern browser.
-
-// Resolve the data base URL at runtime so the same committed HTML works on
-// GitHub Pages (production), raw.githack (preview), and local preview.
+// Always fetches from the sibling ./data/ directory (same-origin). GitHub Release asset
+// URLs do not serve Access-Control-Allow-Origin headers, so a cross-origin fetch from
+// Pages is blocked by the browser; the publish-explainability-ui workflow bakes the
+// release's JSONs + Parquets into the Pages deploy artifact so `./data/...` just works.
 //
-// Pages URL shape: https://<owner>.github.io/<repo>/explainability/
-// Release asset URL: https://github.com/<owner>/<repo>/releases/latest/download/<file>
-// Local preview: http://localhost:<port>/… → use sibling ./data directory.
+// Owner/repo are still derived from window.location when available — used only for the
+// optional footer release-metadata fetch against api.github.com (which DOES send CORS
+// headers). Falls back gracefully to "local" mode with no release footer.
 function resolveDataBase() {
   const loc = window.location;
   const host = loc.hostname;
@@ -18,10 +16,10 @@ function resolveDataBase() {
     const repo = (loc.pathname.split('/').filter(Boolean)[0] ?? '').trim();
     if (owner && repo) {
       return {
-        mode: 'release',
+        mode: 'pages',
         owner,
         repo,
-        base: `https://github.com/${owner}/${repo}/releases/latest/download`,
+        base: './data',
         apiBase: `https://api.github.com/repos/${owner}/${repo}`,
       };
     }
@@ -138,13 +136,13 @@ function ui() {
     },
 
     async fetchJSON(name) {
-      const res = await fetch(`${this.dataSource.base}/${name}`, { cache: 'no-cache' });
+      const res = await fetch(`${this.dataSource.base}/${name}`);
       if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`);
       return res.json();
     },
 
     async fetchReleaseMeta() {
-      if (this.dataSource.mode !== 'release' || !this.dataSource.apiBase) return;
+      if (!this.dataSource.apiBase) return;
       const cacheKey = `release-meta:${this.dataSource.apiBase}`;
       const cached = sessionStorage.getItem(cacheKey);
       if (cached) {
