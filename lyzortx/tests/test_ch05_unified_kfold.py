@@ -14,6 +14,7 @@ from lyzortx.pipeline.autoresearch.ch05_eval import (
     BASEL_LOG_DILUTION_SENTINEL,
     BASEL_REPLICATE_ID,
     SOURCE_BASEL,
+    _aggregate_feature_importance,
     _bootstrap_by_unit,
     assign_phage_folds,
     load_basel_as_row_frame,
@@ -175,6 +176,61 @@ def test_bootstrap_by_unit_skips_degenerate_single_class_resamples() -> None:
     assert isinstance(cis["holdout_roc_auc"], BootstrapMetricCI)
     # Some resamples should have been skipped.
     assert cis["holdout_roc_auc"].bootstrap_samples_used < 200
+
+
+def test_aggregate_feature_importance_matches_ch04_schema_and_orders_desc() -> None:
+    """Two seeds × two folds → aggregated frame must match CH04's schema exactly.
+
+    Downstream (the explainability UI snapshot extractor) reads this CSV with the
+    same parser used for ch04_feature_importance.csv, so the (feature,
+    is_concentration_feature, mean_importance, n_folds_selected) schema and
+    descending-importance ordering are a hard contract.
+    """
+    fi_a_seed0 = pd.DataFrame(
+        {
+            "feature": ["host_typing__serotype", "phage_stats__gc", "pair_concentration__log10_pfu_ml"],
+            "importance": [2500.0, 600.0, 300.0],
+            "is_concentration_feature": [False, False, True],
+        }
+    )
+    fi_a_seed1 = pd.DataFrame(
+        {
+            "feature": ["host_typing__serotype", "phage_stats__gc", "pair_concentration__log10_pfu_ml"],
+            "importance": [2450.0, 580.0, 320.0],
+            "is_concentration_feature": [False, False, True],
+        }
+    )
+    # Second fold's RFE dropped phage_stats__gc entirely (simulates per-fold RFE variance).
+    fi_b_seed0 = pd.DataFrame(
+        {
+            "feature": ["host_typing__serotype", "pair_concentration__log10_pfu_ml"],
+            "importance": [2600.0, 310.0],
+            "is_concentration_feature": [False, True],
+        }
+    )
+
+    agg = _aggregate_feature_importance([fi_a_seed0, fi_a_seed1, fi_b_seed0])
+
+    assert list(agg.columns) == ["feature", "is_concentration_feature", "mean_importance", "n_folds_selected"]
+    assert agg["mean_importance"].is_monotonic_decreasing
+    # host_typing__serotype appears in all three fits; phage_stats__gc only in two.
+    serotype = agg[agg["feature"] == "host_typing__serotype"].iloc[0]
+    assert serotype["n_folds_selected"] == 3
+    assert serotype["mean_importance"] == pytest.approx((2500 + 2450 + 2600) / 3)
+    gc = agg[agg["feature"] == "phage_stats__gc"].iloc[0]
+    assert gc["n_folds_selected"] == 2
+    assert gc["mean_importance"] == pytest.approx(590.0)
+    # Concentration feature flagged correctly and averaged across all three fits.
+    concentration = agg[agg["feature"] == "pair_concentration__log10_pfu_ml"].iloc[0]
+    assert bool(concentration["is_concentration_feature"]) is True
+    assert concentration["n_folds_selected"] == 3
+    assert concentration["mean_importance"] == pytest.approx(310.0)
+
+
+def test_aggregate_feature_importance_rejects_empty_input() -> None:
+    """Callers must raise if zero fits contributed — empty aggregate is a pipeline bug."""
+    with pytest.raises(ValueError, match="empty"):
+        _aggregate_feature_importance([])
 
 
 def test_run_ch05_eval_rejects_phage_slot_dir_with_missing_slots(tmp_path: Path) -> None:
