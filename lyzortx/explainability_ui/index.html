@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CHISEL explainability — CH05 unified</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
+</head>
+<body x-data="ui()">
+
+<header>
+  <h1>CHISEL explainability — CH05 unified</h1>
+  <p class="subtitle">
+    148-phage × 369-bacteria panel, per-row binary training, all-pairs only,
+    Arm 3 Moriniere per-receptor-class k-mer fractions as the canonical phage_projection slot.
+  </p>
+  <nav class="tabs">
+    <template x-for="(tab, key) in tabs" :key="key">
+      <button
+        :class="{ active: active === key }"
+        @click="active = key"
+        x-text="tab.label"
+      ></button>
+    </template>
+  </nav>
+</header>
+
+<main>
+  <!-- Loading / error banner -->
+  <div class="banner" x-show="loading" x-cloak>Loading snapshot…</div>
+  <div class="banner error" x-show="error" x-cloak x-text="error"></div>
+
+  <!-- Overview -->
+  <section x-show="active === 'overview' && !loading && !error" x-cloak>
+    <h2>Headline metrics</h2>
+    <div class="stat-grid">
+      <template x-for="axis in ['bacteria', 'phage']" :key="axis">
+        <div class="stat-card">
+          <h3 x-text="axisLabel(axis)"></h3>
+          <p class="fold-strategy" x-text="summary?.axes[axis]?.fold_strategy"></p>
+          <dl>
+            <dt>AUC</dt>
+            <dd x-html="fmtCI(summary?.axes[axis]?.auc)"></dd>
+            <dt>Brier</dt>
+            <dd x-html="fmtCI(summary?.axes[axis]?.brier)"></dd>
+            <dt>n pairs</dt>
+            <dd x-text="fmtInt(summary?.axes[axis]?.n_pairs)"></dd>
+            <dt>n bacteria</dt>
+            <dd x-text="fmtInt(summary?.axes[axis]?.n_bacteria)"></dd>
+            <dt>n phages</dt>
+            <dd x-text="fmtInt(summary?.axes[axis]?.n_phages)"></dd>
+          </dl>
+        </div>
+      </template>
+    </div>
+    <div class="plot-area" id="overview-lollipop"></div>
+    <p class="note">
+      Training unit: per-row binary (bacterium, phage, log_dilution, replicate, X, Y) → {0, 1}
+      with <code>pair_concentration__log10_pfu_ml</code> as a numeric feature.
+      Evaluation at each held-out pair's max observed <code>log10_pfu_ml</code>.
+      Scorecard: <code x-text="summary?.scorecard"></code>.
+      Per-phage blending: <code x-text="summary?.per_phage_blending"></code>.
+      Elapsed: <span x-text="fmtInt(summary?.elapsed_seconds) + ' s'"></span>.
+    </p>
+  </section>
+
+  <!-- Cross-source -->
+  <section x-show="active === 'crossSource' && !loading && !error" x-cloak>
+    <h2>Guelin vs BASEL</h2>
+    <p>
+      Phage-axis BASEL AUC 0.895 (wide CI, n=52 phages) vs Guelin 0.887 — cross-source
+      discrimination parity under CHISEL AUC+Brier. Bacteria-axis shows a 7.1 pp BASEL
+      deficit (0.739 vs 0.810) that is the TL17-bias panel-mismatch signal, addressed by
+      the Arm 3 slot migration (CH13) but not fully closed.
+    </p>
+    <div class="plot-area" id="cross-source-plot"></div>
+    <table class="data-table" x-show="crossSource">
+      <thead>
+        <tr>
+          <th>Axis</th><th>Source</th><th>n pairs</th><th>AUC</th><th>Brier</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="row in crossSourceRows()" :key="row.axis + '|' + row.source">
+          <tr>
+            <td x-text="row.axis"></td>
+            <td x-text="row.source"></td>
+            <td x-text="fmtInt(row.n_pairs)"></td>
+            <td x-html="fmtCI(row.auc)"></td>
+            <td x-html="fmtCI(row.brier)"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Calibration -->
+  <section x-show="active === 'calibration' && !loading && !error" x-cloak>
+    <h2>Reliability diagrams</h2>
+    <p>
+      Deciles 6–9 of the raw-prediction curves show 18–31 pp overpredicton of lysis (the
+      TL17-era signature) — the CH09 isotonic calibrator flattens the Guelin curves to
+      near-perfect. BASEL's residual miscalibration after applying the Guelin-fit calibrator
+      is the panel-mismatch signal, not a threshold issue.
+    </p>
+    <div class="axis-toggle">
+      <label><input type="radio" name="reliability-axis" value="bacteria" x-model="reliabilityAxis" @change="renderReliability()"> Bacteria-axis</label>
+      <label><input type="radio" name="reliability-axis" value="phage" x-model="reliabilityAxis" @change="renderReliability()"> Phage-axis</label>
+    </div>
+    <div class="plot-area" id="reliability-plot"></div>
+    <table class="data-table">
+      <thead><tr><th>Variant</th><th>ECE</th></tr></thead>
+      <tbody>
+        <template x-for="v in reliabilityVariants()" :key="v.key">
+          <tr>
+            <td><code x-text="v.key"></code></td>
+            <td x-text="v.ece === null ? '—' : v.ece.toFixed(4)"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Feature importance -->
+  <section x-show="active === 'featureImportance' && !loading && !error" x-cloak>
+    <h2>Top-30 LightGBM feature importance</h2>
+    <p>
+      Averaged across 30 fits (10 folds × 3 seeds) per axis. Colors map to the feature
+      slot; hover for the full name and the number of folds that retained the feature
+      after RFE (<code>n_folds_selected / 30</code>).
+    </p>
+    <div class="axis-toggle">
+      <label><input type="radio" name="fi-axis" value="bacteria_axis" x-model="fiAxis" @change="renderFeatureImportance()"> Bacteria-axis</label>
+      <label><input type="radio" name="fi-axis" value="phage_axis" x-model="fiAxis" @change="renderFeatureImportance()"> Phage-axis</label>
+    </div>
+    <div class="plot-area tall" id="fi-plot"></div>
+  </section>
+
+  <!-- Per-slot breakdown -->
+  <section x-show="active === 'slots' && !loading && !error" x-cloak>
+    <h2>Per-slot breakdown</h2>
+    <p>
+      Feature count and cumulative mean importance per slot per axis. The pair-level blocks
+      (<code>pair_depo_capsule</code>, <code>pair_receptor_omp</code>) are derived cross-terms,
+      not in the canonical <code>SLOT_SPECS</code> but produced by the same feature pipeline.
+    </p>
+    <div class="axis-toggle">
+      <label><input type="radio" name="slot-axis" value="bacteria_axis" x-model="slotAxis" @change="renderSlots()"> Bacteria-axis</label>
+      <label><input type="radio" name="slot-axis" value="phage_axis" x-model="slotAxis" @change="renderSlots()"> Phage-axis</label>
+    </div>
+    <div class="slot-grid" id="slot-cards"></div>
+  </section>
+
+  <!-- Predictions table -->
+  <section x-show="active === 'predictions' && !loading && !error" x-cloak>
+    <h2>Pair predictions</h2>
+    <p>
+      One row per held-out (bacterium, phage) pair at its max observed log10_pfu_ml.
+      Sort by <code>|p − label|</code> to inspect the model's worst calibration errors.
+    </p>
+    <div class="filters">
+      <label>Axis:
+        <select x-model="predAxis" @change="rebuildPredRows()">
+          <option value="bacteria">bacteria</option>
+          <option value="phage">phage</option>
+        </select>
+      </label>
+      <label>Source:
+        <select x-model="predSource" @change="rebuildPredRows()">
+          <option value="all">all</option>
+          <option value="guelin">guelin</option>
+          <option value="basel">basel</option>
+        </select>
+      </label>
+      <label>Sort by:
+        <select x-model="predSort" @change="rebuildPredRows()">
+          <option value="absErrDesc">|p − label| (desc)</option>
+          <option value="predictedDesc">predicted (desc)</option>
+          <option value="predictedAsc">predicted (asc)</option>
+          <option value="bacteria">bacterium</option>
+          <option value="phage">phage</option>
+        </select>
+      </label>
+      <span class="row-count" x-text="predRowsVisible.length.toLocaleString() + ' pairs (showing first ' + predPageSize + ')'"></span>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Bacterium</th><th>Phage</th><th>Source</th>
+          <th>Label</th><th>Predicted</th><th>|p − label|</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="row in predRowsVisible.slice(0, predPageSize)" :key="row.bacteria + '|' + row.phage">
+          <tr>
+            <td x-text="row.bacteria"></td>
+            <td x-text="row.phage"></td>
+            <td x-text="row.source"></td>
+            <td x-text="row.label"></td>
+            <td x-text="row.predicted.toFixed(4)"></td>
+            <td x-text="row.absErr.toFixed(4)"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </section>
+</main>
+
+<footer x-show="!loading && !error" x-cloak>
+  <span>
+    Snapshot generated at
+    <code x-text="summary?.snapshot_generated_at ?? 'unknown'"></code>.
+  </span>
+  <span x-show="summary?.ch04_baseline_auc">
+    CH04 baseline AUC (Guelin-only): <code x-text="summary?.ch04_baseline_auc?.toFixed(4)"></code>.
+  </span>
+</footer>
+
+<script src="main.js"></script>
+</body>
+</html>
