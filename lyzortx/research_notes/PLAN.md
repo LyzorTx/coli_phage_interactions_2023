@@ -1760,7 +1760,7 @@ graph LR
   breakdown, CH09 reliability diagrams (raw + isotonic), top-30 feature importance, per-slot breakdown, and a filterable
   predictions table. Per-pair SHAP drill-down is an explicit later ticket (EX04), blocked on a separate SHAP compute +
   Parquet persistence step.
-- [ ] **EX01** Emit per-axis feature importance from CH05. Model: `claude-opus-4-6`. CI image profile: `base`.
+- [x] **EX01** Emit per-axis feature importance from CH05. Model: `claude-opus-4-6`. CI image profile: `base`.
   - GOAL: enable the UI's feature-importance view by persisting CH05's LightGBM feature importance in the same shape
     CH04 already does. Currently ch05_eval.py trains 30 boosters per axis (10 folds × 3 seeds) but throws away
     importance after fit — the fit loop calls the same `fit_seeds` machinery as CH04 but drops the per-seed

@@ -2781,7 +2781,7 @@ tracks:
       title: Emit per-axis feature importance from CH05
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks: []
       acceptance_criteria:
       - 'GOAL: enable the UI''s feature-importance view by persisting CH05''s LightGBM
@@ -2823,18 +2823,18 @@ tracks:
         bundler, no build step. CLAUDE.md is `@AGENTS.md` per repo convention.'
       - 'EXTRACTOR: lyzortx/explainability_ui/build_snapshot.py. CLI flag `--out DIR`
         (default `.scratch/explainability_ui/data`). Reads from lyzortx/generated_outputs/ch05_unified_kfold/
-        and ch09_calibration_layer/; writes normalized JSONs: ch05_summary.json,
-        ch05_cross_source.json, ch05_feature_importance.json, ch05_predictions_bact.json,
-        ch05_predictions_phage.json, ch05_reliability.json, slot_manifest.json. Progress
-        logs via lyzortx.log_config with timestamps.'
+        and ch09_calibration_layer/; writes normalized JSONs: ch05_summary.json, ch05_cross_source.json,
+        ch05_feature_importance.json, ch05_predictions_bact.json, ch05_predictions_phage.json,
+        ch05_reliability.json, slot_manifest.json. Progress logs via lyzortx.log_config
+        with timestamps.'
       - 'VIEWS: six MVP tabs — Overview (AUC/Brier lollipop per axis + stat cards),
         Cross-source (Guelin vs BASEL side-by-side with 7.1 pp BASEL bact-axis deficit
-        called out), Calibration (reliability diagram per axis per source, raw +
-        isotonic overlay from CH09 with ECE annotation), Feature importance (top-30
-        horizontal bar colored by slot), Per-slot breakdown (small-multiples with
-        feature_count and cumulative_importance), Predictions table (paged/virtualized,
-        filter by axis/source, sort by |p−label|). Alpine.js for tab and filter state;
-        Plotly.js for plots.'
+        called out), Calibration (reliability diagram per axis per source, raw + isotonic
+        overlay from CH09 with ECE annotation), Feature importance (top-30 horizontal
+        bar colored by slot), Per-slot breakdown (small-multiples with feature_count
+        and cumulative_importance), Predictions table (paged/virtualized, filter by
+        axis/source, sort by |p−label|). Alpine.js for tab and filter state; Plotly.js
+        for plots.'
       - 'TESTS: lyzortx/tests/test_explainability_ui_build_snapshot.py asserts schema
         and headline numbers — bacteria-axis AUC 0.807921, phage-axis AUC 0.887042,
         36643 bacteria-axis pairs, top-30 feature importance monotone sorted, ECE
@@ -2871,8 +2871,8 @@ tracks:
         data snapshot"`.'
       - 'WIRE UI: main.js fetches data from `https://github.com/<owner>/<repo>/releases/latest/download/<file>`
         (owner/repo read from window.location or injected at build time; no hardcoded
-        names). Page footer shows the current release tag and published timestamp, fetched
-        from the GitHub REST API on page load and cached in sessionStorage.'
+        names). Page footer shows the current release tag and published timestamp,
+        fetched from the GitHub REST API on page load and cached in sessionStorage.'
       - 'ONE-TIME MANUAL STEP: in repo Settings → Pages, set Source to "GitHub Actions".
         Document this in lyzortx/explainability_ui/AGENTS.md as a prerequisite. Do
         not rely on the workflow to set this — GitHub doesn''t expose it via API for
