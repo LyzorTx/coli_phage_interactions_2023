@@ -298,3 +298,79 @@ None. EX04 is the MVP ceiling for the initial explainability UI scope; follow-up
 (beeswarm global SHAP, dependence plots, SHAP-delta comparison across slots) are
 filed as open follow-ups to be scheduled as a separate track once the UI usage
 patterns are clearer.
+
+### 2026-04-22 12:55 CEST: Post-EX04 CORS fix + snapshot workflow cleanup
+
+#### Executive summary
+
+First live deploy surfaced a browser-side `NetworkError when attempting to fetch
+resource` on the Pages URL. Root cause: GitHub Release asset URLs do not serve
+`Access-Control-Allow-Origin`, so `fetch()` from `lyzortx.github.io` cross-origin is
+blocked at the network layer — the EX03 runtime-URL-resolution design was broken.
+Fix: bundle the release assets into the Pages deploy artifact itself during
+`publish-explainability-ui.yml`, then fetch same-origin from `./data/`. No git
+branch is involved (the Pages deploy artifact is ephemeral), so the
+"no-data-on-any-branch" invariant still holds. Also removed the obsolete
+`snapshot-explainability-data.yml` since the `regen=true` path couldn't work in CI
+(the whole ST01→ST09→CH04→CH05 upstream chain is gitignored) and the
+`regen=false` path is fine to run locally with `gh release create` — see the
+AGENTS.md for the canonical publish flow.
+
+#### Why
+
+1. Release-asset CORS: verified empirically that `github.com/.../releases/download/…`
+   returns no `access-control-allow-origin`, only follow-redirects to
+   `release-assets.githubusercontent.com/...` (Azure blob with SAS token) which
+   also omits the header. Browsers therefore block the fetch. `raw.githack`,
+   `jsdelivr`, `statically.io`, etc. only proxy repo content, not release assets.
+2. Pages Actions mode explicitly supports Jekyll-style bundled sites — the deploy
+   workflow can stage any file layout in `_site/` and the result is served
+   same-origin on `<user>.github.io/<repo>/`. Downloading the release assets into
+   `_site/explainability/data/` during deploy is a 2-line change that fixes CORS
+   without introducing a branch.
+3. The snapshot workflow (`snapshot-explainability-data.yml`) could never work in
+   CI because CH05 depends transitively on `generated_outputs/steel_thread_v0/
+   intermediate/st02_pair_table.csv` which is gitignored. First user fire with
+   `regen=true` failed at `ch03_row_expansion.load_row_expanded_frame` line 83.
+   The deploy path is local-only — generate artifacts with `ch05_eval` +
+   `ch09_calibration_layer` + `derive_shap_snapshot`, then `gh release create`
+   directly from the laptop.
+
+#### Design choices
+
+- **Download in deploy, not at runtime**: the alternative would be fetching the
+  release asset through a CORS-enabled proxy (Cloudflare Worker, Vercel function).
+  Runtime proxies add a moving part and deployment target. Bundling into Pages
+  adds no new infrastructure and resolves the CORS problem at the origin.
+- **Keep the api.github.com release-metadata fetch**: `api.github.com` does send
+  `access-control-allow-origin: *` (verified), so the footer release-tag + timestamp
+  display stays in `main.js` and continues to work. Only the raw data-asset fetches
+  had to move.
+- **Drop `cache: 'no-cache'` on `fetch()`**: non-safelist request headers trigger
+  CORS preflight; with same-origin `./data/` there's no preflight to worry about,
+  but removing `cache: 'no-cache'` also avoids unnecessary browser caching concerns
+  (Pages cache is already controlled by `Cache-Control` headers from GitHub's CDN).
+
+#### Verification
+
+- `curl -sL -H "Origin: https://lyzortx.github.io" -D- -o /dev/null <release-asset-url>`
+  confirmed the CORS-header absence pre-fix.
+- `curl -sL -H "Origin: https://lyzortx.github.io" -D- -o /dev/null
+  https://api.github.com/repos/LyzorTx/coli_phage_interactions_2023/releases/latest`
+  confirmed `access-control-allow-origin: *` on api.github.com.
+- Deploy workflow run shows `Bundled data files: 13 entries` in logs.
+- Live site: https://lyzortx.github.io/coli_phage_interactions_2023/explainability/
+  loads all seven tabs cleanly (reviewer + user to spot-check Pair explorer
+  DuckDB-WASM path end-to-end post-merge).
+
+#### Artifacts
+
+- `.github/workflows/publish-explainability-ui.yml` — downloads latest release
+  assets and stages them under `_site/explainability/data/` before deploy.
+- `.github/workflows/snapshot-explainability-data.yml` — **deleted**.
+- `lyzortx/explainability_ui/main.js` — `resolveDataBase()` simplified; always
+  `./data`; `fetchReleaseMeta()` kept for footer.
+- `lyzortx/explainability_ui/index.html` — footer release-meta span no longer
+  gated on `dataSource.mode === 'release'`.
+- `lyzortx/explainability_ui/AGENTS.md` — documented the local publish flow;
+  removed `snapshot-explainability-data.yml` references.

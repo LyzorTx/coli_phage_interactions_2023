@@ -62,19 +62,30 @@ round-trip per pair regardless of Parquet size.
 
 ## Deployment
 
-- HTML/JS/CSS deploy to GitHub Pages via
-  `.github/workflows/publish-explainability-ui.yml` (fires on pushes to `main` that
-  touch `lyzortx/explainability_ui/**`). Uses `actions/deploy-pages@v4` in "GitHub
-  Actions" source mode — no `gh-pages` branch is ever created.
-- Data snapshots publish as GitHub Release assets via
-  `.github/workflows/snapshot-explainability-data.yml` (`workflow_dispatch` only,
-  inputs: `regen` default false, `release_tag` default
-  `explainability-data-<UTC timestamp>`). The workflow bootstraps `phage_env` via
-  `setup-micromamba@v2`, optionally reruns `ch05_eval` + `ch09_calibration_layer`,
-  runs `build_snapshot.py`, and invokes `gh release create --latest`. The HTML fetches
-  data from `https://github.com/<owner>/<repo>/releases/latest/download/<file>.json`;
-  owner/repo are resolved from `window.location` at page load, so no code changes are
-  needed per deploy target.
+- HTML/JS/CSS **and the current release's data assets** deploy together to GitHub
+  Pages via `.github/workflows/publish-explainability-ui.yml` (fires on pushes to
+  `main` that touch `lyzortx/explainability_ui/**`, plus `workflow_dispatch`). Uses
+  `actions/deploy-pages@v4` in "GitHub Actions" source mode — no `gh-pages` branch is
+  ever created.
+- The deploy workflow runs `gh release view --json tagName -q .tagName` to discover
+  the `latest` tag, then `gh release download $tag --pattern '*.json' --pattern
+  '*.parquet' --dir _site/explainability/data/`. The UI fetches from `./data/…`
+  same-origin, bypassing GitHub's missing CORS headers on release-asset URLs.
+- **Publishing a data snapshot**: run locally.
+
+  ```bash
+  python -m lyzortx.pipeline.autoresearch.ch05_eval --device-type cpu           # ~55 min
+  python -m lyzortx.pipeline.autoresearch.ch09_calibration_layer                # ~5 min
+  python -m lyzortx.pipeline.autoresearch.derive_shap_snapshot --device-type cpu  # ~75 min (optional, needed for the Pair explorer tab)
+  python -m lyzortx.explainability_ui.build_snapshot --include-shap --out .scratch/release_snapshot
+  tag="explainability-data-$(date -u +%Y%m%d-%H%M)"
+  gh release create "$tag" --latest --title "Explainability data snapshot $tag" \
+    .scratch/release_snapshot/*.json .scratch/release_snapshot/*.parquet
+  ```
+
+  Any push to `lyzortx/explainability_ui/**` after that re-bakes the fresh assets
+  into the next Pages deploy. To force a redeploy without a code change, trigger
+  `publish-explainability-ui.yml` via `workflow_dispatch`.
 - **Prerequisite one-time manual step** (not automatable): repo Settings → Pages →
   Source = "GitHub Actions". GitHub does not expose this via API on personal repos.
   Without it, the first `publish-explainability-ui` run fails with a "Pages not
