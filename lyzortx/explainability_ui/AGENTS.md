@@ -34,10 +34,31 @@ Only CDN-loaded JS libraries — no npm, no bundler, no build step. Version pinn
 
 - Plotly.js 2.35.2 (via `cdn.plot.ly`)
 - Alpine.js 3.14.1 (via `unpkg.com`)
+- DuckDB-WASM 1.29.0 (via `cdn.jsdelivr.net`, dynamically imported from `main.js`
+  only when the Pair explorer tab is first opened — keeps the ~10 MB WASM bundle out
+  of the initial page load for users who don't drill down)
 
-If a new library is needed, pin its version in the `<script>` tag and document it
-here. Do NOT introduce a build step without explicit user approval — "open the file and
-edit it" is the intended dev workflow.
+If a new library is needed, pin its version in the `<script>` tag (or `import()`
+specifier) and document it here. Do NOT introduce a build step without explicit user
+approval — "open the file and edit it" is the intended dev workflow.
+
+## Pair explorer (SHAP drill-down)
+
+The 7th tab ("Pair explorer") runs on six SHAP Parquet assets that ship alongside the
+JSON snapshots as GitHub Release assets:
+
+- `{bacteria,phage}_axis_shap_values.parquet` — per-pair SHAP contributions
+- `{bacteria,phage}_axis_feature_values.parquet` — matching raw feature values
+- `{bacteria,phage}_axis_shap_base_values.parquet` — per-pair model log-odds base
+
+Produced by `lyzortx/pipeline/autoresearch/derive_shap_snapshot.py` (see
+`lyzortx/pipeline/CLAUDE.md` for pipeline conventions). Run this once per CH05
+refresh; takes ~65 min wallclock. `build_snapshot.py --include-shap` copies the
+Parquets into the deploy directory.
+
+DuckDB-WASM queries these over HTTP range requests — only the row matching the
+selected `(bacteria, phage)` pair is transferred, so latency is bounded by one HTTP
+round-trip per pair regardless of Parquet size.
 
 ## Deployment
 

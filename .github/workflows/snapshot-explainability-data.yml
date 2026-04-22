@@ -8,6 +8,11 @@ on:
         required: false
         default: false
         type: boolean
+      include_shap:
+        description: "Also compute + publish SHAP Parquet assets (slow, ~60 min). Required for the Pair explorer tab."
+        required: false
+        default: false
+        type: boolean
       release_tag:
         description: "Release tag to create. Defaults to explainability-data-<UTC timestamp>."
         required: false
@@ -46,6 +51,13 @@ jobs:
           micromamba run -n phage_env python -m lyzortx.pipeline.autoresearch.ch05_eval --device-type cpu
           micromamba run -n phage_env python -m lyzortx.pipeline.autoresearch.ch09_calibration_layer
 
+      - name: (Optional) Compute SHAP snapshot
+        if: ${{ inputs.include_shap }}
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          micromamba run -n phage_env python -m lyzortx.pipeline.autoresearch.derive_shap_snapshot --device-type cpu
+
       - name: Sanity-check CH05/CH09 artifacts exist
         shell: bash -l {0}
         run: |
@@ -63,12 +75,16 @@ jobs:
             fi
           done
 
-      - name: Build snapshot JSONs
+      - name: Build snapshot JSONs (and Parquets if --include-shap)
         shell: bash -l {0}
         run: |
           set -euo pipefail
           mkdir -p .scratch/deploy/data
-          micromamba run -n phage_env python -m lyzortx.explainability_ui.build_snapshot --out .scratch/deploy/data
+          flags=""
+          if [ "${{ inputs.include_shap }}" = "true" ]; then
+            flags="--include-shap"
+          fi
+          micromamba run -n phage_env python -m lyzortx.explainability_ui.build_snapshot --out .scratch/deploy/data $flags
           ls -la .scratch/deploy/data
 
       - name: Resolve release tag
@@ -88,9 +104,11 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ steps.tag.outputs.tag }}"
+          shopt -s nullglob
+          assets=(.scratch/deploy/data/*.json .scratch/deploy/data/*.parquet)
           gh release create "$tag" \
             --title "Explainability data snapshot ${tag}" \
-            --notes "CH05/CH09 snapshot consumed by the explainability UI. regen=${{ inputs.regen }}." \
+            --notes "CH05/CH09 snapshot consumed by the explainability UI. regen=${{ inputs.regen }}, include_shap=${{ inputs.include_shap }}." \
             --latest \
-            .scratch/deploy/data/*.json
+            "${assets[@]}"
           echo "Published release: $tag"

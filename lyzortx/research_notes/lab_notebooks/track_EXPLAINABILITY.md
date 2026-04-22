@@ -200,3 +200,101 @@ without a `gh-pages` branch to sync.
 EX04: persist CH05 boosters, compute SHAP values over the 36,643-pair max-conc
 prediction set, emit Parquet snapshots, and add the "Pair explorer" tab backed by
 DuckDB-WASM for row-click drill-down with waterfall plots.
+
+### 2026-04-22 09:30 CEST: EX04 — per-pair SHAP drill-down
+
+#### Executive summary
+
+New `lyzortx/pipeline/autoresearch/derive_shap_snapshot.py` replays CH05's two-axis
+fold loops, fits LightGBM per fold × seed (10 × 3 = 30 fits per axis), and runs
+`shap.TreeExplainer` on each fold's held-out pairs at max concentration. SHAP matrices
+are seed-averaged per fold, then per-pair max-conc-aggregated, and written as six
+Parquet files (3 kinds × 2 axes). `build_snapshot.py` gains `--include-shap` +
+`--shap-dir` flags to copy the Parquets into the UI output directory; the snapshot
+workflow picks up `*.parquet` alongside `*.json` when uploading release assets.
+`main.js` gains a seventh "Pair explorer" tab: click a row in the Predictions table
+(or enter a bacterium + phage manually) → DuckDB-WASM lazy-loads the Parquets via HTTP
+range requests, queries for the pair, and renders a Plotly waterfall of the top-20
+SHAP contributions plus a raw-feature-value table.
+
+#### Why
+
+CH05 is by far the richest artifact set we produce, but the Predictions tab only shows
+aggregate (bacterium, phage, predicted_p) rows. A pair that misses is a mystery — did
+the model see a phage_stats feature it didn't recognize? A host defense gene count
+that pushed it off? Without SHAP, every diagnosis is speculative. SHAP waterfalls
+give us the per-feature decomposition of each prediction so error buckets can be
+interrogated mechanistically.
+
+#### Design choices
+
+- **Refit rather than persist-from-CH05**: `fit_seeds` discards the trained estimator
+  and the change would ripple through six unpacking sites (CH04/CH05/CH07/CH08). Since
+  EX04 is off-critical-path and SHAP compute is already expensive, a dedicated script
+  that repeats the fit loop is strictly simpler than modifying production code. Uses
+  the same `prepare_fold_design_matrices` / `select_rfe_features` / `build_pair_scorer`
+  primitives so the model is bit-identical to CH05's for the same seed. Elapsed: ~65
+  min on a 2023-vintage MacBook (fit ~30s, SHAP ~40s per fit × 60 fits, plus data
+  loading overhead).
+- **Wide-form Parquet over long-form**: one row per pair, one column per RFE feature.
+  Long-form would be 36k × 300 = 11M rows per axis (~90 MB), wide-form compresses to
+  ~40 MB. DuckDB-WASM queries are faster on wide since the `WHERE pair_id = ?` filter
+  hits one row directly.
+- **Per-fold RFE means feature columns differ across folds**: union columns across
+  folds; per-fold pairs have `NaN` for features absent from that fold's RFE. The UI
+  filters out NaN before rendering the waterfall.
+- **DuckDB-WASM loaded on-demand**: the ~10 MB WASM bundle only downloads when the
+  user first clicks the Pair explorer tab. `onTabClick` kicks off initialization so
+  first-pair selection has the engine ready. Init is cached in
+  `this.duckdbInitPromise` so concurrent clicks don't double-load.
+- **Feature slot coloring reused**: `featureToSlot()` in main.js mirrors the Python
+  `_feature_to_slot()` behavior exactly (both derive from the same `SLOT_COLORS` key
+  set), so waterfall bars are colored consistently with the Feature Importance tab.
+
+#### Verification
+
+- `pytest lyzortx/tests/test_derive_shap_snapshot.py` → 3 passed (aggregator unit tests).
+- `pytest lyzortx/tests/test_explainability_ui_build_snapshot.py` → 13 passed (2 new
+  covering `copy_shap_parquets` happy path + partial-snapshot failure).
+- Smoke test: `python -m lyzortx.pipeline.autoresearch.derive_shap_snapshot
+  --device-type cpu --out-dir .scratch/ex04_smoke --max-folds 1 --seeds 42` → 291 s
+  for one fold per axis with one seed, emits 6 Parquets.
+- Full run: `python -m lyzortx.pipeline.autoresearch.derive_shap_snapshot` (10 folds
+  × 3 seeds × 2 axes) completed in **4604 s (76.7 min)** on a 2023 MacBook. Output
+  sizes: bacteria-axis SHAP 31.7 MB / feature values 0.9 MB / base values 0.3 MB;
+  phage-axis SHAP 38.2 MB / feature values 1.3 MB / base values 0.3 MB. Total
+  ~72.7 MB across the six Parquets.
+- Waterfall decomposition sanity check: `pair 034-008__409_P1` base −2.0566 + Σ SHAP
+  −0.8153 = predicted logit −2.8719 (sigmoid ≈ 5.3%), matching the expected
+  low-lysis prediction for a narrow-host pair.
+- `build_snapshot.py --include-shap --out .scratch/ex04_verify/data` copies all 6
+  Parquets alongside the 7 JSONs in 0.4 s.
+- `node --check main.js` → zero syntax errors.
+- Pair explorer UX: click Predictions row → switches to Pair explorer → DuckDB-WASM
+  spins up → waterfall + feature table render (awaiting full Parquet artifacts to
+  verify end-to-end manually).
+
+#### Artifacts
+
+- `lyzortx/pipeline/autoresearch/derive_shap_snapshot.py` — new SHAP compute pipeline.
+- `lyzortx/explainability_ui/build_snapshot.py` — `--include-shap` + `--shap-dir`
+  flags + `copy_shap_parquets` helper.
+- `lyzortx/explainability_ui/index.html` — 7th "Pair explorer" tab, predictions-table
+  row-click handler.
+- `lyzortx/explainability_ui/main.js` — DuckDB-WASM lazy loader + waterfall renderer +
+  per-pair SHAP query.
+- `lyzortx/explainability_ui/style.css` — `.data-table tr.clickable { cursor: pointer }`.
+- `.github/workflows/snapshot-explainability-data.yml` — new `include_shap` input,
+  optional SHAP compute step, `*.parquet` in release-asset glob.
+- `lyzortx/tests/test_derive_shap_snapshot.py` — 3 aggregator unit tests.
+- `lyzortx/tests/test_explainability_ui_build_snapshot.py` — 2 new Parquet-copy tests.
+- `lyzortx/generated_outputs/ch05_shap/{bacteria,phage}_axis_{shap_values,shap_base_values,feature_values}.parquet`
+  — six files, total ~80 MB (gitignored, regenerated per run).
+- `requirements.txt` — `pyarrow==21.0.0` added (needed for Parquet write/read).
+
+#### Next
+
+None. EX04 is the MVP ceiling for the initial explainability UI scope; follow-ups
+(beeswarm global SHAP, dependence plots, SHAP-delta comparison across slots) are
+filed as open follow-ups to be scheduled as a separate track once the UI usage
+patterns are clearer.
