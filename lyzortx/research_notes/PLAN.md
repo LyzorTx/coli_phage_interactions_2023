@@ -50,6 +50,10 @@ graph LR
     tchisel["Track CHISEL: Concentration-aware binary lysis modeling"]
   end
 
+  subgraph s9["Stage 9"]
+    texplainability["Track EXPLAINABILITY: Interactive explainability UI (CH05 overview MVP)"]
+  end
+
   ta --> tb
   ta --> tc
   ta --> td
@@ -70,6 +74,7 @@ graph LR
   tautoresearch --> tgiants
   tgiants --> tspandex
   tspandex --> tchisel
+  tchisel --> texplainability
 ```
 
 ## Track ST: Steel Thread v0
@@ -1745,3 +1750,100 @@ graph LR
     the "canonical migration is deferred" note.
   - Record the migration, the before/after numbers on all downstream tickets, and the TL17 retirement in
     track_CHISEL.md. Add a dedicated section to track_CHISEL_recap.md or extend the open-follow-ups list.
+
+## Track EXPLAINABILITY: Interactive explainability UI (CH05 overview MVP)
+
+- **Guiding Principle:** Static HTML + Plotly.js dashboard over the CH05 unified CHISEL baseline. Code committed to main
+  under lyzortx/explainability_ui/, published via GitHub Pages ("GitHub Actions" source mode — no gh-pages branch). Data
+  published as GitHub Release assets; the HTML fetches from the `latest` release URL. No off-main branch, no generated
+  data ever committed.  MVP is overview-only: headline AUC/Brier per axis + bootstrap CIs, Guelin-vs-BASEL cross-source
+  breakdown, CH09 reliability diagrams (raw + isotonic), top-30 feature importance, per-slot breakdown, and a filterable
+  predictions table. Per-pair SHAP drill-down is an explicit later ticket (EX04), blocked on a separate SHAP compute +
+  Parquet persistence step.
+- [ ] **EX01** Emit per-axis feature importance from CH05. Model: `claude-opus-4-6`. CI image profile: `base`.
+  - GOAL: enable the UI's feature-importance view by persisting CH05's LightGBM feature importance in the same shape
+    CH04 already does. Currently ch05_eval.py trains 30 boosters per axis (10 folds × 3 seeds) but throws away
+    importance after fit — the fit loop calls the same `fit_seeds` machinery as CH04 but drops the per-seed
+    feature_importance frames instead of aggregating and writing them to disk.
+  - CODE: patch lyzortx/pipeline/autoresearch/ch05_eval.py to emit ch05_bacteria_axis_feature_importance.csv and
+    ch05_phage_axis_feature_importance.csv alongside the existing per-axis metrics/predictions artifacts under
+    lyzortx/generated_outputs/ch05_unified_kfold/. Schema identical to ch04_feature_importance.csv: (feature,
+    is_concentration_feature, mean_importance, n_folds_selected), averaged across seeds and folds for that axis.
+  - TESTS: extend lyzortx/tests/test_ch05_unified_kfold.py with a smoke test that confirms both CSVs materialize after a
+    run, have >200 rows (CH05 RFE feature count is in that range), and that their header matches the CH04 reference
+    exactly.
+  - RERUN: re-run `python -m lyzortx.pipeline.autoresearch.ch05_eval` locally to regenerate artifacts. Commit only the
+    code + test changes; generated CSVs stay gitignored. Record the rerun invocation + elapsed time in the PR
+    description.
+  - ACCEPTANCE: pytest lyzortx/tests/test_ch05_unified_kfold.py green; ruff clean; ch05_unified_kfold/ contains both new
+    CSVs after a local run; row counts match RFE feature count reported in CH05 logs.
+- [ ] **EX02** Build static UI scaffold + snapshot extractor. Model: `claude-opus-4-6`. CI image profile: `base`.
+      Depends on tasks: `EX01`.
+  - GOAL: ship the static page + data extractor locally. No CI hookup yet (that is EX03). At the end of this ticket a
+    developer can run the snapshot script, start a local HTTP server, and click through all six tabs of the dashboard
+    against real CH05/CH09 artifacts.
+  - SCAFFOLD: create lyzortx/explainability_ui/{index.html, main.js, style.css, AGENTS.md, CLAUDE.md}. Plotly.js and
+    Alpine.js loaded via CDN — no npm, no bundler, no build step. CLAUDE.md is `@AGENTS.md` per repo convention.
+  - EXTRACTOR: lyzortx/explainability_ui/build_snapshot.py. CLI flag `--out DIR` (default
+    `.scratch/explainability_ui/data`). Reads from lyzortx/generated_outputs/ch05_unified_kfold/ and
+    ch09_calibration_layer/; writes normalized JSONs: ch05_summary.json, ch05_cross_source.json,
+    ch05_feature_importance.json, ch05_predictions_bact.json, ch05_predictions_phage.json, ch05_reliability.json,
+    slot_manifest.json. Progress logs via lyzortx.log_config with timestamps.
+  - VIEWS: six MVP tabs — Overview (AUC/Brier lollipop per axis + stat cards), Cross-source (Guelin vs BASEL
+    side-by-side with 7.1 pp BASEL bact-axis deficit called out), Calibration (reliability diagram per axis per source,
+    raw + isotonic overlay from CH09 with ECE annotation), Feature importance (top-30 horizontal bar colored by slot),
+    Per-slot breakdown (small-multiples with feature_count and cumulative_importance), Predictions table
+    (paged/virtualized, filter by axis/source, sort by |p−label|). Alpine.js for tab and filter state; Plotly.js for
+    plots.
+  - TESTS: lyzortx/tests/test_explainability_ui_build_snapshot.py asserts schema and headline numbers — bacteria-axis
+    AUC 0.807921, phage-axis AUC 0.887042, 36643 bacteria-axis pairs, top-30 feature importance monotone sorted, ECE
+    values match CH09 report.
+  - VERIFY: `python -m http.server -d .scratch/explainability_ui 8765` → page loads, all six tabs render without console
+    errors, reliability-decile cells match ch09_reliability_tables.csv row-for-row for bact-axis Guelin. Attach
+    screenshots or a short GIF of the six tabs to the PR description.
+  - ACCEPTANCE: unit tests green; ruff clean; pymarkdown clean on AGENTS.md; no data files committed under
+    lyzortx/explainability_ui/ (snapshot output goes to .scratch/ or a CLI-configurable path).
+- [ ] **EX03** GitHub Pages deploy + Release-asset data workflows. Model: `claude-opus-4-6`. CI image profile: `base`.
+      Depends on tasks: `EX02`.
+  - GOAL: make the Pages site live and the data snapshot publishable via `gh release` with one manual trigger. HTML
+    auto-deploys on every push that touches lyzortx/explainability_ui/**.
+  - DEPLOY WORKFLOW: .github/workflows/publish-explainability-ui.yml. Triggers: push to main on
+    lyzortx/explainability_ui/**, plus workflow_dispatch. Uses actions/configure-pages@v4 +
+    actions/upload-pages-artifact@v3 + actions/deploy-pages@v4. No gh-pages branch is created — Pages source is "GitHub
+    Actions". Permissions: `pages: write, id-token: write`.
+  - DATA WORKFLOW: .github/workflows/snapshot-explainability-data.yml. Triggers: workflow_dispatch only (two inputs:
+    `regen: bool` default false, `release_tag: string` default `explainability-data-$(date -u +%Y%m%d-%H%M)`).
+    Bootstraps phage_env via micromamba per root AGENTS.md Environment Policy. If regen=true, runs ch05_eval +
+    ch09_calibration_layer first (~90 min CI). Then runs build_snapshot.py and `gh release create $release_tag
+    data/*.json --latest --title "Explainability data snapshot"`.
+  - WIRE UI: main.js fetches data from `https://github.com/<owner>/<repo>/releases/latest/download/<file>` (owner/repo
+    read from window.location or injected at build time; no hardcoded names). Page footer shows the current release tag
+    and published timestamp, fetched from the GitHub REST API on page load and cached in sessionStorage.
+  - ONE-TIME MANUAL STEP: in repo Settings → Pages, set Source to "GitHub Actions". Document this in
+    lyzortx/explainability_ui/AGENTS.md as a prerequisite. Do not rely on the workflow to set this — GitHub doesn't
+    expose it via API for personal repos.
+  - VERIFY: fire data workflow once → release created with expected assets. Merge a trivial UI change → deploy workflow
+    fires → Pages URL serves the new HTML. Open https://<owner>.github.io/<repo>/explainability/ → every tab loads with
+    data pulled from the release URL; DevTools network tab shows fetches returning 200 with Access-Control-Allow-Origin:
+    *. Attach screenshots of all six tabs to the PR.
+  - ACCEPTANCE: both workflows pass in CI on this PR; release tag created; live Pages URL matches local preview numbers
+    exactly.
+- [ ] **EX04** Per-pair SHAP drill-down. Model: `claude-opus-4-6`. CI image profile: `base`. Depends on tasks: `EX03`.
+  - GOAL: add a seventh "Pair explorer" tab where the user clicks a row in the predictions table (or enters a bacterium
+    and phage) and sees: feature values for that pair, SHAP waterfall, and the pair's predicted P in the context of the
+    full P distribution.
+  - SHAP COMPUTE: lyzortx/pipeline/autoresearch/derive_shap_snapshot.py. Persists 30 CH05 boosters per axis (10 folds ×
+    3 seeds), runs `shap.TreeExplainer` over the max-conc pair frame, averages SHAP matrices across seeds per fold.
+    Writes lyzortx/generated_outputs/ch05_shap/shap_values.parquet (pair_id × feature long form) +
+    shap_base_values.parquet. Expect 30–60 min wallclock on the dev laptop.
+  - SNAPSHOT: build_snapshot.py gains a `--include-shap` flag that copies ch05_shap_values.parquet verbatim and emits
+    ch05_feature_values.parquet (raw feature matrix over the predictions set) as additional release assets.
+  - UI: main.js loads Parquet assets via DuckDB-WASM (from the DuckDB team's CDN) and queries on row-click. Waterfall is
+    a Plotly.js horizontal bar chart with +/− SHAP contributions, ordered by magnitude.
+  - SMOKE TEST: fixture-based unit test confirms shap snapshot round-trips through Parquet and waterfall input format
+    matches Plotly's expected shape. Confirms waterfall sum + base value equals predicted log-odds (decomposition sanity
+    check) on a fixture pair.
+  - VERIFY: click three pairs in the rendered table — one high-confidence hit, one miss, one NILS53 narrow-host pair.
+    Waterfall sums match predicted log-odds for each within 1e-6.
+  - ACCEPTANCE: derive_shap_snapshot.py runs end-to-end locally; snapshot + release workflow handles the new Parquet
+    assets; Pages site shows the new tab with working drill-downs; unit tests green; ruff clean.
