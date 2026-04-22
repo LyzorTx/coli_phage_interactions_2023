@@ -2810,7 +2810,7 @@ tracks:
       title: Build static UI scaffold + snapshot extractor
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - EX01
       acceptance_criteria:

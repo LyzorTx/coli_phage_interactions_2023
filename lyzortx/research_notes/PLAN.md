@@ -1777,7 +1777,7 @@ graph LR
     description.
   - ACCEPTANCE: pytest lyzortx/tests/test_ch05_unified_kfold.py green; ruff clean; ch05_unified_kfold/ contains both new
     CSVs after a local run; row counts match RFE feature count reported in CH05 logs.
-- [ ] **EX02** Build static UI scaffold + snapshot extractor. Model: `claude-opus-4-6`. CI image profile: `base`.
+- [x] **EX02** Build static UI scaffold + snapshot extractor. Model: `claude-opus-4-6`. CI image profile: `base`.
       Depends on tasks: `EX01`.
   - GOAL: ship the static page + data extractor locally. No CI hookup yet (that is EX03). At the end of this ticket a
     developer can run the snapshot script, start a local HTTP server, and click through all six tabs of the dashboard
