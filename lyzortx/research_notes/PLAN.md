@@ -1803,7 +1803,7 @@ graph LR
     screenshots or a short GIF of the six tabs to the PR description.
   - ACCEPTANCE: unit tests green; ruff clean; pymarkdown clean on AGENTS.md; no data files committed under
     lyzortx/explainability_ui/ (snapshot output goes to .scratch/ or a CLI-configurable path).
-- [ ] **EX03** GitHub Pages deploy + Release-asset data workflows. Model: `claude-opus-4-6`. CI image profile: `base`.
+- [x] **EX03** GitHub Pages deploy + Release-asset data workflows. Model: `claude-opus-4-6`. CI image profile: `base`.
       Depends on tasks: `EX02`.
   - GOAL: make the Pages site live and the data snapshot publishable via `gh release` with one manual trigger. HTML
     auto-deploys on every push that touches lyzortx/explainability_ui/**.

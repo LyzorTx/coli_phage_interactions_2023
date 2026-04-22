@@ -2850,7 +2850,7 @@ tracks:
       title: GitHub Pages deploy + Release-asset data workflows
       model: claude-opus-4-6
       ci_image_profile: base
-      status: pending
+      status: done
       depends_on_tasks:
       - EX02
       acceptance_criteria:
