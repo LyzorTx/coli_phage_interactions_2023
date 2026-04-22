@@ -374,3 +374,45 @@ AGENTS.md for the canonical publish flow.
   gated on `dataSource.mode === 'release'`.
 - `lyzortx/explainability_ui/AGENTS.md` — documented the local publish flow;
   removed `snapshot-explainability-data.yml` references.
+
+### 2026-04-22 13:08 CEST: Pair explorer DuckDB-WASM relative-URL fix
+
+#### Executive summary
+
+First Pair explorer click surfaced two DuckDB-WASM errors: `InvalidStateError: An
+attempt was made to use an object that is not, or is no longer, usable` (axis=phage),
+and `IO Error: No files found that match the pattern
+"bacteria_axis_shap_values.parquet"` (axis=bacteria). Root cause: `registerFileURL`
+was given relative paths like `./data/<file>.parquet`. Inside the DuckDB-WASM worker,
+`self.location` is the worker's blob URL (not the page URL), so those relative paths
+resolve against `blob:...` — which 404s and leaves the virtual filesystem with a
+broken registration. The subsequent query treats the unresolved filename as a glob
+against the (empty) local VFS, hence "No files found that match the pattern".
+
+Fix: drop `registerFileURL` entirely and use `read_parquet('<absolute-url>')` inline
+in each query. A small `parquetUrl(name)` helper converts
+`this.dataSource.base + name` into an absolute URL via `new URL(..., window.location.href)`.
+DuckDB-WASM's built-in httpfs extension fetches HTTP URLs directly with range requests,
+so only the asset bytes for the matched row are transferred. Same-origin (Pages bakes
+the assets into `_site/explainability/data/` per the EX05 fix), so no CORS preflight.
+
+#### Why
+
+DuckDB-WASM's documented `registerFileURL` expects an absolute URL; the HTTP protocol
+constant is 4. The `fetch()` call inside the worker fails silently on relative URLs
+because the worker's blob origin has nothing to serve. Inline `read_parquet('<abs-url>')`
+is idiomatic for one-off remote Parquet queries and avoids the registration step
+entirely, which is also what jsDelivr/DuckDB tutorials recommend when the file catalog
+isn't shared across queries.
+
+#### Verification
+
+- `node --check main.js` clean.
+- Post-deploy: click any Predictions row → Pair explorer loads → waterfall renders.
+  Verified on: 001-023 × 409_P1 (both axes), IAI55 × DIJ07_P2 (high-confidence hit),
+  NILS53 narrow-host pairs.
+
+#### Artifacts
+
+- `lyzortx/explainability_ui/main.js` — `parquetUrl(name)` helper; `initDuckDB` no
+  longer registers files; `loadShapForPair` uses `read_parquet('<abs-url>')`.
