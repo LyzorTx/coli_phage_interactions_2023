@@ -33,9 +33,19 @@ LOGGER = logging.getLogger(__name__)
 
 DEFAULT_CH05_DIR = Path("lyzortx/generated_outputs/ch05_unified_kfold")
 DEFAULT_CH09_DIR = Path("lyzortx/generated_outputs/ch09_calibration_layer")
+DEFAULT_SHAP_DIR = Path("lyzortx/generated_outputs/ch05_shap")
 DEFAULT_OUT_DIR = Path(".scratch/explainability_ui/data")
 
 CONCENTRATION_FEATURE_PREFIX = "pair_concentration__"
+
+SHAP_PARQUET_NAMES = (
+    "bacteria_axis_shap_values.parquet",
+    "bacteria_axis_shap_base_values.parquet",
+    "bacteria_axis_feature_values.parquet",
+    "phage_axis_shap_values.parquet",
+    "phage_axis_shap_base_values.parquet",
+    "phage_axis_feature_values.parquet",
+)
 
 
 def _read_combined_summary(ch05_dir: Path) -> dict[str, Any]:
@@ -305,8 +315,47 @@ def build_slot_manifest_json(feature_importance: dict[str, Any]) -> dict[str, An
     return {"slots": list(slots.values())}
 
 
-def write_snapshot(out_dir: Path, ch05_dir: Path, ch09_dir: Path) -> dict[str, Path]:
-    """Write all seven snapshot JSONs to `out_dir`. Returns a name → path map."""
+def copy_shap_parquets(shap_dir: Path, out_dir: Path) -> list[Path]:
+    """Copy the 6 SHAP Parquet files into the snapshot output directory.
+
+    Raises FileNotFoundError if any expected Parquet is missing — a partial SHAP
+    snapshot would mean the UI's Pair explorer tab fails silently on some pairs,
+    which is worse than failing loudly here.
+    """
+    import shutil
+
+    copied: list[Path] = []
+    missing: list[str] = []
+    for name in SHAP_PARQUET_NAMES:
+        src = shap_dir / name
+        if not src.exists():
+            missing.append(name)
+            continue
+        dst = out_dir / name
+        shutil.copyfile(src, dst)
+        LOGGER.info("Copied %s → %s (%.1f KB)", src, dst, dst.stat().st_size / 1024)
+        copied.append(dst)
+    if missing:
+        raise FileNotFoundError(
+            f"SHAP snapshot is incomplete: missing {missing} under {shap_dir}. "
+            "Regenerate with `python -m lyzortx.pipeline.autoresearch.derive_shap_snapshot`."
+        )
+    return copied
+
+
+def write_snapshot(
+    out_dir: Path,
+    ch05_dir: Path,
+    ch09_dir: Path,
+    include_shap: bool = False,
+    shap_dir: Path | None = None,
+) -> dict[str, Path]:
+    """Write all seven snapshot JSONs to `out_dir`. Returns a name → path map.
+
+    When `include_shap=True`, also copies the 6 SHAP Parquet files from `shap_dir`
+    (default `lyzortx/generated_outputs/ch05_shap/`) into `out_dir` so the publisher
+    workflow can upload them as release assets alongside the JSONs.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     combined = _read_combined_summary(ch05_dir)
     report_path = ch09_dir / "ch09_calibration_report.json"
@@ -350,6 +399,13 @@ def write_snapshot(out_dir: Path, ch05_dir: Path, ch09_dir: Path) -> dict[str, P
         size_kb = path.stat().st_size / 1024
         LOGGER.info("Wrote %s (%.1f KB)", path, size_kb)
         written[name] = path
+
+    if include_shap:
+        effective_shap_dir = shap_dir if shap_dir is not None else DEFAULT_SHAP_DIR
+        LOGGER.info("Including SHAP Parquets from %s", effective_shap_dir)
+        for parquet_path in copy_shap_parquets(effective_shap_dir, out_dir):
+            written[parquet_path.name] = parquet_path
+
     LOGGER.info("Snapshot complete at %s", snapshot_generated_at)
     return written
 
@@ -374,6 +430,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_CH09_DIR,
         help=f"CH09 artifact directory (default: {DEFAULT_CH09_DIR})",
     )
+    parser.add_argument(
+        "--include-shap",
+        action="store_true",
+        help="Also copy the 6 SHAP Parquet files from --shap-dir into --out so they ship as release assets.",
+    )
+    parser.add_argument(
+        "--shap-dir",
+        type=Path,
+        default=DEFAULT_SHAP_DIR,
+        help=f"SHAP artifact directory (default: {DEFAULT_SHAP_DIR}). Ignored unless --include-shap is set.",
+    )
     return parser.parse_args(argv)
 
 
@@ -381,8 +448,20 @@ def main(argv: list[str] | None = None) -> None:
     setup_logging()
     args = parse_args(argv)
     start = datetime.now(timezone.utc)
-    LOGGER.info("Snapshot build starting (out=%s, ch05=%s, ch09=%s)", args.out, args.ch05_dir, args.ch09_dir)
-    write_snapshot(out_dir=args.out, ch05_dir=args.ch05_dir, ch09_dir=args.ch09_dir)
+    LOGGER.info(
+        "Snapshot build starting (out=%s, ch05=%s, ch09=%s, include_shap=%s)",
+        args.out,
+        args.ch05_dir,
+        args.ch09_dir,
+        args.include_shap,
+    )
+    write_snapshot(
+        out_dir=args.out,
+        ch05_dir=args.ch05_dir,
+        ch09_dir=args.ch09_dir,
+        include_shap=args.include_shap,
+        shap_dir=args.shap_dir,
+    )
     elapsed = (datetime.now(timezone.utc) - start).total_seconds()
     LOGGER.info("Snapshot build complete in %.1f s", elapsed)
 

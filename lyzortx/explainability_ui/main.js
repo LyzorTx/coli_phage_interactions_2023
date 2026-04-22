@@ -45,6 +45,17 @@ const SLOT_COLORS = {
   other: '#839496',
 };
 
+const SLOT_PREFIXES = Object.keys(SLOT_COLORS)
+  .filter((slot) => slot !== 'other')
+  .map((slot) => ({ slot, prefix: slot + '__' }));
+
+function featureToSlot(feature) {
+  for (const { slot, prefix } of SLOT_PREFIXES) {
+    if (feature.startsWith(prefix)) return slot;
+  }
+  return 'other';
+}
+
 const RELIABILITY_VARIANT_ORDER = [
   { key: 'guelin_raw', label: 'Guelin raw', color: '#268bd2', dash: 'solid' },
   { key: 'guelin_loof_calibrated', label: 'Guelin LOOF-calibrated', color: '#268bd2', dash: 'dot' },
@@ -61,6 +72,7 @@ function ui() {
       featureImportance: { label: 'Feature importance' },
       slots: { label: 'Per-slot breakdown' },
       predictions: { label: 'Predictions table' },
+      pairExplorer: { label: 'Pair explorer' },
     },
     active: 'overview',
     loading: true,
@@ -85,6 +97,15 @@ function ui() {
 
     dataSource: DATA_SOURCE,
     releaseMeta: null,
+
+    shapAxis: 'bacteria_axis',
+    shapBact: '',
+    shapPhage: '',
+    shapPair: null,
+    shapLoading: false,
+    shapError: null,
+    duckdbConn: null,
+    duckdbInitPromise: null,
 
     async init() {
       try {
@@ -147,6 +168,35 @@ function ui() {
       this.renderFeatureImportance();
       this.renderSlots();
       this.rebuildPredRows();
+    },
+
+    onTabClick(key) {
+      this.active = key;
+      if (key === 'pairExplorer' && !this.duckdbConn && !this.duckdbInitPromise) {
+        // Kick off DuckDB-WASM init on first visit. Does not block the tab switch;
+        // selectCustomPair() will await it.
+        this.initDuckDB().catch((err) => {
+          console.warn('DuckDB-WASM init failed', err);
+          this.shapError = `DuckDB-WASM unavailable: ${err.message}`;
+        });
+      }
+    },
+
+    drillInto(row) {
+      this.shapAxis = this.predAxis === 'bacteria' ? 'bacteria_axis' : 'phage_axis';
+      this.shapBact = row.bacteria;
+      this.shapPhage = row.phage;
+      this.active = 'pairExplorer';
+      this.selectCustomPair();
+    },
+
+    selectCustomPair() {
+      if (!this.shapBact || !this.shapPhage) {
+        this.shapError = 'Enter both a bacterium and a phage.';
+        return;
+      }
+      this.shapError = null;
+      this.loadShapForPair();
     },
 
     // ---- formatting helpers ----
@@ -378,6 +428,152 @@ function ui() {
         `;
         container.appendChild(card);
       }
+    },
+
+    // ---- Pair explorer (DuckDB-WASM + SHAP waterfall) ----
+
+    async initDuckDB() {
+      if (this.duckdbInitPromise) return this.duckdbInitPromise;
+      this.shapLoading = true;
+      this.duckdbInitPromise = (async () => {
+        const duckdb = await import('https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm');
+        const bundles = duckdb.getJsDelivrBundles();
+        const bundle = await duckdb.selectBundle(bundles);
+        const workerUrl = URL.createObjectURL(
+          new Blob([`importScripts("${bundle.mainWorker}");`], { type: 'text/javascript' }),
+        );
+        const worker = new Worker(workerUrl);
+        const logger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING);
+        const db = new duckdb.AsyncDuckDB(logger, worker);
+        await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+        URL.revokeObjectURL(workerUrl);
+        // Register the six Parquet assets as virtual files. The DATA_SOURCE.base URL is
+        // either the release-download root (Pages) or ./data (local preview).
+        const parquetNames = [
+          'bacteria_axis_shap_values.parquet',
+          'bacteria_axis_shap_base_values.parquet',
+          'bacteria_axis_feature_values.parquet',
+          'phage_axis_shap_values.parquet',
+          'phage_axis_shap_base_values.parquet',
+          'phage_axis_feature_values.parquet',
+        ];
+        for (const name of parquetNames) {
+          await db.registerFileURL(
+            name,
+            `${this.dataSource.base}/${name}`,
+            4, // duckdb.DuckDBDataProtocol.HTTP
+            false,
+          );
+        }
+        this.duckdbConn = await db.connect();
+        this.shapLoading = false;
+      })();
+      return this.duckdbInitPromise;
+    },
+
+    async loadShapForPair() {
+      try {
+        this.shapError = null;
+        this.shapLoading = true;
+        await this.initDuckDB();
+        const conn = this.duckdbConn;
+        if (!conn) throw new Error('DuckDB connection not initialised');
+        const axis = this.shapAxis; // 'bacteria_axis' | 'phage_axis'
+        const bact = this.shapBact.replace(/'/g, "''");
+        const phage = this.shapPhage.replace(/'/g, "''");
+        const shapQ = `SELECT * FROM '${axis}_shap_values.parquet' ` +
+          `WHERE bacteria = '${bact}' AND phage = '${phage}' LIMIT 1`;
+        const valuesQ = `SELECT * FROM '${axis}_feature_values.parquet' ` +
+          `WHERE bacteria = '${bact}' AND phage = '${phage}' LIMIT 1`;
+        const baseQ = `SELECT base_value FROM '${axis}_shap_base_values.parquet' ` +
+          `WHERE pair_id = '${bact}__${phage}' LIMIT 1`;
+        const [shapRes, valuesRes, baseRes] = await Promise.all([
+          conn.query(shapQ),
+          conn.query(valuesQ),
+          conn.query(baseQ),
+        ]);
+        const shapRow = shapRes.numRows > 0 ? shapRes.get(0) : null;
+        const valuesRow = valuesRes.numRows > 0 ? valuesRes.get(0) : null;
+        const baseRow = baseRes.numRows > 0 ? baseRes.get(0) : null;
+        if (!shapRow || !valuesRow || !baseRow) {
+          throw new Error(`Pair not found in ${axis}: ${this.shapBact} × ${this.shapPhage}`);
+        }
+        // Build the top-20-contribution list from the SHAP row. Arrow rows are dict-like
+        // but we convert to plain object for Alpine reactivity.
+        const shapObj = Object.fromEntries(
+          shapRow.toArray().map((v, i) => [shapRes.schema.fields[i].name, v]),
+        );
+        const valuesObj = Object.fromEntries(
+          valuesRow.toArray().map((v, i) => [valuesRes.schema.fields[i].name, v]),
+        );
+        const baseValue = Number(baseRow.toArray()[0]);
+
+        const shapFeatures = [];
+        for (const [col, value] of Object.entries(shapObj)) {
+          if (!col.startsWith('shap__')) continue;
+          const featureName = col.slice('shap__'.length);
+          const numericShap = Number(value);
+          if (!Number.isFinite(numericShap) || numericShap === 0) continue;
+          shapFeatures.push({
+            feature: featureName,
+            slot: featureToSlot(featureName),
+            shap: numericShap,
+            raw: valuesObj[featureName] ?? null,
+          });
+        }
+        shapFeatures.sort((a, b) => Math.abs(b.shap) - Math.abs(a.shap));
+        const top = shapFeatures.slice(0, 20);
+        const shapSum = shapFeatures.reduce((acc, f) => acc + f.shap, 0);
+        const logit = baseValue + shapSum;
+        const labelValue = valuesObj.label ?? valuesObj.label_row_binary ?? null;
+
+        this.shapPair = {
+          bacteria: this.shapBact,
+          phage: this.shapPhage,
+          label: labelValue,
+          base: baseValue,
+          shapSum,
+          logit,
+          topFeatures: top,
+        };
+        this.shapLoading = false;
+        await this.$nextTick();
+        this.renderWaterfall(top);
+      } catch (err) {
+        console.error(err);
+        this.shapError = err.message;
+        this.shapLoading = false;
+        this.shapPair = null;
+      }
+    },
+
+    renderWaterfall(top) {
+      if (!top || !top.length) return;
+      const reversed = [...top].reverse(); // Plotly stacks bottom-up
+      const trace = {
+        type: 'bar',
+        orientation: 'h',
+        x: reversed.map((r) => r.shap),
+        y: reversed.map((r) => r.feature),
+        marker: {
+          color: reversed.map((r) => (r.shap > 0 ? '#0b6cba' : '#dc322f')),
+        },
+        customdata: reversed.map((r) => [r.slot, r.raw]),
+        hovertemplate: '%{y}<br>slot: %{customdata[0]}<br>raw value: %{customdata[1]}' +
+          '<br>SHAP: %{x:.4f}<extra></extra>',
+      };
+      Plotly.react(
+        'waterfall-plot',
+        [trace],
+        {
+          xaxis: { title: 'SHAP contribution (+/− log-odds)' },
+          yaxis: { automargin: true, tickfont: { size: 11 } },
+          margin: { l: 320, r: 40, t: 10, b: 40 },
+          height: Math.max(480, reversed.length * 24),
+          showlegend: false,
+        },
+        { displayModeBar: false, responsive: true },
+      );
     },
 
     // ---- Predictions table ----

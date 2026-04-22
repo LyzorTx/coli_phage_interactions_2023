@@ -17,6 +17,7 @@ import pandas as pd
 import pytest
 
 from lyzortx.explainability_ui.build_snapshot import (
+    SHAP_PARQUET_NAMES,
     _extract_ece_from_report,
     _feature_to_slot,
     _parse_variant_name,
@@ -25,6 +26,7 @@ from lyzortx.explainability_ui.build_snapshot import (
     build_reliability_json,
     build_slot_manifest_json,
     build_summary_json,
+    copy_shap_parquets,
     write_snapshot,
 )
 
@@ -355,6 +357,36 @@ _SKIP_REASON = (
     "CH05/CH09 artifacts are gitignored; regenerate with "
     "`python -m lyzortx.pipeline.autoresearch.ch05_eval` to enable this test."
 )
+
+
+# ---- SHAP Parquet copy tests (EX04) ----
+
+
+def test_copy_shap_parquets_copies_all_six_files(tmp_path: Path) -> None:
+    """--include-shap path: happy case copies all 6 Parquet files into the output dir."""
+    shap_src = tmp_path / "shap_src"
+    shap_src.mkdir()
+    for name in SHAP_PARQUET_NAMES:
+        (shap_src / name).write_bytes(b"stub_parquet_content")
+    out = tmp_path / "out"
+    out.mkdir()
+    copied = copy_shap_parquets(shap_src, out)
+    assert len(copied) == 6
+    assert {p.name for p in copied} == set(SHAP_PARQUET_NAMES)
+    for p in copied:
+        assert p.read_bytes() == b"stub_parquet_content"
+
+
+def test_copy_shap_parquets_fails_loudly_on_partial_snapshot(tmp_path: Path) -> None:
+    """Missing one parquet (e.g. SHAP compute crashed mid-axis) must raise, not silently ship half."""
+    shap_src = tmp_path / "shap_src"
+    shap_src.mkdir()
+    for name in SHAP_PARQUET_NAMES[:3]:
+        (shap_src / name).write_bytes(b"stub")
+    out = tmp_path / "out"
+    out.mkdir()
+    with pytest.raises(FileNotFoundError, match="SHAP snapshot is incomplete"):
+        copy_shap_parquets(shap_src, out)
 
 
 @pytest.mark.skipif(

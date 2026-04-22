@@ -20,7 +20,7 @@
     <template x-for="(tab, key) in tabs" :key="key">
       <button
         :class="{ active: active === key }"
-        @click="active = key"
+        @click="onTabClick(key)"
         x-text="tab.label"
       ></button>
     </template>
@@ -153,6 +153,61 @@
     <div class="slot-grid" id="slot-cards"></div>
   </section>
 
+  <!-- Pair explorer (SHAP drill-down) -->
+  <section x-show="active === 'pairExplorer' && !loading && !error" x-cloak>
+    <h2>Pair explorer</h2>
+    <p>
+      Click a row in the Predictions table, or type a bacterium + phage below, to see the
+      top 20 SHAP contributions and raw feature values for that pair. SHAP values come
+      from 3-seed-averaged LightGBM TreeExplainer on the held-out pair's max-concentration
+      observation, queried from a Parquet release asset via DuckDB-WASM on first use.
+    </p>
+    <div class="filters">
+      <label>Axis:
+        <select x-model="shapAxis" @change="shapPair && loadShapForPair()">
+          <option value="bacteria_axis">bacteria</option>
+          <option value="phage_axis">phage</option>
+        </select>
+      </label>
+      <label>Bacterium: <input type="text" x-model="shapBact" @keyup.enter="selectCustomPair()" placeholder="e.g. 001-023"></label>
+      <label>Phage: <input type="text" x-model="shapPhage" @keyup.enter="selectCustomPair()" placeholder="e.g. 409_P1"></label>
+      <button @click="selectCustomPair()">Load</button>
+      <span x-show="shapLoading" class="row-count">loading DuckDB-WASM…</span>
+      <span x-show="shapError" class="row-count" style="color: var(--error)" x-text="shapError"></span>
+    </div>
+    <div x-show="shapPair && !shapLoading" x-cloak>
+      <p class="note">
+        Pair: <code x-text="shapPair?.bacteria + ' × ' + shapPair?.phage"></code>
+        · label <code x-text="shapPair?.label"></code>
+        · model predicted logit <code x-text="shapPair?.logit?.toFixed(3)"></code>
+        (base <code x-text="shapPair?.base?.toFixed(3)"></code>
+        + Σ SHAP <code x-text="shapPair?.shapSum?.toFixed(3)"></code>)
+      </p>
+      <div class="plot-area" id="waterfall-plot"></div>
+      <h3>Top 20 features</h3>
+      <table class="data-table" x-show="shapPair?.topFeatures?.length">
+        <thead>
+          <tr>
+            <th>Feature</th><th>Slot</th><th>Raw value</th><th>SHAP contribution</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="row in shapPair?.topFeatures ?? []" :key="row.feature">
+            <tr>
+              <td><code x-text="row.feature"></code></td>
+              <td x-text="row.slot"></td>
+              <td x-text="row.raw?.toFixed ? row.raw.toFixed(3) : (row.raw ?? '—')"></td>
+              <td x-text="(row.shap >= 0 ? '+' : '') + row.shap.toFixed(3)"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <p x-show="!shapPair && !shapLoading" class="note" x-cloak>
+      Pick a pair from the filters above, or from the Predictions tab's row buttons.
+    </p>
+  </section>
+
   <!-- Predictions table -->
   <section x-show="active === 'predictions' && !loading && !error" x-cloak>
     <h2>Pair predictions</h2>
@@ -194,7 +249,7 @@
       </thead>
       <tbody>
         <template x-for="row in predRowsVisible.slice(0, predPageSize)" :key="row.bacteria + '|' + row.phage">
-          <tr>
+          <tr class="clickable" @click="drillInto(row)">
             <td x-text="row.bacteria"></td>
             <td x-text="row.phage"></td>
             <td x-text="row.source"></td>

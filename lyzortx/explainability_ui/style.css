@@ -216,6 +216,7 @@ section p {
 }
 .data-table tbody tr:last-child td { border-bottom: none; }
 .data-table tbody tr:hover { background: #f7f9fb; }
+.data-table tbody tr.clickable { cursor: pointer; }
 
 code {
   font-family: "SF Mono", Menlo, Consolas, monospace;
