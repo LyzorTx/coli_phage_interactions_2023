@@ -430,6 +430,19 @@ function ui() {
 
     // ---- Pair explorer (DuckDB-WASM + SHAP waterfall) ----
 
+    // Resolve a dataSource.base-relative filename to an absolute URL that the
+    // DuckDB-WASM worker can fetch. Inside the worker, `self.location` is the
+    // blob URL of the worker script — NOT the page URL — so relative paths like
+    // `./data/foo.parquet` resolve to `blob:...` which 404s. We compute the URL
+    // against `window.location.href` (the page) and hand DuckDB the absolute
+    // string. Used for `read_parquet('<url>')` inline queries.
+    parquetUrl(name) {
+      const basePath = this.dataSource.base.endsWith('/')
+        ? this.dataSource.base
+        : `${this.dataSource.base}/`;
+      return new URL(`${basePath}${name}`, window.location.href).href;
+    },
+
     async initDuckDB() {
       if (this.duckdbInitPromise) return this.duckdbInitPromise;
       this.shapLoading = true;
@@ -445,24 +458,6 @@ function ui() {
         const db = new duckdb.AsyncDuckDB(logger, worker);
         await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
         URL.revokeObjectURL(workerUrl);
-        // Register the six Parquet assets as virtual files. The DATA_SOURCE.base URL is
-        // either the release-download root (Pages) or ./data (local preview).
-        const parquetNames = [
-          'bacteria_axis_shap_values.parquet',
-          'bacteria_axis_shap_base_values.parquet',
-          'bacteria_axis_feature_values.parquet',
-          'phage_axis_shap_values.parquet',
-          'phage_axis_shap_base_values.parquet',
-          'phage_axis_feature_values.parquet',
-        ];
-        for (const name of parquetNames) {
-          await db.registerFileURL(
-            name,
-            `${this.dataSource.base}/${name}`,
-            4, // duckdb.DuckDBDataProtocol.HTTP
-            false,
-          );
-        }
         this.duckdbConn = await db.connect();
         this.shapLoading = false;
       })();
@@ -479,11 +474,17 @@ function ui() {
         const axis = this.shapAxis; // 'bacteria_axis' | 'phage_axis'
         const bact = this.shapBact.replace(/'/g, "''");
         const phage = this.shapPhage.replace(/'/g, "''");
-        const shapQ = `SELECT * FROM '${axis}_shap_values.parquet' ` +
+        // Use read_parquet with absolute URLs so the DuckDB-WASM worker fetches
+        // directly over HTTP (range requests via the built-in httpfs extension).
+        // registerFileURL with relative paths silently registers a broken entry.
+        const shapUrl = this.parquetUrl(`${axis}_shap_values.parquet`);
+        const valuesUrl = this.parquetUrl(`${axis}_feature_values.parquet`);
+        const baseValUrl = this.parquetUrl(`${axis}_shap_base_values.parquet`);
+        const shapQ = `SELECT * FROM read_parquet('${shapUrl}') ` +
           `WHERE bacteria = '${bact}' AND phage = '${phage}' LIMIT 1`;
-        const valuesQ = `SELECT * FROM '${axis}_feature_values.parquet' ` +
+        const valuesQ = `SELECT * FROM read_parquet('${valuesUrl}') ` +
           `WHERE bacteria = '${bact}' AND phage = '${phage}' LIMIT 1`;
-        const baseQ = `SELECT base_value FROM '${axis}_shap_base_values.parquet' ` +
+        const baseQ = `SELECT base_value FROM read_parquet('${baseValUrl}') ` +
           `WHERE pair_id = '${bact}__${phage}' LIMIT 1`;
         const [shapRes, valuesRes, baseRes] = await Promise.all([
           conn.query(shapQ),
