@@ -370,6 +370,26 @@ def _ci_to_dict(ci: BootstrapMetricCI) -> dict[str, Optional[float]]:
     }
 
 
+def _aggregate_feature_importance(fi_frames: list[pd.DataFrame]) -> pd.DataFrame:
+    """Aggregate per-seed, per-fold LightGBM importance frames into a single CSV-ready frame.
+
+    Mirrors CH04's shape exactly: one row per (feature, is_concentration_feature) with
+    `mean_importance` (across all seeds × folds it appeared in) and `n_folds_selected`
+    (count of fits that retained the feature after RFE). Sorted descending by mean.
+    """
+    if not fi_frames:
+        raise ValueError(
+            "Feature importance frames list is empty; CH05 must collect at least one fit's importance to aggregate."
+        )
+    concat = pd.concat(fi_frames, ignore_index=True)
+    return (
+        concat.groupby(["feature", "is_concentration_feature"], as_index=False)
+        .agg(mean_importance=("importance", "mean"), n_folds_selected=("importance", "count"))
+        .sort_values("mean_importance", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
 def run_bacteria_axis(
     *,
     candidate_module: ModuleType,
@@ -386,6 +406,7 @@ def run_bacteria_axis(
     mapping = bacteria_to_cv_group_map(clean_rows)
     fold_assignments = assign_bacteria_folds(mapping)
     all_rows: list[dict[str, object]] = []
+    all_feature_importance: list[pd.DataFrame] = []
     folds_to_run = N_FOLDS if max_folds is None else min(max_folds, N_FOLDS)
     for fold_id in range(folds_to_run):
         holdout_bac = {b for b, f in fold_assignments.items() if f == fold_id}
@@ -423,10 +444,14 @@ def run_bacteria_axis(
             num_workers=num_workers,
         )
         fold_seed_rows: list[dict[str, object]] = []
-        for _seed, rows, _fi in seed_results:
+        for seed, rows, fi in seed_results:
             for r in rows:
                 r["fold_id"] = fold_id
             fold_seed_rows.extend(rows)
+            fi = fi.copy()
+            fi["fold_id"] = fold_id
+            fi["seed"] = seed
+            all_feature_importance.append(fi)
         aggregated = _aggregate_fold_rows_to_pairs(fold_seed_rows)
         pair_pred = select_pair_max_concentration_rows(aggregated)
         fold_point = compute_aggregate_auc_brier(pair_pred.to_dict(orient="records"))
@@ -440,6 +465,13 @@ def run_bacteria_axis(
         all_rows.extend(aggregated.to_dict(orient="records"))
     per_row_df = pd.DataFrame(all_rows)
     per_row_df.to_csv(output_dir / "ch05_bacteria_axis_per_row_predictions.csv", index=False)
+    fi_agg = _aggregate_feature_importance(all_feature_importance)
+    fi_agg.to_csv(output_dir / "ch05_bacteria_axis_feature_importance.csv", index=False)
+    LOGGER.info(
+        "Bacteria-axis feature importance: %d features, top-3: %s",
+        len(fi_agg),
+        ", ".join(f"{row.feature}={row.mean_importance:.1f}" for row in fi_agg.head(3).itertuples()),
+    )
     return per_row_df
 
 
@@ -460,6 +492,7 @@ def run_phage_axis(
     phages = sorted(clean_rows["phage"].unique())
     fold_assignments = assign_phage_folds(phages, phage_family)
     all_rows: list[dict[str, object]] = []
+    all_feature_importance: list[pd.DataFrame] = []
     folds_to_run = N_FOLDS if max_folds is None else min(max_folds, N_FOLDS)
     for fold_id in range(folds_to_run):
         holdout_phages = {p for p, f in fold_assignments.items() if f == fold_id}
@@ -497,10 +530,14 @@ def run_phage_axis(
             num_workers=num_workers,
         )
         fold_seed_rows: list[dict[str, object]] = []
-        for _seed, rows, _fi in seed_results:
+        for seed, rows, fi in seed_results:
             for r in rows:
                 r["fold_id"] = fold_id
             fold_seed_rows.extend(rows)
+            fi = fi.copy()
+            fi["fold_id"] = fold_id
+            fi["seed"] = seed
+            all_feature_importance.append(fi)
         aggregated = _aggregate_fold_rows_to_pairs(fold_seed_rows)
         pair_pred = select_pair_max_concentration_rows(aggregated)
         fold_point = compute_aggregate_auc_brier(pair_pred.to_dict(orient="records"))
@@ -514,6 +551,13 @@ def run_phage_axis(
         all_rows.extend(aggregated.to_dict(orient="records"))
     per_row_df = pd.DataFrame(all_rows)
     per_row_df.to_csv(output_dir / "ch05_phage_axis_per_row_predictions.csv", index=False)
+    fi_agg = _aggregate_feature_importance(all_feature_importance)
+    fi_agg.to_csv(output_dir / "ch05_phage_axis_feature_importance.csv", index=False)
+    LOGGER.info(
+        "Phage-axis feature importance: %d features, top-3: %s",
+        len(fi_agg),
+        ", ".join(f"{row.feature}={row.mean_importance:.1f}" for row in fi_agg.head(3).itertuples()),
+    )
     return per_row_df
 
 
