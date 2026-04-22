@@ -1,9 +1,35 @@
 // main.js — vanilla JS + Alpine.js glue for the CHISEL explainability UI.
 //
-// Loads the seven snapshot JSONs from ./data/ and drives six Plotly views.
-// No build step; no module system; runs as-is in any modern browser.
+// Loads the seven snapshot JSONs (either ./data on local dev or a GitHub Release
+// download URL when served from GitHub Pages) and drives six Plotly views. No build
+// step; no module system; runs as-is in any modern browser.
 
-const DATA_BASE = './data';
+// Resolve the data base URL at runtime so the same committed HTML works on
+// GitHub Pages (production), raw.githack (preview), and local preview.
+//
+// Pages URL shape: https://<owner>.github.io/<repo>/explainability/
+// Release asset URL: https://github.com/<owner>/<repo>/releases/latest/download/<file>
+// Local preview: http://localhost:<port>/… → use sibling ./data directory.
+function resolveDataBase() {
+  const loc = window.location;
+  const host = loc.hostname;
+  if (host.endsWith('.github.io')) {
+    const owner = host.split('.')[0];
+    const repo = (loc.pathname.split('/').filter(Boolean)[0] ?? '').trim();
+    if (owner && repo) {
+      return {
+        mode: 'release',
+        owner,
+        repo,
+        base: `https://github.com/${owner}/${repo}/releases/latest/download`,
+        apiBase: `https://api.github.com/repos/${owner}/${repo}`,
+      };
+    }
+  }
+  return { mode: 'local', base: './data' };
+}
+
+const DATA_SOURCE = resolveDataBase();
 
 const SLOT_COLORS = {
   host_defense: '#8264c9',
@@ -57,8 +83,12 @@ function ui() {
     predRowsVisible: [],
     predPageSize: 500,
 
+    dataSource: DATA_SOURCE,
+    releaseMeta: null,
+
     async init() {
       try {
+        this.fetchReleaseMeta(); // fire-and-forget; footer updates when it resolves
         const [summary, crossSource, featureImportance, predBact, predPhage, reliability, slots] =
           await Promise.all([
             this.fetchJSON('ch05_summary.json'),
@@ -87,9 +117,27 @@ function ui() {
     },
 
     async fetchJSON(name) {
-      const res = await fetch(`${DATA_BASE}/${name}`, { cache: 'no-cache' });
+      const res = await fetch(`${this.dataSource.base}/${name}`, { cache: 'no-cache' });
       if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`);
       return res.json();
+    },
+
+    async fetchReleaseMeta() {
+      if (this.dataSource.mode !== 'release' || !this.dataSource.apiBase) return;
+      const cacheKey = `release-meta:${this.dataSource.apiBase}`;
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        try { this.releaseMeta = JSON.parse(cached); return; } catch (_) { /* fall through */ }
+      }
+      try {
+        const res = await fetch(`${this.dataSource.apiBase}/releases/latest`, { cache: 'no-cache' });
+        if (!res.ok) return;
+        const body = await res.json();
+        this.releaseMeta = { tag: body.tag_name, published_at: body.published_at, html_url: body.html_url };
+        sessionStorage.setItem(cacheKey, JSON.stringify(this.releaseMeta));
+      } catch (err) {
+        console.warn('Release metadata fetch failed (cosmetic footer only):', err);
+      }
     },
 
     renderAll() {

@@ -130,3 +130,73 @@ HTML page. Overview-only MVP; per-pair SHAP drill-down is deferred to EX04.
 EX03: wire the static site to GitHub Pages (Actions source mode) + publish data
 JSONs as GitHub Release assets keyed to the `latest` tag; `main.js` fetches from the
 release URL, owner/repo resolved from `window.location` at runtime.
+
+### 2026-04-22 09:06 CEST: EX03 — Pages deploy + Release-asset data workflows
+
+#### Executive summary
+
+Added two workflows: `.github/workflows/publish-explainability-ui.yml` deploys HTML/
+JS/CSS to GitHub Pages on every push to `main` touching `lyzortx/explainability_ui/**`
+(Actions source mode, no `gh-pages` branch) and
+`.github/workflows/snapshot-explainability-data.yml` is a `workflow_dispatch`-only job
+that bootstraps `phage_env` via `setup-micromamba@v2`, optionally reruns CH05+CH09,
+builds the snapshot JSONs, and creates a GitHub Release with `--latest`. `main.js`
+gained a runtime data-base resolver: on `*.github.io` it fetches from
+`https://github.com/<owner>/<repo>/releases/latest/download/`; otherwise from the
+sibling `./data` directory. Footer shows the current release tag + published
+timestamp pulled from the GitHub REST API (cached in sessionStorage).
+
+#### Why
+
+Commits to `main` must not carry generated outputs (per `lyzortx/AGENTS.md`
+"Generated Outputs" rule). Pages-via-Actions keeps the data off every branch; Release
+assets keep snapshots versioned and CDN-served with permissive CORS. The combination
+solves both the gitignore constraint and the "viewable from GitHub" requirement
+without a `gh-pages` branch to sync.
+
+#### Design choices
+
+- **Actions-mode Pages, not branch Pages**: no `gh-pages` branch means nothing off-main
+  to maintain. The workflow's `deploy-pages@v4` step pushes directly to Pages
+  infrastructure.
+- **One-time manual Settings step**: repo Settings → Pages → Source = "GitHub
+  Actions" cannot be set via the REST API for personal repos. Documented in
+  `lyzortx/explainability_ui/AGENTS.md` as a prerequisite; first workflow run will
+  fail with "Pages not enabled" until it is done.
+- **Runtime data-base resolution vs build-time injection**: `main.js` inspects
+  `window.location` to choose between release-asset URLs and local `./data`. No
+  owner/repo strings are hardcoded, so the same committed HTML works on Pages,
+  raw.githack, and local preview without edits.
+- **Release metadata in the footer**: fetched from
+  `/repos/<owner>/<repo>/releases/latest` on page load, cached in sessionStorage to
+  avoid hammering the GitHub API on tab switches. Fire-and-forget — the main data
+  load does not wait for it.
+- **Snapshot workflow runs micromamba, not pip**: build_snapshot.py imports from
+  `lyzortx.pipeline.autoresearch.runtime_contract` which transitively pulls in the
+  training-side dependency graph. Bootstrapping the full `phage_env` is
+  straightforward and unblocks the optional `regen=true` path without a second
+  bootstrap step.
+
+#### Verification
+
+- `node --check lyzortx/explainability_ui/main.js` → zero syntax errors.
+- `pytest lyzortx/tests/test_explainability_ui_build_snapshot.py` → 11 passed (no
+  regressions from the data-base resolver).
+- YAML syntax validated by committing + pushing — GitHub rejects syntactically broken
+  workflows at push time.
+- Full deploy verification (first-run Settings step + live Pages URL) is manual and
+  documented in the PR description; the reviewer subagent runs through it.
+
+#### Artifacts
+
+- `.github/workflows/publish-explainability-ui.yml`
+- `.github/workflows/snapshot-explainability-data.yml`
+- `lyzortx/explainability_ui/main.js` — `resolveDataBase()` + `fetchReleaseMeta()`
+- `lyzortx/explainability_ui/index.html` — footer release tag/timestamp display
+- `lyzortx/explainability_ui/AGENTS.md` — deployment + prerequisite notes
+
+#### Next
+
+EX04: persist CH05 boosters, compute SHAP values over the 36,643-pair max-conc
+prediction set, emit Parquet snapshots, and add the "Pair explorer" tab backed by
+DuckDB-WASM for row-click drill-down with waterfall plots.

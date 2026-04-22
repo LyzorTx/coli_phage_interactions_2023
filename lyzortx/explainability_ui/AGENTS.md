@@ -39,16 +39,25 @@ If a new library is needed, pin its version in the `<script>` tag and document i
 here. Do NOT introduce a build step without explicit user approval — "open the file and
 edit it" is the intended dev workflow.
 
-## Deployment (EX03)
+## Deployment
 
-- HTML/JS/CSS deploy to GitHub Pages via `actions/deploy-pages@v4` (GitHub Actions source
-  mode — no `gh-pages` branch is ever created).
-- Data snapshots publish as GitHub Release assets. Release tag
-  `explainability-data-YYYYMMDD-HHMM`; the HTML fetches from
-  `https://github.com/<owner>/<repo>/releases/latest/download/<file>.json` so the page
-  doesn't need to know the tag.
-- Prerequisite one-time step: repo Settings → Pages → Source = "GitHub Actions".
-  GitHub does not expose this via API on personal repos.
+- HTML/JS/CSS deploy to GitHub Pages via
+  `.github/workflows/publish-explainability-ui.yml` (fires on pushes to `main` that
+  touch `lyzortx/explainability_ui/**`). Uses `actions/deploy-pages@v4` in "GitHub
+  Actions" source mode — no `gh-pages` branch is ever created.
+- Data snapshots publish as GitHub Release assets via
+  `.github/workflows/snapshot-explainability-data.yml` (`workflow_dispatch` only,
+  inputs: `regen` default false, `release_tag` default
+  `explainability-data-<UTC timestamp>`). The workflow bootstraps `phage_env` via
+  `setup-micromamba@v2`, optionally reruns `ch05_eval` + `ch09_calibration_layer`,
+  runs `build_snapshot.py`, and invokes `gh release create --latest`. The HTML fetches
+  data from `https://github.com/<owner>/<repo>/releases/latest/download/<file>.json`;
+  owner/repo are resolved from `window.location` at page load, so no code changes are
+  needed per deploy target.
+- **Prerequisite one-time manual step** (not automatable): repo Settings → Pages →
+  Source = "GitHub Actions". GitHub does not expose this via API on personal repos.
+  Without it, the first `publish-explainability-ui` run fails with a "Pages not
+  enabled" error.
 
 ## Policies
 

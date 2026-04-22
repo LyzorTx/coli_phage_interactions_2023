@@ -213,6 +213,16 @@
     Snapshot generated at
     <code x-text="summary?.snapshot_generated_at ?? 'unknown'"></code>.
   </span>
+  <span x-show="dataSource.mode === 'release' && releaseMeta">
+    Release:
+    <a :href="releaseMeta?.html_url" target="_blank" rel="noopener">
+      <code x-text="releaseMeta?.tag"></code>
+    </a>
+    (published <code x-text="releaseMeta?.published_at"></code>).
+  </span>
+  <span x-show="dataSource.mode === 'local'">
+    Data source: local <code>./data</code>.
+  </span>
   <span x-show="summary?.ch04_baseline_auc">
     CH04 baseline AUC (Guelin-only): <code x-text="summary?.ch04_baseline_auc?.toFixed(4)"></code>.
   </span>

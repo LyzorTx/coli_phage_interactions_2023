@@ -1,0 +1,96 @@
+name: Snapshot Explainability Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      regen:
+        description: "Also rerun CH05 + CH09 from scratch (slow, ~90 min). Off by default; default is snapshot-only."
+        required: false
+        default: false
+        type: boolean
+      release_tag:
+        description: "Release tag to create. Defaults to explainability-data-<UTC timestamp>."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: explainability-data-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    name: Extract + publish snapshot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up micromamba
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment.yml
+          environment-name: phage_env
+          cache-environment: true
+
+      - name: (Optional) Rerun CH05 + CH09 from scratch
+        if: ${{ inputs.regen }}
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          micromamba run -n phage_env python -m lyzortx.pipeline.autoresearch.ch05_eval --device-type cpu
+          micromamba run -n phage_env python -m lyzortx.pipeline.autoresearch.ch09_calibration_layer
+
+      - name: Sanity-check CH05/CH09 artifacts exist
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          for f in \
+            lyzortx/generated_outputs/ch05_unified_kfold/ch05_combined_summary.json \
+            lyzortx/generated_outputs/ch05_unified_kfold/ch05_bacteria_axis_feature_importance.csv \
+            lyzortx/generated_outputs/ch05_unified_kfold/ch05_phage_axis_feature_importance.csv \
+            lyzortx/generated_outputs/ch09_calibration_layer/ch09_calibration_report.json \
+            lyzortx/generated_outputs/ch09_calibration_layer/ch09_reliability_tables.csv; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing required artifact: $f"
+              echo "Hint: rerun this workflow with regen=true, or upload the artifact set before dispatching."
+              exit 1
+            fi
+          done
+
+      - name: Build snapshot JSONs
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          mkdir -p .scratch/deploy/data
+          micromamba run -n phage_env python -m lyzortx.explainability_ui.build_snapshot --out .scratch/deploy/data
+          ls -la .scratch/deploy/data
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.release_tag }}"
+          if [ -z "$tag" ]; then
+            tag="explainability-data-$(date -u +%Y%m%d-%H%M)"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Resolved release tag: $tag"
+
+      - name: Publish release with snapshot assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.tag.outputs.tag }}"
+          gh release create "$tag" \
+            --title "Explainability data snapshot ${tag}" \
+            --notes "CH05/CH09 snapshot consumed by the explainability UI. regen=${{ inputs.regen }}." \
+            --latest \
+            .scratch/deploy/data/*.json
+          echo "Published release: $tag"

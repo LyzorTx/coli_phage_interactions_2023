@@ -1,0 +1,61 @@
+name: Publish Explainability UI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - lyzortx/explainability_ui/**
+      - .github/workflows/publish-explainability-ui.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy UI to GitHub Pages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Stage UI files at /explainability/
+        run: |
+          set -euo pipefail
+          mkdir -p _site/explainability
+          cp lyzortx/explainability_ui/index.html _site/explainability/
+          cp lyzortx/explainability_ui/main.js _site/explainability/
+          cp lyzortx/explainability_ui/style.css _site/explainability/
+          # Root-level redirect so visitors landing on <user>.github.io/<repo>/ land on the UI.
+          cat > _site/index.html <<'HTML'
+          <!DOCTYPE html>
+          <meta charset="utf-8">
+          <meta http-equiv="refresh" content="0; url=./explainability/">
+          <title>CHISEL explainability — redirect</title>
+          <p>Redirecting to <a href="./explainability/">./explainability/</a>…</p>
+          HTML
+          ls -R _site
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
