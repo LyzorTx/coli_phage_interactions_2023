@@ -62,36 +62,64 @@ const RELIABILITY_VARIANT_ORDER = [
 ];
 
 // ---- URL state (deep-link query params) ----
-// Every tab and user-selected filter syncs to `window.location.search` so any view
-// (pair explorer on a specific pair, feature-importance for phage-axis, etc.) can be
-// shared as a URL. We use query params not the hash so marked.js anchor links on the
-// glossary/knowledge tabs can still use the hash for in-page scrolling.
+// The URL is the source of truth. Every tab switch, axis toggle, filter, and pair
+// selection syncs to `window.location.search` so any view is a shareable link, and
+// every deep-link reconstructs the exact view on load. Defaults are omitted to keep
+// shared URLs minimal. We use query params (not the hash) so marked.js heading anchors
+// on the Glossary / Knowledge tabs can still use the hash for in-page scrolling.
+//
+// The URL_BINDINGS table is the single source of truth for the read/write routing —
+// each row declares one query param, the state field it maps to, its default (omitted
+// from URLs), an optional allowlist for input validation, and an optional tab gate
+// that restricts when the param is written (so `pred_source=basel` doesn't leak onto
+// the Glossary tab URL).
 
-function readUrlState() {
-  const p = new URLSearchParams(window.location.search);
-  return {
-    tab: p.get('tab'),
-    shapAxis: p.get('axis'),
-    shapBact: p.get('bact'),
-    shapPhage: p.get('phage'),
-    reliabilityAxis: p.get('rel_axis'),
-    fiAxis: p.get('fi_axis'),
-    slotAxis: p.get('slot_axis'),
-    predAxis: p.get('pred_axis'),
-    predSource: p.get('pred_source'),
-    predSort: p.get('pred_sort'),
-  };
+const PAIR_TABS = new Set(['pairExplorer', 'pairSlotWaterfall']);
+const MARKDOWN_TABS = new Set(['glossary', 'knowledge']);
+const AXIS_VALUES_LONG = ['bacteria_axis', 'phage_axis'];
+const AXIS_VALUES_SHORT = ['bacteria', 'phage'];
+const PRED_SOURCES = ['all', 'guelin', 'basel'];
+const PRED_SORTS = ['absErrDesc', 'predictedDesc', 'predictedAsc', 'bacteria', 'phage'];
+
+const URL_BINDINGS = [
+  // `tab` is validated against state.tabs (the authoritative keyset), not a static list.
+  { param: 'tab',         state: 'active',          default: 'overview' },
+  { param: 'axis',        state: 'shapAxis',        default: 'bacteria_axis', allowed: AXIS_VALUES_LONG,  onTab: (s) => PAIR_TABS.has(s.active) },
+  { param: 'bact',        state: 'shapBact',        default: '',                                          onTab: (s) => PAIR_TABS.has(s.active) },
+  { param: 'phage',       state: 'shapPhage',       default: '',                                          onTab: (s) => PAIR_TABS.has(s.active) },
+  { param: 'rel_axis',    state: 'reliabilityAxis', default: 'bacteria',      allowed: AXIS_VALUES_SHORT, onTab: (s) => s.active === 'calibration' },
+  { param: 'fi_axis',     state: 'fiAxis',          default: 'bacteria_axis', allowed: AXIS_VALUES_LONG,  onTab: (s) => s.active === 'featureImportance' },
+  { param: 'slot_axis',   state: 'slotAxis',        default: 'bacteria_axis', allowed: AXIS_VALUES_LONG,  onTab: (s) => s.active === 'slots' },
+  { param: 'pred_axis',   state: 'predAxis',        default: 'bacteria',      allowed: AXIS_VALUES_SHORT, onTab: (s) => s.active === 'predictions' },
+  { param: 'pred_source', state: 'predSource',      default: 'all',           allowed: PRED_SOURCES,      onTab: (s) => s.active === 'predictions' },
+  { param: 'pred_sort',   state: 'predSort',        default: 'absErrDesc',    allowed: PRED_SORTS,        onTab: (s) => s.active === 'predictions' },
+];
+
+function applyUrlStateToComponent(state) {
+  const q = new URLSearchParams(window.location.search);
+  for (const binding of URL_BINDINGS) {
+    const value = q.get(binding.param);
+    if (value == null) continue;
+    if (binding.param === 'tab') {
+      if (state.tabs[value]) state.active = value;
+      continue;
+    }
+    if (binding.allowed && !binding.allowed.includes(value)) continue;
+    state[binding.state] = value;
+  }
 }
 
-function writeUrlState(entries) {
-  const p = new URLSearchParams(window.location.search);
-  for (const [k, v] of Object.entries(entries)) {
-    if (v == null || v === '' || v === 'DEFAULT') p.delete(k);
-    else p.set(k, v);
+function writeUrlStateFromComponent(state) {
+  const q = new URLSearchParams(window.location.search);
+  for (const binding of URL_BINDINGS) {
+    const value = state[binding.state];
+    const gatePasses = !binding.onTab || binding.onTab(state);
+    const isDefault = value === binding.default || value === '' || value == null;
+    if (gatePasses && !isDefault) q.set(binding.param, value);
+    else q.delete(binding.param);
   }
-  const qs = p.toString();
-  const newUrl = window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash;
-  window.history.replaceState(null, '', newUrl);
+  const qs = q.toString();
+  window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash);
 }
 
 function ui() {
@@ -147,7 +175,7 @@ function ui() {
     markdownError: null,
 
     async init() {
-      this.applyUrlState();
+      applyUrlStateToComponent(this);
       try {
         this.fetchReleaseMeta(); // fire-and-forget; footer updates when it resolves
         const [summary, crossSource, featureImportance, predBact, predPhage, reliability, slots] =
@@ -178,44 +206,14 @@ function ui() {
       }
     },
 
-    applyUrlState() {
-      const u = readUrlState();
-      if (u.tab && this.tabs[u.tab]) this.active = u.tab;
-      if (u.shapAxis && (u.shapAxis === 'bacteria_axis' || u.shapAxis === 'phage_axis')) this.shapAxis = u.shapAxis;
-      if (u.shapBact) this.shapBact = u.shapBact;
-      if (u.shapPhage) this.shapPhage = u.shapPhage;
-      if (u.reliabilityAxis === 'bacteria' || u.reliabilityAxis === 'phage') this.reliabilityAxis = u.reliabilityAxis;
-      if (u.fiAxis === 'bacteria_axis' || u.fiAxis === 'phage_axis') this.fiAxis = u.fiAxis;
-      if (u.slotAxis === 'bacteria_axis' || u.slotAxis === 'phage_axis') this.slotAxis = u.slotAxis;
-      if (u.predAxis === 'bacteria' || u.predAxis === 'phage') this.predAxis = u.predAxis;
-      if (u.predSource && ['all', 'guelin', 'basel'].includes(u.predSource)) this.predSource = u.predSource;
-      if (u.predSort && ['absErrDesc', 'predictedDesc', 'predictedAsc', 'bacteria', 'phage'].includes(u.predSort)) this.predSort = u.predSort;
-    },
-
-    syncUrl() {
-      writeUrlState({
-        tab: this.active === 'overview' ? null : this.active,
-        axis: this.active === 'pairExplorer' ? this.shapAxis : null,
-        bact: this.active === 'pairExplorer' && this.shapPair ? this.shapBact : null,
-        phage: this.active === 'pairExplorer' && this.shapPair ? this.shapPhage : null,
-        rel_axis: this.active === 'calibration' && this.reliabilityAxis !== 'bacteria' ? this.reliabilityAxis : null,
-        fi_axis: this.active === 'featureImportance' && this.fiAxis !== 'bacteria_axis' ? this.fiAxis : null,
-        slot_axis: this.active === 'slots' && this.slotAxis !== 'bacteria_axis' ? this.slotAxis : null,
-        pred_axis: this.active === 'predictions' && this.predAxis !== 'bacteria' ? this.predAxis : null,
-        pred_source: this.active === 'predictions' && this.predSource !== 'all' ? this.predSource : null,
-        pred_sort: this.active === 'predictions' && this.predSort !== 'absErrDesc' ? this.predSort : null,
-      });
-    },
+    syncUrl() { writeUrlStateFromComponent(this); },
 
     async handleInitialDeepLink() {
-      // If URL landed us on the pair explorer with bact + phage set, auto-load the pair.
-      if (this.active === 'pairExplorer' && this.shapBact && this.shapPhage) {
-        this.initDuckDB().catch((err) => {
-          console.warn('DuckDB-WASM init failed', err);
-          this.shapError = `DuckDB-WASM unavailable: ${err.message}`;
-        });
-        this.selectCustomPair();
-      } else if (this.active === 'glossary' || this.active === 'knowledge') {
+      // Called once after Alpine has reactively set initial state from the URL. Any
+      // tab that has "work to do on load" gets kicked off here.
+      if (PAIR_TABS.has(this.active) && this.shapBact && this.shapPhage) {
+        this.maybeAutoLoadPair();
+      } else if (MARKDOWN_TABS.has(this.active)) {
         this.loadMarkdownForActiveTab();
       }
     },
@@ -255,17 +253,15 @@ function ui() {
 
     onTabClick(key) {
       this.active = key;
-      if (key === 'pairExplorer' && !this.duckdbConn && !this.duckdbInitPromise) {
-        // Kick off DuckDB-WASM init on first visit. Does not block the tab switch;
-        // selectCustomPair() will await it.
+      // Kick off tab-specific lazy loads. DuckDB-WASM init is fire-and-forget —
+      // selectCustomPair awaits it via loadShapForPair.
+      if (PAIR_TABS.has(key) && !this.duckdbConn && !this.duckdbInitPromise) {
         this.initDuckDB().catch((err) => {
           console.warn('DuckDB-WASM init failed', err);
           this.shapError = `DuckDB-WASM unavailable: ${err.message}`;
         });
       }
-      if (key === 'glossary' || key === 'knowledge') {
-        this.loadMarkdownForActiveTab();
-      }
+      if (MARKDOWN_TABS.has(key)) this.loadMarkdownForActiveTab();
       this.syncUrl();
     },
 
@@ -286,9 +282,21 @@ function ui() {
       this.loadShapForPair();
     },
 
+    // Called from input handlers: debounced auto-load if BOTH fields are populated AND
+    // the pair differs from the currently loaded one (avoids re-querying DuckDB while
+    // the user is still typing the same pair). Replaces the explicit Load button.
+    maybeAutoLoadPair() {
+      if (!this.shapBact || !this.shapPhage) return;
+      if (this.shapPair
+        && this.shapPair.bacteria === this.shapBact
+        && this.shapPair.phage === this.shapPhage
+        && this.shapPair.axis === this.shapAxis) return;
+      this.selectCustomPair();
+    },
+
     async loadMarkdownForActiveTab() {
       const target = this.active === 'glossary' ? 'glossary' : 'knowledge';
-      if (this[`${target}Html`]) return; // cached
+      if (this[`${target}Html`]) return; // cached — markdown is repo-static
       this.markdownLoading = true;
       this.markdownError = null;
       try {
@@ -296,15 +304,28 @@ function ui() {
         const res = await fetch(`./docs/${filename}`);
         if (!res.ok) throw new Error(`${filename}: HTTP ${res.status}`);
         const md = await res.text();
-        // marked.js lazy-loaded on first glossary/knowledge visit — keeps cold-start fast
-        // when the user only wants AUC/SHAP views.
-        if (!window.__marked_promise__) {
-          window.__marked_promise__ = import('https://cdn.jsdelivr.net/npm/marked@13.0.3/+esm');
+        // Lazy-load marked, the heading-id extension, and DOMPurify on first glossary/
+        // knowledge visit — keeps cold-start fast when the user only wants AUC/SHAP views.
+        //   - marked@13 removed the built-in `headerIds` option; the optional
+        //     `marked-gfm-heading-id` extension restores heading-id emission, which is
+        //     load-bearing for the ?tab=glossary#slot-feature-slot deep-link pattern.
+        //   - marked doesn't sanitize HTML; DOMPurify is the upstream-recommended
+        //     sanitizer. The markdown sources are trusted repo files today, but
+        //     KNOWLEDGE.md auto-rebuilds from lab-notebook prose and the surface area
+        //     widens whenever a notebook entry is added, so sanitization is cheap insurance.
+        if (!window.__marked_bundle__) {
+          window.__marked_bundle__ = Promise.all([
+            import('https://cdn.jsdelivr.net/npm/marked@13.0.3/+esm'),
+            import('https://cdn.jsdelivr.net/npm/marked-gfm-heading-id@4.1.1/+esm'),
+            import('https://cdn.jsdelivr.net/npm/dompurify@3.1.6/+esm'),
+          ]);
         }
-        const { marked } = await window.__marked_promise__;
-        // headerIds on, so marked emits id="slot-feature-slot" and #slot-feature-slot anchors work.
-        marked.use({ gfm: true, breaks: false });
-        this[`${target}Html`] = marked.parse(md);
+        const [{ marked }, headingIdMod, purifyMod] = await window.__marked_bundle__;
+        const gfmHeadingId = headingIdMod.gfmHeadingId ?? headingIdMod.default;
+        const DOMPurify = purifyMod.default ?? purifyMod;
+        marked.use(gfmHeadingId(), { gfm: true, breaks: false });
+        const rawHtml = marked.parse(md);
+        this[`${target}Html`] = DOMPurify.sanitize(rawHtml);
       } catch (err) {
         console.error(err);
         this.markdownError = `Failed to load ${target}: ${err.message}`;
@@ -658,6 +679,7 @@ function ui() {
         this.shapPair = {
           bacteria: this.shapBact,
           phage: this.shapPhage,
+          axis: this.shapAxis,
           label: labelValue,
           base: baseValue,
           shapSum,

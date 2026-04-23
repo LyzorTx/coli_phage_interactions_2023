@@ -321,9 +321,8 @@
           <option value="phage_axis">phage</option>
         </select>
       </label>
-      <label>Bacterium: <input type="text" x-model="shapBact" @keyup.enter="selectCustomPair()" placeholder="e.g. 001-023"></label>
-      <label>Phage: <input type="text" x-model="shapPhage" @keyup.enter="selectCustomPair()" placeholder="e.g. 409_P1"></label>
-      <button @click="selectCustomPair()">Load</button>
+      <label>Bacterium: <input type="text" x-model="shapBact" @input.debounce.400ms="syncUrl(); maybeAutoLoadPair()" @keyup.enter="selectCustomPair()" placeholder="e.g. 001-023"></label>
+      <label>Phage: <input type="text" x-model="shapPhage" @input.debounce.400ms="syncUrl(); maybeAutoLoadPair()" @keyup.enter="selectCustomPair()" placeholder="e.g. 409_P1"></label>
       <span x-show="shapLoading" class="row-count">loading DuckDB-WASM…</span>
       <span x-show="shapError" class="row-count" style="color: var(--error)" x-text="shapError"></span>
     </div>
@@ -513,12 +512,11 @@
     </p>
     <div class="filters">
       <label>Bacterium:
-        <input type="text" x-model="shapBact" @keyup.enter="selectCustomPair()" placeholder="e.g. 001-023">
+        <input type="text" x-model="shapBact" @input.debounce.400ms="syncUrl(); maybeAutoLoadPair()" @keyup.enter="selectCustomPair()" placeholder="e.g. 001-023">
       </label>
       <label>Phage:
-        <input type="text" x-model="shapPhage" @keyup.enter="selectCustomPair()" placeholder="e.g. 409_P1">
+        <input type="text" x-model="shapPhage" @input.debounce.400ms="syncUrl(); maybeAutoLoadPair()" @keyup.enter="selectCustomPair()" placeholder="e.g. 409_P1">
       </label>
-      <button @click="selectCustomPair()">Load</button>
       <span x-show="shapLoading" class="row-count">loading DuckDB-WASM…</span>
       <span x-show="shapError" class="row-count" style="color: var(--error)" x-text="shapError"></span>
     </div>
