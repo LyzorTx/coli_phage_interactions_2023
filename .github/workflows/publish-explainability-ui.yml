@@ -34,10 +34,14 @@ jobs:
       - name: Stage UI files at /explainability/
         run: |
           set -euo pipefail
-          mkdir -p _site/explainability/data
+          mkdir -p _site/explainability/data _site/explainability/docs
           cp lyzortx/explainability_ui/index.html _site/explainability/
           cp lyzortx/explainability_ui/main.js _site/explainability/
           cp lyzortx/explainability_ui/style.css _site/explainability/
+          # Markdown source files for the Glossary + Knowledge tabs. Rendered client-side
+          # via marked.js (same-origin fetch from ./docs/).
+          cp lyzortx/research_notes/GLOSSARY.md _site/explainability/docs/
+          cp lyzortx/KNOWLEDGE.md _site/explainability/docs/
           # Root-level redirect so visitors landing on <user>.github.io/<repo>/ land on the UI.
           cat > _site/index.html <<'HTML'
           <!DOCTYPE html>
