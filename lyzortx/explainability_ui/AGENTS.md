@@ -167,6 +167,39 @@ round-trip per pair regardless of Parquet size.
 - Verify all URL routing permutations locally before pushing — `?tab=X`, `?tab=X&bact=
   Y&phage=Z`, anchor deep-links like `?tab=glossary#slot-feature-slot`.
 
+### Snapshot provenance check
+
+Before publishing a new release, verify the snapshot's AUC+Brier headline matches the
+current canonical `chisel-unified-kfold-baseline` numbers in `lyzortx/KNOWLEDGE.md`
+(the post-CH11 reference under the Arm 3 phage_projection slot):
+
+```bash
+python -c "
+import json, pathlib
+s = json.load(open('.scratch/release_snapshot/ch05_summary.json'))
+for axis in ('bacteria', 'phage'):
+    a = s['axes'][axis]
+    print(f'{axis}: AUC {a[\"auc\"][\"point\"]:.4f} '
+          f'[{a[\"auc\"][\"lo\"]:.4f}, {a[\"auc\"][\"hi\"]:.4f}], '
+          f'Brier {a[\"brier\"][\"point\"]:.4f}')
+"
+```
+
+Expected match (CH11 headline, rerun 2026-04-21):
+
+- bacteria-axis AUC 0.8079 [0.7934, 0.8223], Brier 0.1763 [0.1688, 0.1840]
+- phage-axis AUC 0.8870 [0.8658, 0.9055], Brier 0.1352 [0.1227, 0.1489]
+
+If the snapshot point estimate falls outside the canonical CI, the snapshot was
+computed on a pre-CH11 CH05 run — re-run the publish flow from scratch (CH05 → CH09
+→ derive_shap_snapshot → build_snapshot). Drift within the CI is acceptable (stems
+from concentration_mean_importance-level fluctuation in LightGBM RFE across reruns,
+not canonical change).
+
+When `chisel-unified-kfold-baseline` shifts (e.g. a future CH track retrains the
+model), update the expected numbers above in the same PR that bumps the knowledge
+unit — otherwise this check silently stops matching.
+
 ### Release publishing
 
 - Releases publish from the local laptop via `gh release create`, not from CI. The
