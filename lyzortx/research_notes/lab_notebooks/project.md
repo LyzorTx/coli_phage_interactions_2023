@@ -526,8 +526,9 @@ scenario. A new clinical isolate arrives with a genome assembly — you can deri
 LPS type, and phylogenomic embedding, but you cannot know `legacy_label_breadth_count` (you haven't screened it yet) or
 `legacy_receptor_support_count` (its specific receptor variant may not appear in the training data).
 
-The model leans heavily on these: `legacy_label_breadth_count` alone has 2x the SHAP impact of the next feature. This means the
-holdout metrics (AUC 0.910, top-3 89.2%) are **optimistic for real-world deployment** because the holdout strains are
+The model leans heavily on these: `legacy_label_breadth_count` alone has 2x the SHAP impact of the next feature.
+This means the holdout metrics (AUC 0.910, top-3 89.2%) are **optimistic for real-world deployment** because the
+holdout strains are
 from the same experimental panel and their receptor variants overlap with training strains.
 
 #### What is genuinely novel genomic signal?
@@ -602,8 +603,9 @@ selection rule required AUC ≥ TG01 all-features (0.9091), then maximized top-3
 
 #### Interpretation
 
-1. **Removing `legacy_label_breadth_count` improves ranking.** The deployment-realistic model achieves 92.3% top-3 hit rate —
-   higher than any panel-evaluation arm. This is counterintuitive but mechanistically sound: `legacy_label_breadth_count` tells
+1. **Removing `legacy_label_breadth_count` improves ranking.** The deployment-realistic model achieves 92.3% top-3
+   hit rate — higher than any panel-evaluation arm. This is counterintuitive but mechanistically sound:
+   `legacy_label_breadth_count` tells
    the model "this strain is broadly susceptible" which biases it toward recommending the same popular broad-range
    phages. Without that shortcut, the model is forced to use defense subtypes, OMP receptor variants, and phage k-mer
    profiles to make strain-specific picks. Those features produce better *rankings* even though they produce worse
@@ -612,8 +614,8 @@ selection rule required AUC ≥ TG01 all-features (0.9091), then maximized top-3
 2. **AUC and top-3 measure fundamentally different things.** AUC measures how well the model separates lytic from
    non-lytic pairs across the entire probability range. Top-3 measures whether the correct phages end up in the top 3
    slots per strain. A feature that improves average-case AUC can hurt top-3 by pushing a marginally-higher-scoring
-   wrong phage above a correct one. `legacy_label_breadth_count` is exactly this kind of feature — it improves the average but
-   dilutes the per-strain signal.
+   wrong phage above a correct one. `legacy_label_breadth_count` is exactly this kind of feature — it improves the
+   average but dilutes the per-strain signal.
 
 3. **The pairwise block (Track E) was correctly excluded.** No subset containing pairwise cleared the AUC gate while
    improving top-3. The genus-level receptor lookup (TE01) was too coarse — 80% coverage but no within-genus
@@ -652,8 +654,8 @@ panel/deployment framing is abandoned: there is only one model, the leakage-clea
 
 #### What was decided
 
-1. **Label-leaked features are a bug, not a variant.** `legacy_label_breadth_count` is literally "how many phages lyse this host"
-   repackaged as a feature. `legacy_receptor_support_count` counts training-positive pairs per receptor
+1. **Label-leaked features are a bug, not a variant.** `legacy_label_breadth_count` is literally "how many phages
+   lyse this host" repackaged as a feature. `legacy_receptor_support_count` counts training-positive pairs per receptor
    cluster. Both encode the answer. Keeping them as an "optional panel-only arm" would be dishonest.
 
 2. **Track P deleted.** All three presentation artifacts (digital phagogram, coverage heatmap, feature lift

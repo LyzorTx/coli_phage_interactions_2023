@@ -27,6 +27,11 @@ jobs:
         with:
           extra_args: --all-files
 
+      - name: Pymarkdown lint scan
+        run: |
+          pip install pymarkdownlnt==0.9.36
+          pymarkdown --config .pymarkdown.yaml scan -r -e ".agents/skills" .
+
       - name: Run pytest with coverage
         run: |
           pytest -n auto --dist loadfile --durations=25 --cov=lyzortx --cov-report=xml:coverage.xml lyzortx/tests

@@ -44,6 +44,7 @@ stateDiagram-v2
 
 ### Actors
 
+<!-- pyml disable-num-lines 8 md013-->
 | Actor | Type | Role |
 |---|---|---|
 | `orchestrator.yml` | GitHub Actions workflow | Selects ready tasks, creates issues, marks tasks done, commits plan updates |

@@ -148,7 +148,7 @@ Mermaid renders SVG. Override its classes for pixel-perfect control that `themeV
 
 2. **Use semi-transparent fills (8-digit hex) for node backgrounds.** They layer over whatever Mermaid's base theme background is, producing a tint that works in both light and dark modes. Use `20`–`44` alpha for subtle, `55`–`77` for prominent:
 
-```
+```text
 classDef highlight fill:#b5761433,stroke:#b57614,stroke-width:2px
 classDef muted fill:#7c6f6411,stroke:#7c6f6444,stroke-width:1px
 ```
@@ -169,7 +169,7 @@ Mermaid uses certain characters for shape syntax. Node labels containing these c
 
 **If your node label starts with `/`, `\`, `(`, or `{`, wrap it in quotes:**
 
-```
+```text
 %% WRONG — syntax error (/ starts parallelogram shape)
 CMD[/gallery command] --> SRV[server]
 
@@ -179,7 +179,7 @@ CMD["/gallery command"] --> SRV[server]
 
 **Edge labels with special characters also need quotes:**
 
-```
+```text
 %% WRONG — quotes inside edge label
 UI -->|"Use as Reference"| RET
 
@@ -205,7 +205,7 @@ Most Mermaid failures come from a few recurring issues. Follow these rules to av
 
 **For multi-line flowchart node labels, use `<br/>` (not `\n`).** Mermaid flowcharts interpret `<br/>` as a line break, but escaped `\n` in labels often renders as literal text:
 
-```
+```text
 %% WRONG — renders literal "\n" in node text
 A["Copilot Backend\n/api + /api/voicebot"] --> B["Redis"]
 
@@ -215,20 +215,20 @@ A["Copilot Backend<br/>/api + /api/voicebot"] --> B["Redis"]
 
 **Quote labels with special characters.** Parentheses, colons, commas, brackets, and ampersands break the parser when unquoted. Wrap any label containing special characters in double quotes:
 
-```
+```text
 A["handleRequest(ctx)"] --> B["DB: query users"]
 A[handleRequest] --> B[query users]
 ```
 
 **Keep IDs simple.** Node IDs should be alphanumeric with no spaces or punctuation. Put the readable name in the label, not the ID:
 
-```
+```text
 userSvc["User Service"] --> authSvc["Auth Service"]
 ```
 
 **Max 10-12 nodes per Mermaid diagram.** Beyond that, readability collapses even with zoom controls and increased fontSize. For complex architectures (15+ elements), use the **hybrid pattern**: a simple 5-8 node Mermaid overview showing module relationships, followed by CSS Grid cards with detailed function lists. Never cram everything into one diagram. Use `subgraph` blocks to group related nodes when under the limit:
 
-```
+```text
 subgraph Auth
   login --> validate --> token
 end
@@ -252,7 +252,7 @@ Auth --> API
 
 **Sequence diagram messages must be plain text.** Unlike flowchart labels, sequence diagram messages (the text after `:`) cannot be quoted or escaped. Curly braces `{}`, square brackets `[]`, angle brackets `<>`, and `&` will silently break the parser and the entire diagram renders as raw text. Write human-readable descriptions, not code:
 
-```
+```text
 %% WRONG — parser chokes on braces, brackets, ampersand
 A->>B: web_search({ queries: [...] })
 B->>B: User removes query 2, keeps 1 & 3
@@ -279,12 +279,12 @@ B->>S: POST /submit with selected indices
 
 **Rule of thumb:** If the diagram has more than one row of nodes or any branching, use `TD`. The extra vertical space makes labels readable.
 
-```
+```text
 %% WRONG — LR with many nodes produces wide, short, unreadable diagram
 flowchart LR
   A --> B --> C --> D --> E
   A --> F --> G --> H
-  
+
 %% RIGHT — TD uses vertical space, labels stay readable
 flowchart TD
   A --> B --> C --> D --> E

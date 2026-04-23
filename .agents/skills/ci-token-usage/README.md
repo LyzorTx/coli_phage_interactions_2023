@@ -4,7 +4,7 @@ Analyze token consumption and estimated USD cost across all CI workflows that in
 
 ## Architecture
 
-```
+```text
 SKILL.md                            -- agent-facing prompt (subcommands, how to run, pricing check)
 lyzortx/orchestration/ci_token_usage.py  -- CLI script (pure functions + gh CLI boundary)
 lyzortx/tests/test_ci_token_usage.py     -- unit tests for pure functions
@@ -57,7 +57,7 @@ This means Claude costs are exact and Codex costs are estimates. The output mark
 
 Since Codex logs only a total token count (no input/output split), we estimate cost using a blended rate:
 
-```
+```text
 blended = 30% * input_rate + 70% * output_rate
 ```
 

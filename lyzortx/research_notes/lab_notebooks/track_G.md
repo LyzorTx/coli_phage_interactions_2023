@@ -299,8 +299,9 @@
 1. TG04 met the acceptance target for pair-level explanations. Every strain now has explicit top-3 recommendation rows
    with the leading positive and negative SHAP drivers for each recommended phage, which answers why the model surfaced
    those phages rather than just reporting ranks.
-2. The strongest global signal still comes from the legacy v0 infection-breadth feature. `legacy_label_breadth_count` is far
-   ahead of the rest of the panel, which means Track G is still leaning heavily on broad host susceptibility signal even
+2. The strongest global signal still comes from the legacy v0 infection-breadth feature.
+   `legacy_label_breadth_count` is far ahead of the rest of the panel, which means Track G is still leaning heavily on
+   broad host susceptibility signal even
    after adding the genomic and pairwise blocks.
 3. The next tier of importance is biologically richer. The second-ranked feature is the pairwise
    `legacy_receptor_support_count`, and the next major contributors are phage-genomic variables
@@ -311,8 +312,8 @@
    recommendation failure. Many hard rows still have `top3_hit=1`; they are marked hard because the isotonic top scores
    are tied or nearly tied, so TG04 is surfacing a confidence-separation problem more than a top-3 recall problem.
 5. Easy strains tend to be ones where phage-genomic or receptor-compatibility features create a clear margin. Hard
-   strains are disproportionately the ones where `legacy_label_breadth_count` or `host_lps_type=R1` pushes many phages in the
-   same direction, leaving the model with limited separation among the top candidates.
+   strains are disproportionately the ones where `legacy_label_breadth_count` or `host_lps_type=R1` pushes many phages
+   in the same direction, leaving the model with limited separation among the top candidates.
 
 #### Next steps
 
@@ -403,8 +404,9 @@
    (`0.892308`), but both degraded AUC relative to TG01 all-features and therefore failed the selection gate.
 4. The deployment-realistic sensitivity cut both ways. Removing `legacy_label_breadth_count` from the locked winner improved
    top-3 ranking on this holdout (`0.923077`) but materially worsened pair-level discrimination and calibration
-   (`ROC-AUC 0.835178`, `Brier 0.157767`). The honest conclusion is not "drop `legacy_label_breadth_count` everywhere"; it is
-   that ranking and calibrated pairwise classification respond differently once that label-derived prior is removed.
+   (`ROC-AUC 0.835178`, `Brier 0.157767`). The honest conclusion is not "drop `legacy_label_breadth_count`
+   everywhere"; it is that ranking and calibrated pairwise classification respond differently once that label-derived
+   prior is removed.
 5. The final v1 lock for downstream work should therefore be: keep the v0 baseline plus `defense`, `OMP`, and
    `phage-genomic`; exclude `pairwise` from the default panel model; retain the deployment-realistic no-
    `legacy_label_breadth_count` sensitivity numbers as the novel-strain cautionary benchmark rather than the default model.
@@ -436,8 +438,8 @@ honest model all along.
 - TG05 deployment-realistic arm: removing `legacy_label_breadth_count` from the locked winner *improved* top-3 hit rate from
   0.877 to 0.923 (+4.6pp) but dropped AUC from 0.911 to 0.835 (-7.6pp) and worsened Brier from 0.110 to 0.158.
 - The ranking improvement on removal is the smoking gun: the model ranks better without the feature because
-  `legacy_label_breadth_count` compresses scores for hosts with similar infection breadth, hurting top-3 discrimination. The AUC
-  drop reflects loss of the calibration prior, not loss of genuine predictive signal.
+  `legacy_label_breadth_count` compresses scores for hosts with similar infection breadth, hurting top-3
+  discrimination. The AUC drop reflects loss of the calibration prior, not loss of genuine predictive signal.
 
 #### What this means for the pipeline
 

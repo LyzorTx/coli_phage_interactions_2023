@@ -35,7 +35,7 @@ When building a feature as a stack:
 1. **Plan first** - break the work into logical, sequential PRs
 2. **Use TodoWrite** - each todo item maps to one PR/`gt create`
 3. **Present the structure** - show the user the planned stack:
-   ```
+   ```text
    PR Stack for [Feature]:
    1. PR 1: [description] - [what it does]
    2. PR 2: [description] - [what it does]

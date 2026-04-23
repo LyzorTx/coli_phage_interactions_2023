@@ -4,7 +4,7 @@ Share a visual explainer HTML file instantly via Vercel. Returns a live URL with
 
 ## Usage
 
-```
+```text
 /share <file-path>
 ```
 
@@ -12,7 +12,7 @@ Share a visual explainer HTML file instantly via Vercel. Returns a live URL with
 - `file-path` - Path to the HTML file to share (required)
 
 **Examples:**
-```
+```text
 /share ~/.agent/diagrams/my-diagram.html
 /share /tmp/visual-explainer-output.html
 ```
@@ -37,7 +37,7 @@ bash {{skill_dir}}/scripts/share.sh <file>
 
 ## Output
 
-```
+```text
 Sharing my-diagram.html...
 
 ✓ Shared successfully!

@@ -10,6 +10,10 @@ plugins:
     headings: false
     strict: false
     stern: false
+  # MD024: duplicate headings — allow identical subheadings under different parents
+  # (lab notebook entries repeat "Executive summary", "What was implemented", etc.)
+  md024:
+    allow_different_nesting: true
   # MD025: multiple top-level headings in the same document
   md025:
     enabled: false
@@ -18,6 +22,12 @@ plugins:
     enabled: false
   # MD033: inline HTML
   md033:
+    enabled: false
+  # MD034: bare URLs — research notes, PLAN.md, and lab notebooks use bare URLs
+  md034:
+    enabled: false
+  # MD036: emphasis as heading — lab notebooks use bold text as sub-section markers
+  md036:
     enabled: false
   # MD041: first line in file should be a top-level heading
   md041:

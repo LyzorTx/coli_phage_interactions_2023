@@ -39,7 +39,7 @@ Route on the first word of `$ARGUMENTS`:
 
 1. Run `git fetch origin` to get the latest remote state.
 2. Create a worktree branching from `origin/main`:
-   ```
+   ```bash
    git worktree add .claude/worktrees/<name> -b worktree-<name> origin/main
    ```
 3. Report the path and branch name so the user can `cd` into it or launch a session with

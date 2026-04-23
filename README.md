@@ -90,7 +90,7 @@ The process involves five main steps:
 
 Expected directory structure for the pipeline:
 
-```
+```text
 data/
 ├── genomics/
 ├── interactions/interaction_matrix.csv
@@ -125,6 +125,7 @@ Two categories of genomic information are extracted:
 
 ### 1.4 Extraction of Genomic Features
 
+<!-- pyml disable-num-lines 8 md013-->
 | Feature                             | Tool / Source                                                                                                                                                                                                  | Description                                                                                               |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | **Phylogroup**                      | [`ClermonTyping`](https://github.com/A-BN/ClermonTyping)                                                                                                                                                       | In silico _E. coli_ phylogroup typing                                                                     |
@@ -141,7 +142,7 @@ in
 
 The final feature matrix includes:
 
-```
+```text
 UMAP_1 ... UMAP_8
 O_serotype
 LPS_outer_core
@@ -160,7 +161,7 @@ variance). In order to control the number of input features, rare categories (<3
 
 Example (O-antigen encoding):
 
-```
+```text
 O1: 1, O2: 0, O3: 0 ...
 ```
 

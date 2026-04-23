@@ -72,7 +72,7 @@ Based on the user interview, fill in these components:
 
 #### Anatomy of a Skill
 
-```
+```text
 skill-name/
 ├── SKILL.md (required)
 │   ├── YAML frontmatter (name, description required)
@@ -98,7 +98,7 @@ These word counts are approximate and you can feel free to go longer if needed.
 - For large reference files (>300 lines), include a table of contents
 
 **Domain organization**: When a skill supports multiple domains/frameworks, organize by variant:
-```
+```text
 cloud-deploy/
 ├── SKILL.md (workflow + selection)
 └── references/
@@ -172,7 +172,7 @@ For each test case, spawn two subagents in the same turn — one with the skill,
 
 **With-skill run:**
 
-```
+```text
 Execute this task:
 - Skill path: <path-to-skill>
 - Task: <eval prompt>

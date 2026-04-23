@@ -81,8 +81,9 @@ pairwise mechanistic features in TL03/TL04.
 - `lyzortx/pipeline/track_l/steps/run_enrichment_analysis.py`: Loads pharokka RBP/anti-defense annotations, host OMP
   receptor clusters, LPS core types, and defense system subtypes, constructs binary matrices, runs three enrichment
   analyses. Wired into `run_track_l.py` as `--step enrich`.
-- `lyzortx/tests/test_annotation_interaction_enrichment.py`: 14 unit tests using a 20×10 slice of the real interaction matrix, covering BH correction, permutation
-  test, contingency table arithmetic, resolved-mask exclusion, and main effect confounding.
+- `lyzortx/tests/test_annotation_interaction_enrichment.py`: 14 unit tests using a 20×10 slice of the real
+  interaction matrix, covering BH correction, permutation test, contingency table arithmetic, resolved-mask
+  exclusion, and main effect confounding.
 
 #### Design decisions
 
@@ -444,7 +445,15 @@ fresh CI checkouts because generated artifacts are gitignored. A live smoke test
 
 - Downloaded the public MG1655 reference FASTA from NCBI to `.scratch/tl07/NC_000913.3.fna`.
 - Ran:
-  `conda run -n phage_env python -m lyzortx.pipeline.track_l.steps.run_novel_host_defense_finder .scratch/tl07/NC_000913.3.fna --bacteria-id ecoli_k12_mg1655 --output-dir lyzortx/generated_outputs/track_l/novel_host_defense_finder/ecoli_k12_mg1655 --models-dir .scratch/defense_finder_models --force-run`
+
+```bash
+conda run -n phage_env python -m lyzortx.pipeline.track_l.steps.run_novel_host_defense_finder \
+  .scratch/tl07/NC_000913.3.fna \
+  --bacteria-id ecoli_k12_mg1655 \
+  --output-dir lyzortx/generated_outputs/track_l/novel_host_defense_finder/ecoli_k12_mg1655 \
+  --models-dir .scratch/defense_finder_models \
+  --force-run
+```
 - Output paths:
   - `lyzortx/generated_outputs/track_l/novel_host_defense_finder/ecoli_k12_mg1655/NC_000913.3_defense_finder_systems.tsv`
   - `lyzortx/generated_outputs/track_l/novel_host_defense_finder/ecoli_k12_mg1655/novel_host_defense_features.csv`

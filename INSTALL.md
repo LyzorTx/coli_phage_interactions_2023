@@ -50,6 +50,7 @@ These manifests are intentionally checked in next to `environment.yml` rather th
 developers can run the same split toolchains as GitHub Actions.
 
 ## Optional: automatic env activation with direnv
+
 This repository includes a tracked `.envrc` that runs `conda activate phage_env` when you enter the repository
 directory.
 

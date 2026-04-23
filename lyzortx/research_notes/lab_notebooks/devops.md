@@ -320,7 +320,7 @@ Covers 100 most recent workflow runs (2026-03-21 to 2026-03-22).
 
 #### Report
 
-```
+```text
 Run ID       Workflow              Date        Status     Model    Cost       PR/Issue
 -----------  --------------------  ----------  ---------  -------  ---------  ------------------
 23393507574  Codex Implement Task  2026-03-22  failure    gpt-5.4  $1.23      TG04
@@ -540,6 +540,7 @@ rollback path if the wiring has issues.
 
 5 tasks assigned `gpt-5.4` (complex reasoning, architectural design, domain interpretation):
 
+<!-- pyml disable-num-lines 7 md013-->
 | Task | Rationale |
 |------|-----------|
 | TG04 — SHAP explanations | TreeExplainer integration (new to codebase), cross-referencing ablation + model outputs, prescriptive recommendation of which feature blocks to keep |
@@ -550,6 +551,7 @@ rollback path if the wiring has issues.
 
 11 tasks assigned `gpt-5.4-mini` (stats, visualization, parameterized loops, docs):
 
+<!-- pyml disable-num-lines 13 md013-->
 | Task | Rationale |
 |------|-----------|
 | TF01 — Bootstrap CIs | Standard NumPy resampling, dual-slice filtering already exists in codebase |
@@ -637,7 +639,7 @@ The conflicting instructions are in `anthropics/claude-code-action` source file
 [`src/create-prompt/index.ts`](https://github.com/anthropics/claude-code-action/blob/v1/src/create-prompt/index.ts)
 (the `generateDefaultPrompt()` function, "CAPABILITIES AND LIMITATIONS" section):
 
-> ```
+> ```text
 > What You CANNOT Do:
 > - Submit formal GitHub PR reviews
 > - Approve pull requests (for security reasons)

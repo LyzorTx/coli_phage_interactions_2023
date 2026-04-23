@@ -28,7 +28,7 @@
 
 ## Directory Structure
 
-```
+```text
 .agents/skills/<skill-name>/
   SKILL.md                          # Project skill — triggers, overrides, references vendor/
   vendor/<upstream-source>/         # Pristine upstream files
