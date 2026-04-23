@@ -287,6 +287,90 @@ details.help code {
   font-size: 11px;
 }
 
+.markdown-body {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 24px 32px;
+  max-width: 1000px;
+  line-height: 1.6;
+}
+.markdown-body h1 {
+  font-size: 22px;
+  margin: 0 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.markdown-body h2 {
+  font-size: 18px;
+  margin: 32px 0 8px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f2f5;
+  scroll-margin-top: 80px; /* so in-page #anchors land below the sticky-ish header */
+}
+.markdown-body h3 {
+  font-size: 15px;
+  margin: 20px 0 6px;
+  color: var(--accent);
+  scroll-margin-top: 80px;
+}
+.markdown-body h4 {
+  font-size: 13px;
+  margin: 14px 0 4px;
+}
+.markdown-body p,
+.markdown-body ul,
+.markdown-body ol {
+  margin: 8px 0;
+  color: var(--fg);
+}
+.markdown-body ul,
+.markdown-body ol { padding-left: 24px; }
+.markdown-body li { margin: 3px 0; }
+.markdown-body blockquote {
+  border-left: 3px solid var(--accent);
+  background: #f7f9fb;
+  padding: 4px 12px;
+  margin: 8px 0;
+  color: var(--muted);
+}
+.markdown-body code {
+  font-size: 12px;
+  padding: 1px 4px;
+}
+.markdown-body pre {
+  background: #1a1d23;
+  color: #e8eaed;
+  padding: 12px 16px;
+  overflow-x: auto;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.markdown-body pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+.markdown-body a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.markdown-body a:hover { text-decoration: underline; }
+.markdown-body strong { color: var(--fg); font-weight: 600; }
+.markdown-body em { font-style: italic; color: var(--fg); }
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 12px;
+}
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  text-align: left;
+}
+.markdown-body th { background: #f0f2f5; font-weight: 600; }
+
 footer {
   padding: 12px 24px;
   border-top: 1px solid var(--border);

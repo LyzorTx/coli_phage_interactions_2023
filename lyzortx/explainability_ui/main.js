@@ -61,6 +61,39 @@ const RELIABILITY_VARIANT_ORDER = [
   { key: 'basel_guelin_calibrator_applied', label: 'BASEL (Guelin calibrator applied)', color: '#dc322f', dash: 'dot' },
 ];
 
+// ---- URL state (deep-link query params) ----
+// Every tab and user-selected filter syncs to `window.location.search` so any view
+// (pair explorer on a specific pair, feature-importance for phage-axis, etc.) can be
+// shared as a URL. We use query params not the hash so marked.js anchor links on the
+// glossary/knowledge tabs can still use the hash for in-page scrolling.
+
+function readUrlState() {
+  const p = new URLSearchParams(window.location.search);
+  return {
+    tab: p.get('tab'),
+    shapAxis: p.get('axis'),
+    shapBact: p.get('bact'),
+    shapPhage: p.get('phage'),
+    reliabilityAxis: p.get('rel_axis'),
+    fiAxis: p.get('fi_axis'),
+    slotAxis: p.get('slot_axis'),
+    predAxis: p.get('pred_axis'),
+    predSource: p.get('pred_source'),
+    predSort: p.get('pred_sort'),
+  };
+}
+
+function writeUrlState(entries) {
+  const p = new URLSearchParams(window.location.search);
+  for (const [k, v] of Object.entries(entries)) {
+    if (v == null || v === '' || v === 'DEFAULT') p.delete(k);
+    else p.set(k, v);
+  }
+  const qs = p.toString();
+  const newUrl = window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash;
+  window.history.replaceState(null, '', newUrl);
+}
+
 function ui() {
   return {
     tabs: {
@@ -71,6 +104,9 @@ function ui() {
       slots: { label: 'Per-slot breakdown' },
       predictions: { label: 'Predictions table' },
       pairExplorer: { label: 'Pair explorer' },
+      pairSlotWaterfall: { label: 'Pair slot waterfall' },
+      glossary: { label: 'Glossary' },
+      knowledge: { label: 'Knowledge' },
     },
     active: 'overview',
     loading: true,
@@ -105,7 +141,13 @@ function ui() {
     duckdbConn: null,
     duckdbInitPromise: null,
 
+    glossaryHtml: null,
+    knowledgeHtml: null,
+    markdownLoading: false,
+    markdownError: null,
+
     async init() {
+      this.applyUrlState();
       try {
         this.fetchReleaseMeta(); // fire-and-forget; footer updates when it resolves
         const [summary, crossSource, featureImportance, predBact, predPhage, reliability, slots] =
@@ -128,10 +170,53 @@ function ui() {
         this.loading = false;
         await this.$nextTick();
         this.renderAll();
+        this.handleInitialDeepLink();
       } catch (err) {
         console.error(err);
         this.error = `Failed to load snapshot data: ${err.message}. Run build_snapshot.py and serve this directory.`;
         this.loading = false;
+      }
+    },
+
+    applyUrlState() {
+      const u = readUrlState();
+      if (u.tab && this.tabs[u.tab]) this.active = u.tab;
+      if (u.shapAxis && (u.shapAxis === 'bacteria_axis' || u.shapAxis === 'phage_axis')) this.shapAxis = u.shapAxis;
+      if (u.shapBact) this.shapBact = u.shapBact;
+      if (u.shapPhage) this.shapPhage = u.shapPhage;
+      if (u.reliabilityAxis === 'bacteria' || u.reliabilityAxis === 'phage') this.reliabilityAxis = u.reliabilityAxis;
+      if (u.fiAxis === 'bacteria_axis' || u.fiAxis === 'phage_axis') this.fiAxis = u.fiAxis;
+      if (u.slotAxis === 'bacteria_axis' || u.slotAxis === 'phage_axis') this.slotAxis = u.slotAxis;
+      if (u.predAxis === 'bacteria' || u.predAxis === 'phage') this.predAxis = u.predAxis;
+      if (u.predSource && ['all', 'guelin', 'basel'].includes(u.predSource)) this.predSource = u.predSource;
+      if (u.predSort && ['absErrDesc', 'predictedDesc', 'predictedAsc', 'bacteria', 'phage'].includes(u.predSort)) this.predSort = u.predSort;
+    },
+
+    syncUrl() {
+      writeUrlState({
+        tab: this.active === 'overview' ? null : this.active,
+        axis: this.active === 'pairExplorer' ? this.shapAxis : null,
+        bact: this.active === 'pairExplorer' && this.shapPair ? this.shapBact : null,
+        phage: this.active === 'pairExplorer' && this.shapPair ? this.shapPhage : null,
+        rel_axis: this.active === 'calibration' && this.reliabilityAxis !== 'bacteria' ? this.reliabilityAxis : null,
+        fi_axis: this.active === 'featureImportance' && this.fiAxis !== 'bacteria_axis' ? this.fiAxis : null,
+        slot_axis: this.active === 'slots' && this.slotAxis !== 'bacteria_axis' ? this.slotAxis : null,
+        pred_axis: this.active === 'predictions' && this.predAxis !== 'bacteria' ? this.predAxis : null,
+        pred_source: this.active === 'predictions' && this.predSource !== 'all' ? this.predSource : null,
+        pred_sort: this.active === 'predictions' && this.predSort !== 'absErrDesc' ? this.predSort : null,
+      });
+    },
+
+    async handleInitialDeepLink() {
+      // If URL landed us on the pair explorer with bact + phage set, auto-load the pair.
+      if (this.active === 'pairExplorer' && this.shapBact && this.shapPhage) {
+        this.initDuckDB().catch((err) => {
+          console.warn('DuckDB-WASM init failed', err);
+          this.shapError = `DuckDB-WASM unavailable: ${err.message}`;
+        });
+        this.selectCustomPair();
+      } else if (this.active === 'glossary' || this.active === 'knowledge') {
+        this.loadMarkdownForActiveTab();
       }
     },
 
@@ -178,6 +263,10 @@ function ui() {
           this.shapError = `DuckDB-WASM unavailable: ${err.message}`;
         });
       }
+      if (key === 'glossary' || key === 'knowledge') {
+        this.loadMarkdownForActiveTab();
+      }
+      this.syncUrl();
     },
 
     drillInto(row) {
@@ -195,6 +284,33 @@ function ui() {
       }
       this.shapError = null;
       this.loadShapForPair();
+    },
+
+    async loadMarkdownForActiveTab() {
+      const target = this.active === 'glossary' ? 'glossary' : 'knowledge';
+      if (this[`${target}Html`]) return; // cached
+      this.markdownLoading = true;
+      this.markdownError = null;
+      try {
+        const filename = target === 'glossary' ? 'GLOSSARY.md' : 'KNOWLEDGE.md';
+        const res = await fetch(`./docs/${filename}`);
+        if (!res.ok) throw new Error(`${filename}: HTTP ${res.status}`);
+        const md = await res.text();
+        // marked.js lazy-loaded on first glossary/knowledge visit — keeps cold-start fast
+        // when the user only wants AUC/SHAP views.
+        if (!window.__marked_promise__) {
+          window.__marked_promise__ = import('https://cdn.jsdelivr.net/npm/marked@13.0.3/+esm');
+        }
+        const { marked } = await window.__marked_promise__;
+        // headerIds on, so marked emits id="slot-feature-slot" and #slot-feature-slot anchors work.
+        marked.use({ gfm: true, breaks: false });
+        this[`${target}Html`] = marked.parse(md);
+      } catch (err) {
+        console.error(err);
+        this.markdownError = `Failed to load ${target}: ${err.message}`;
+      } finally {
+        this.markdownLoading = false;
+      }
     },
 
     // ---- formatting helpers ----
@@ -526,6 +642,19 @@ function ui() {
         const logit = baseValue + shapSum;
         const labelValue = valuesObj.label ?? valuesObj.label_row_binary ?? null;
 
+        // Slot-level aggregate: sum all feature SHAPs within each slot. More trustworthy
+        // than per-feature magnitudes because correlated features inside a slot split
+        // LightGBM's attribution arbitrarily — see Glossary → Slot for the rationale.
+        const slotTotals = {};
+        const slotCounts = {};
+        for (const f of shapFeatures) {
+          slotTotals[f.slot] = (slotTotals[f.slot] ?? 0) + f.shap;
+          slotCounts[f.slot] = (slotCounts[f.slot] ?? 0) + 1;
+        }
+        const slotContributions = Object.entries(slotTotals)
+          .map(([slot, shap]) => ({ slot, shap, featureCount: slotCounts[slot] }))
+          .sort((a, b) => Math.abs(b.shap) - Math.abs(a.shap));
+
         this.shapPair = {
           bacteria: this.shapBact,
           phage: this.shapPhage,
@@ -534,10 +663,13 @@ function ui() {
           shapSum,
           logit,
           topFeatures: top,
+          slotContributions,
         };
         this.shapLoading = false;
+        this.syncUrl();
         await this.$nextTick();
         this.renderWaterfall(top);
+        this.renderSlotWaterfall(slotContributions);
       } catch (err) {
         console.error(err);
         this.shapError = err.message;
@@ -569,6 +701,35 @@ function ui() {
           yaxis: { automargin: true, tickfont: { size: 11 } },
           margin: { l: 320, r: 40, t: 10, b: 40 },
           height: Math.max(480, reversed.length * 24),
+          showlegend: false,
+        },
+        { displayModeBar: false, responsive: true },
+      );
+    },
+
+    renderSlotWaterfall(slotContributions) {
+      if (!slotContributions || !slotContributions.length) return;
+      const reversed = [...slotContributions].reverse();
+      const trace = {
+        type: 'bar',
+        orientation: 'h',
+        x: reversed.map((r) => r.shap),
+        y: reversed.map((r) => `${r.slot} (${r.featureCount})`),
+        marker: {
+          color: reversed.map((r) => SLOT_COLORS[r.slot] ?? SLOT_COLORS.other),
+        },
+        customdata: reversed.map((r) => [r.slot, r.featureCount]),
+        hovertemplate: '%{customdata[0]}<br>%{customdata[1]} feature(s)<br>' +
+          'Σ SHAP: %{x:.4f}<extra></extra>',
+      };
+      Plotly.react(
+        'slot-waterfall-plot',
+        [trace],
+        {
+          xaxis: { title: 'Σ SHAP contribution per slot (+/− log-odds)' },
+          yaxis: { automargin: true, tickfont: { size: 12 } },
+          margin: { l: 240, r: 40, t: 10, b: 40 },
+          height: Math.max(320, reversed.length * 32),
           showlegend: false,
         },
         { displayModeBar: false, responsive: true },

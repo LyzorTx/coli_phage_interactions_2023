@@ -162,8 +162,8 @@
       is the panel-mismatch signal, not a threshold issue.
     </p>
     <div class="axis-toggle">
-      <label><input type="radio" name="reliability-axis" value="bacteria" x-model="reliabilityAxis" @change="renderReliability()"> Bacteria-axis</label>
-      <label><input type="radio" name="reliability-axis" value="phage" x-model="reliabilityAxis" @change="renderReliability()"> Phage-axis</label>
+      <label><input type="radio" name="reliability-axis" value="bacteria" x-model="reliabilityAxis" @change="renderReliability(); syncUrl()"> Bacteria-axis</label>
+      <label><input type="radio" name="reliability-axis" value="phage" x-model="reliabilityAxis" @change="renderReliability(); syncUrl()"> Phage-axis</label>
     </div>
     <div class="plot-area" id="reliability-plot"></div>
     <table class="data-table">
@@ -222,8 +222,8 @@
       after RFE (<code>n_folds_selected / 30</code>).
     </p>
     <div class="axis-toggle">
-      <label><input type="radio" name="fi-axis" value="bacteria_axis" x-model="fiAxis" @change="renderFeatureImportance()"> Bacteria-axis</label>
-      <label><input type="radio" name="fi-axis" value="phage_axis" x-model="fiAxis" @change="renderFeatureImportance()"> Phage-axis</label>
+      <label><input type="radio" name="fi-axis" value="bacteria_axis" x-model="fiAxis" @change="renderFeatureImportance(); syncUrl()"> Bacteria-axis</label>
+      <label><input type="radio" name="fi-axis" value="phage_axis" x-model="fiAxis" @change="renderFeatureImportance(); syncUrl()"> Phage-axis</label>
     </div>
     <div class="plot-area tall" id="fi-plot"></div>
     <details class="help">
@@ -269,8 +269,8 @@
       not in the canonical <code>SLOT_SPECS</code> but produced by the same feature pipeline.
     </p>
     <div class="axis-toggle">
-      <label><input type="radio" name="slot-axis" value="bacteria_axis" x-model="slotAxis" @change="renderSlots()"> Bacteria-axis</label>
-      <label><input type="radio" name="slot-axis" value="phage_axis" x-model="slotAxis" @change="renderSlots()"> Phage-axis</label>
+      <label><input type="radio" name="slot-axis" value="bacteria_axis" x-model="slotAxis" @change="renderSlots(); syncUrl()"> Bacteria-axis</label>
+      <label><input type="radio" name="slot-axis" value="phage_axis" x-model="slotAxis" @change="renderSlots(); syncUrl()"> Phage-axis</label>
     </div>
     <div class="slot-grid" id="slot-cards"></div>
     <details class="help">
@@ -316,7 +316,7 @@
     </p>
     <div class="filters">
       <label>Axis:
-        <select x-model="shapAxis" @change="shapPair && loadShapForPair()">
+        <select x-model="shapAxis" @change="syncUrl(); shapPair && loadShapForPair()">
           <option value="bacteria_axis">bacteria</option>
           <option value="phage_axis">phage</option>
         </select>
@@ -417,20 +417,20 @@
     </p>
     <div class="filters">
       <label>Axis:
-        <select x-model="predAxis" @change="rebuildPredRows()">
+        <select x-model="predAxis" @change="rebuildPredRows(); syncUrl()">
           <option value="bacteria">bacteria</option>
           <option value="phage">phage</option>
         </select>
       </label>
       <label>Source:
-        <select x-model="predSource" @change="rebuildPredRows()">
+        <select x-model="predSource" @change="rebuildPredRows(); syncUrl()">
           <option value="all">all</option>
           <option value="guelin">guelin</option>
           <option value="basel">basel</option>
         </select>
       </label>
       <label>Sort by:
-        <select x-model="predSort" @change="rebuildPredRows()">
+        <select x-model="predSort" @change="rebuildPredRows(); syncUrl()">
           <option value="absErrDesc">|p − label| (desc)</option>
           <option value="predictedDesc">predicted (desc)</option>
           <option value="predictedAsc">predicted (asc)</option>
@@ -500,6 +500,111 @@
           filtered (CH10 reverted that).</li>
       </ul>
     </details>
+  </section>
+
+  <!-- Pair slot waterfall — same pair as Pair explorer, aggregated by feature slot -->
+  <section x-show="active === 'pairSlotWaterfall' && !loading && !error" x-cloak>
+    <h2>Pair slot waterfall</h2>
+    <p>
+      Same SHAP decomposition as the Pair explorer, but summed at the
+      <a href="?tab=glossary#slot-feature-slot">slot</a> level instead of per-feature.
+      More trustworthy than per-feature magnitudes: correlated features inside a slot split
+      LightGBM's attribution arbitrarily, but the slot total is stable.
+    </p>
+    <div class="filters">
+      <label>Bacterium:
+        <input type="text" x-model="shapBact" @keyup.enter="selectCustomPair()" placeholder="e.g. 001-023">
+      </label>
+      <label>Phage:
+        <input type="text" x-model="shapPhage" @keyup.enter="selectCustomPair()" placeholder="e.g. 409_P1">
+      </label>
+      <button @click="selectCustomPair()">Load</button>
+      <span x-show="shapLoading" class="row-count">loading DuckDB-WASM…</span>
+      <span x-show="shapError" class="row-count" style="color: var(--error)" x-text="shapError"></span>
+    </div>
+    <div x-show="shapPair && !shapLoading" x-cloak>
+      <p class="note">
+        Pair: <code x-text="shapPair?.bacteria + ' × ' + shapPair?.phage"></code>
+        · label <code x-text="shapPair?.label"></code>
+        · model predicted logit <code x-text="shapPair?.logit?.toFixed(3)"></code>
+        (base <code x-text="shapPair?.base?.toFixed(3)"></code>
+        + Σ SHAP <code x-text="shapPair?.shapSum?.toFixed(3)"></code>)
+      </p>
+      <div class="plot-area" id="slot-waterfall-plot"></div>
+      <table class="data-table" x-show="shapPair?.slotContributions?.length">
+        <thead>
+          <tr>
+            <th>Slot</th><th>n features</th><th>Σ SHAP contribution</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="row in shapPair?.slotContributions ?? []" :key="row.slot">
+            <tr>
+              <td x-text="row.slot"></td>
+              <td x-text="row.featureCount"></td>
+              <td x-text="(row.shap >= 0 ? '+' : '') + row.shap.toFixed(3)"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <p x-show="!shapPair && !shapLoading" class="note" x-cloak>
+      Pick a pair in the Pair explorer tab first, or enter a bacterium + phage above.
+    </p>
+    <details class="help">
+      <summary>What am I looking at here?</summary>
+      <h4>What this tab shows</h4>
+      <p>
+        The same per-pair SHAP decomposition as the Pair explorer, but aggregated at the slot
+        level. Each bar is the sum of SHAP contributions from every feature in that slot.
+      </p>
+      <h4>How to read it</h4>
+      <ul>
+        <li>Bars read the same way as the Pair explorer: red = push toward "no lysis",
+          blue = push toward "lysis". Here it's the slot's <em>net</em> direction.</li>
+        <li>The slot label shows feature count in parentheses — e.g. <code>pair_depo_capsule (8)</code>
+          means the bar sums 8 features inside that slot.</li>
+        <li>Compare to the Pair explorer: if individual <code>pair_depo_capsule__in_cluster_N</code>
+          features there look noisy or have opposing signs, but the slot total here is cleanly
+          negative, trust the slot total — that's the Gate 1 adsorption signal.</li>
+      </ul>
+      <h4>Why slot-level is more trustworthy</h4>
+      <p>
+        Correlated features (e.g. <code>in_cluster_3</code> and <code>in_cluster_6</code> on phages
+        with similar depolymerase repertoires) split LightGBM's attribution depending on which
+        branch it split first. Per-feature SHAPs can flip sign between similar pairs on the same
+        feature, but slot sums stay stable. See <a href="?tab=glossary#slot-feature-slot">Glossary
+        → Slot</a> for the full explanation.
+      </p>
+    </details>
+  </section>
+
+  <!-- Glossary (renders GLOSSARY.md) -->
+  <section x-show="active === 'glossary' && !loading && !error" x-cloak>
+    <h2>Glossary</h2>
+    <p>
+      Project-specific terminology. Source:
+      <code>lyzortx/research_notes/GLOSSARY.md</code> on <code>main</code>.
+      Deep-linkable — every heading becomes an anchor (e.g. <code>?tab=glossary#slot-feature-slot</code>).
+    </p>
+    <div class="banner" x-show="markdownLoading" x-cloak>Loading glossary…</div>
+    <div class="banner error" x-show="markdownError" x-cloak x-text="markdownError"></div>
+    <article class="markdown-body" x-html="glossaryHtml" x-show="glossaryHtml" x-cloak></article>
+  </section>
+
+  <!-- Knowledge model (renders KNOWLEDGE.md) -->
+  <section x-show="active === 'knowledge' && !loading && !error" x-cloak>
+    <h2>Knowledge model</h2>
+    <p>
+      Consolidated project knowledge, auto-rendered from
+      <code>lyzortx/orchestration/knowledge.yml</code>. Source:
+      <code>lyzortx/KNOWLEDGE.md</code> on <code>main</code>.
+      Deep-linkable — every knowledge-unit heading becomes an anchor
+      (e.g. <code>?tab=knowledge#chisel-baseline</code>).
+    </p>
+    <div class="banner" x-show="markdownLoading" x-cloak>Loading knowledge model…</div>
+    <div class="banner error" x-show="markdownError" x-cloak x-text="markdownError"></div>
+    <article class="markdown-body" x-html="knowledgeHtml" x-show="knowledgeHtml" x-cloak></article>
   </section>
 </main>
 
