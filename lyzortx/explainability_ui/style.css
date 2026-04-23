@@ -235,6 +235,58 @@ code {
   border-radius: 4px;
 }
 
+details.help {
+  margin-top: 32px;
+  padding: 12px 16px;
+  background: #fbfcfd;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--fg);
+  max-width: 900px;
+}
+details.help[open] {
+  background: var(--card);
+}
+details.help summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+  user-select: none;
+  list-style: none;
+}
+details.help summary::-webkit-details-marker { display: none; }
+details.help summary::before {
+  content: "▸ ";
+  display: inline-block;
+  color: var(--muted);
+  font-weight: normal;
+  transition: transform 0.15s ease;
+}
+details.help[open] summary::before {
+  transform: rotate(90deg);
+}
+details.help h4 {
+  margin: 12px 0 4px;
+  font-size: 13px;
+  color: var(--fg);
+}
+details.help p,
+details.help ul {
+  margin: 6px 0;
+  color: var(--muted);
+  max-width: none;
+}
+details.help ul {
+  padding-left: 20px;
+}
+details.help li + li {
+  margin-top: 4px;
+}
+details.help code {
+  font-size: 11px;
+}
+
 footer {
   padding: 12px 24px;
   border-top: 1px solid var(--border);

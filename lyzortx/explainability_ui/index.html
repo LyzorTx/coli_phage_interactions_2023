@@ -64,6 +64,35 @@
       Per-phage blending: <code x-text="summary?.per_phage_blending"></code>.
       Elapsed: <span x-text="fmtInt(summary?.elapsed_seconds) + ' s'"></span>.
     </p>
+    <details class="help">
+      <summary>What am I looking at here?</summary>
+      <h4>What this tab shows</h4>
+      <p>
+        Headline discrimination (AUC) and calibration (Brier) for the unified 148-phage × 369-bacteria panel,
+        reported separately along two axes — held-out bacteria (cold-start host) and held-out phages
+        (cold-start phage). Bars (lollipops) are per-fold AUC values; dots are the aggregate.
+      </p>
+      <h4>How to read it</h4>
+      <ul>
+        <li><strong>AUC</strong> is the probability a random true-positive pair is ranked above a random
+          true-negative pair. 0.5 is chance; 1.0 is perfect ordering. CIs come from 1,000 bootstrap resamples
+          of the eval bacteria (bacteria-axis) or the eval phages (phage-axis).</li>
+        <li><strong>Brier</strong> is mean squared error of predicted probability vs 0/1 label. Lower is better.
+          ~0.18 corresponds to a model that's pretty good at ranking but systematically overconfident — see the
+          Calibration tab.</li>
+        <li><strong>Why phage-axis AUC &gt; bacteria-axis AUC by ~8 pp</strong>: phage-axis folds hold out entire
+          phages but keep all 369 bacteria in training (so each test pair has a host with rich label coverage).
+          Bacteria-axis folds remove host-side signal. The gap is structural training-data coverage, not a quality
+          signal.</li>
+      </ul>
+      <h4>Caveats</h4>
+      <ul>
+        <li>Guelin dominates the panel (96.6% of pairs). Aggregate AUC is Guelin-weighted — see Cross-source for
+          the BASEL-specific breakdown and deficit.</li>
+        <li>Per-phage blending is <em>retired</em> under CHISEL; any +2 pp gain from it was partly a leakage
+          artifact pre-CH02 and is not deployable for unseen phages.</li>
+      </ul>
+    </details>
   </section>
 
   <!-- Cross-source -->
@@ -94,6 +123,33 @@
         </template>
       </tbody>
     </table>
+    <details class="help">
+      <summary>What am I looking at here?</summary>
+      <h4>What this tab shows</h4>
+      <p>
+        The same discrimination metric (AUC) split by the two data sources in the unified panel: Guelin
+        (96 phages × 369 bacteria, the internal training cohort) vs BASEL (52 phages × 25 ECOR bacteria from
+        the Maffei 2021/2025 panel, merged in via GenoPHI). The error bars are 95% bootstrap CIs resampled at
+        the axis level (bacteria or phage).
+      </p>
+      <h4>How to read it</h4>
+      <ul>
+        <li>On <strong>phage-axis</strong>, BASEL (0.895) and Guelin (0.887) are at-parity — the model
+          generalizes to unseen BASEL phages roughly as well as it does to unseen Guelin phages (caveat: BASEL
+          CI is ~3× wider, n=52 phages vs Guelin's 96).</li>
+        <li>On <strong>bacteria-axis</strong>, BASEL falls ~7 pp behind Guelin (0.739 vs 0.810). That gap is the
+          <strong>TL17-bias panel-mismatch signal</strong>: the 39/52 BASEL phages with non-zero TL17 projection
+          vectors map into Guelin-derived neighborhoods associated with broad-host lysis, but carry narrower
+          actual host ranges. It is a feature-space issue, not a threshold issue.</li>
+      </ul>
+      <h4>Caveats</h4>
+      <ul>
+        <li>The Arm 3 Moriniere per-receptor-class slot (CH13) partially closes the gap by replacing
+          Guelin-dependent TL17 with a panel-independent 13-dim encoding, but 7.1 pp residual remains.</li>
+        <li>Don't read too much into the BASEL phage-axis point estimate being slightly higher than Guelin's —
+          52 phages is too small to rule out noise; the BASEL CI overlaps Guelin's CI.</li>
+      </ul>
+    </details>
   </section>
 
   <!-- Calibration -->
@@ -121,6 +177,40 @@
         </template>
       </tbody>
     </table>
+    <details class="help">
+      <summary>What am I looking at here?</summary>
+      <h4>What this tab shows</h4>
+      <p>
+        <strong>Reliability diagrams</strong>: for each predicted-probability decile (0-10%, 10-20%, …), what
+        fraction of pairs actually lysed? A perfectly calibrated model would put every dot exactly on the
+        diagonal y = x. Dots above the diagonal mean the model <em>underpredicts</em> lysis in that bin; below
+        means it <em>overpredicts</em>.
+      </p>
+      <p>
+        <strong>ECE</strong> (Expected Calibration Error, in the table) is the weighted mean of |observed −
+        predicted| across deciles. Lower is better. Target is &lt;0.02 after the CH09 isotonic calibrator; the
+        raw uncalibrated Guelin model sits around 0.12.
+      </p>
+      <h4>How to read it</h4>
+      <ul>
+        <li><strong>Raw</strong> curves (solid) show the out-of-the-box LightGBM probabilities. Expect heavy
+          overprediction in deciles 6-9 — the CHISEL training label is "lysed at some concentration" which is
+          more permissive than the deployment question "does it lyse at THIS concentration?"</li>
+        <li><strong>LOOF-isotonic</strong> (Guelin, dashed) applies a 10-fold leave-one-fold-out isotonic
+          regression. Nearly collapses onto the diagonal for Guelin (ECE ≈ 0.005).</li>
+        <li><strong>Transferred-isotonic</strong> (BASEL, dashed) takes the Guelin-fit calibrator and applies it
+          to BASEL. It partially helps (64% bacteria-axis / 45% phage-axis ECE closure) but leaves a substantial
+          residual — confirming the remaining BASEL miscalibration is a feature-space (TL17-bias) problem, not
+          a threshold problem.</li>
+      </ul>
+      <h4>Caveats</h4>
+      <ul>
+        <li>Deciles with very few pairs (n &lt; 50) have wide Clopper-Pearson CIs. The observed fraction can
+          wobble a lot. ECE weights by bin count so it already accounts for this.</li>
+        <li>The CH09 calibrator is the production remedy for Guelin overconfidence. Applying it is a 5-line
+          post-processing step at inference (see <code>ch09_calibrator.pkl</code>).</li>
+      </ul>
+    </details>
   </section>
 
   <!-- Feature importance -->
@@ -136,6 +226,38 @@
       <label><input type="radio" name="fi-axis" value="phage_axis" x-model="fiAxis" @change="renderFeatureImportance()"> Phage-axis</label>
     </div>
     <div class="plot-area tall" id="fi-plot"></div>
+    <details class="help">
+      <summary>What am I looking at here?</summary>
+      <h4>What this tab shows</h4>
+      <p>
+        LightGBM's <strong>split-gain importance</strong> averaged across 30 model fits (10 CV folds × 3 random
+        seeds) for the chosen axis. A feature's importance is the total gain across all tree splits it was
+        chosen for, normalized so the top-30 are comparable. Bar color encodes the <strong>feature slot</strong>
+        (host_surface, phage_projection, pair_depo_capsule, etc.).
+      </p>
+      <h4>How to read it</h4>
+      <ul>
+        <li>The <strong>n_folds_selected / 30</strong> tooltip tells you how robust the importance is: a
+          feature retained by RFE in all 30 fits is much more trustworthy than one kept in only 8/30.</li>
+        <li><strong>pair_concentration__log10_pfu_ml</strong> sits high (~#4). That's expected — it's the
+          one feature that directly tells the model "which rung of the titration are we evaluating?"</li>
+        <li><strong>pair_depo_capsule × in_cluster_N</strong> features dominate the pair-level block (22% of
+          total importance). This is the Gate 1 "depolymerase-can-degrade-this-capsule" mechanism validated
+          in GT03 — the only pairwise feature family that cleanly lifts AUC.</li>
+      </ul>
+      <h4>Caveats</h4>
+      <ul>
+        <li>Split-gain importance is <strong>not</strong> a causal-effect estimate. It measures how much the
+          feature helped the tree structure, not how much it would help if wiggled on a real pair (that's
+          SHAP — see Pair explorer).</li>
+        <li><strong>Correlated features split the importance.</strong> If host_serotype and host_o_type are
+          redundant, LightGBM arbitrarily picks one per split and the importance goes to whichever. Don't
+          infer "one doesn't matter" from a single axis.</li>
+        <li>Defense features are intentionally down-weighted by RFE because of lineage confounding — a
+          defense-system k-mer that correlates with phylogroup gets pruned, not because it lacks
+          biological signal, but because the signal is absorbed by host_typing.</li>
+      </ul>
+    </details>
   </section>
 
   <!-- Per-slot breakdown -->
@@ -151,6 +273,36 @@
       <label><input type="radio" name="slot-axis" value="phage_axis" x-model="slotAxis" @change="renderSlots()"> Phage-axis</label>
     </div>
     <div class="slot-grid" id="slot-cards"></div>
+    <details class="help">
+      <summary>What am I looking at here?</summary>
+      <h4>What this tab shows</h4>
+      <p>
+        A rollup of the Feature importance tab, grouped by <strong>slot</strong> (the logical feature block
+        a feature comes from). Each card shows the slot's feature count and the sum of its features'
+        importances. A slot that contributes 25% of total importance has a meaningful signal; a slot that
+        contributes &lt;2% is either noise or redundant with another slot.
+      </p>
+      <h4>How to read it</h4>
+      <ul>
+        <li><strong>pair_depo_capsule</strong> (~22%): the Gate 1 adsorption mechanism. Phage has
+          depolymerase for host's capsule type.</li>
+        <li><strong>host_surface</strong>, <strong>host_typing</strong>: host-side features including capsule
+          cluster membership, serotype, phylogroup. These are where most host-side signal lives.</li>
+        <li><strong>phage_projection</strong> (Arm 3 Moriniere per-receptor-class k-mer fractions, 13 dim):
+          panel-independent receptor identity signal. Replaces the old Guelin-derived TL17 projection slot.</li>
+        <li><strong>pair_receptor_omp</strong>: the Gate 2 mechanism (receptor × OMP) — contributes little
+          because host OMP HMM scores are nearly constant (CV 0.01-0.17) across E. coli.</li>
+        <li><strong>host_defense</strong>: Gate 3. Contributes some AUC but regresses top-3 ranking due to
+          lineage confounding (defense subtypes correlate with phylogroup).</li>
+      </ul>
+      <h4>Caveats</h4>
+      <ul>
+        <li>The pair-level blocks aren't in the canonical <code>SLOT_SPECS</code> — they're cross-terms built
+          at feature-assembly time. Labels end with <code>__cross</code> or <code>__in_cluster_N</code>.</li>
+        <li>A slot can have high aggregate importance but be dominated by 1-2 highly-ranked features (e.g.
+          concentration sits inside <code>pair_concentration</code> and eclipses the slot's others).</li>
+      </ul>
+    </details>
   </section>
 
   <!-- Pair explorer (SHAP drill-down) -->
@@ -206,6 +358,54 @@
     <p x-show="!shapPair && !shapLoading" class="note" x-cloak>
       Pick a pair from the filters above, or from the Predictions tab's row buttons.
     </p>
+    <details class="help">
+      <summary>What am I looking at here?</summary>
+      <h4>What this tab shows</h4>
+      <p>
+        A <strong>SHAP waterfall</strong> for one specific (bacterium, phage) pair. The model's predicted
+        logit for this pair is decomposed into <em>per-feature contributions</em> summing to the final
+        prediction:
+      </p>
+      <p>
+        <code>predicted logit = base value + Σ SHAP<sub>feature</sub></code>
+      </p>
+      <p>
+        The <strong>base value</strong> is the model's average log-odds prediction across the whole training
+        set (reflects the base rate of lysis). Each bar then shows how much one feature's value for THIS
+        pair pushed the prediction away from base, in log-odds units. The header at the top shows
+        <code>base + Σ SHAP = logit</code> and that arithmetic should be exact (TreeExplainer guarantee).
+      </p>
+      <h4>How to read it</h4>
+      <ul>
+        <li><strong>Red bars</strong> push toward "no lysis" (more negative logit).
+          <strong>Blue bars</strong> push toward "lysis" (more positive logit).</li>
+        <li>The sign and magnitude are about <em>this feature's value on this pair, given the other features</em>
+          — not about whether the feature is "good" or "bad" in general. A feature with value X might contribute
+          +0.5 on one pair and −0.8 on another if tree paths branch differently.</li>
+        <li>To convert logit → probability: <code>p = 1 / (1 + exp(-logit))</code>. logit −6.6 ≈ 0.14%,
+          0 = 50%, +3 ≈ 95%.</li>
+        <li>Only the <strong>top 20</strong> features by |SHAP| are shown, but the prediction-logit header
+          accounts for all features' contributions.</li>
+      </ul>
+      <h4>Why pairs look so different from each other</h4>
+      <ul>
+        <li><strong>Feature values differ.</strong> Every pair has its own host genome (capsule, serotype,
+          defense repertoire) and phage genome (length, GC, receptor fractions). Broad-host Straboviridae
+          phages contribute very different SHAPs than narrow-host Autographiviridae.</li>
+        <li><strong>LightGBM learns interactions.</strong> SHAP attribution is path-dependent — the same
+          feature value can flip contribution sign depending on which tree branches were taken (driven by
+          the other features' values).</li>
+      </ul>
+      <h4>Does it make biological sense?</h4>
+      <ul>
+        <li>Directionally yes, with caveats: capsule-cluster features dominating the host side is the
+          GT03-validated Gate 1 mechanism. Concentration always contributing positively for lysis at high
+          titer makes sense.</li>
+        <li>Be skeptical of individual feature SHAPs as causal claims — LightGBM can recover statistical
+          signal that reflects confounding (lineage, panel size, label noise) rather than mechanism.
+          SHAPs are best interpreted at the slot level.</li>
+      </ul>
+    </details>
   </section>
 
   <!-- Predictions table -->
@@ -260,6 +460,46 @@
         </template>
       </tbody>
     </table>
+    <details class="help">
+      <summary>What am I looking at here?</summary>
+      <h4>What this tab shows</h4>
+      <p>
+        Every held-out (bacterium, phage) pair with its ground-truth label and the model's predicted
+        probability. Click any row to drill into that pair in the <strong>Pair explorer</strong> tab for the
+        SHAP decomposition.
+      </p>
+      <h4>How to read it</h4>
+      <ul>
+        <li><strong>Label</strong> is the binary ground truth (1 = lysed, 0 = not) at the pair's
+          max-concentration observation. For Guelin that's neat (log10_pfu_ml ≈ 8.7), for BASEL it's 9.0.</li>
+        <li><strong>Predicted</strong> is the raw LightGBM probability — not yet calibrated. Apply the CH09
+          isotonic calibrator for deployment thresholds (see the Calibration tab).</li>
+        <li><strong>|p − label|</strong> is the per-pair calibration error. Sorting descending surfaces the
+          model's worst mistakes: high-confidence predictions that were wrong, or pairs where the model was
+          ambivalent but should have been decisive.</li>
+      </ul>
+      <h4>Good rows to look at</h4>
+      <ul>
+        <li>Top of "|p − label| desc" with <strong>predicted &gt; 0.9, label = 0</strong>: overconfident
+          false positives. These are the pairs driving the decile 6-9 over-prediction seen on the Calibration
+          tab. Open them in Pair explorer and look for lineage-confounded defense features or spurious
+          pair_depo_capsule clusters.</li>
+        <li>Top of "|p − label| desc" with <strong>predicted &lt; 0.1, label = 1</strong>: missed
+          narrow-host positives. NILS53 × narrow-host phages typically show up here — broad-phage priors
+          suppress the narrow-host signal.</li>
+        <li>Filter to <strong>source = basel</strong> to see the BASEL bacteria-axis deficit concretely:
+          pairs where the model assigns broad-host-phage probabilities that don't match BASEL's narrower
+          actual ranges.</li>
+      </ul>
+      <h4>Caveats</h4>
+      <ul>
+        <li>~10% of rows have score='n' upstream — these are labeled 0 but the experimental result was
+          genuinely ambiguous. An apparent false-positive might be a labeling artifact.</li>
+        <li>The <strong>max-concentration evaluation</strong> convention means a pair that lyses only at
+          neat dilution counts as a positive. Pairs whose only positive replicate is at neat are not
+          filtered (CH10 reverted that).</li>
+      </ul>
+    </details>
   </section>
 </main>
 
