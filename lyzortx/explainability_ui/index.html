@@ -577,6 +577,87 @@
     </details>
   </section>
 
+  <!-- Cohort SHAP — mean per-slot SHAP across pair cohorts (source / label) -->
+  <section x-show="active === 'cohortShap' && !loading && !error" x-cloak>
+    <h2>Cohort SHAP</h2>
+    <p>
+      Mean signed SHAP per <a href="?tab=glossary#slot-feature-slot">slot</a> across pair cohorts.
+      Each feature's per-pair SHAP is averaged within each group, then rolled up to its
+      slot. Shows <em>where the model systematically pushes predictions</em> by group —
+      e.g. is <code>phage_projection</code>'s average push meaningfully different between Guelin
+      and BASEL? Is <code>host_defense</code> contributing systematically to false positives (label=0)?
+    </p>
+    <div class="axis-toggle">
+      <label>Axis:
+        <select x-model="cohortAxis" @change="loadCohortShap(); syncUrl()">
+          <option value="bacteria_axis">bacteria</option>
+          <option value="phage_axis">phage</option>
+        </select>
+      </label>
+      <label>Group by:
+        <select x-model="cohortGroupBy" @change="loadCohortShap(); syncUrl()">
+          <option value="source">source (guelin / basel)</option>
+          <option value="label">label (0 / 1)</option>
+        </select>
+      </label>
+      <span x-show="cohortLoading" class="row-count">computing cohort aggregates…</span>
+      <span x-show="cohortError" class="row-count" style="color: var(--error)" x-text="cohortError"></span>
+    </div>
+    <div class="plot-area" id="cohort-shap-plot"></div>
+    <table class="data-table" x-show="cohortData">
+      <thead>
+        <tr>
+          <th>Slot</th>
+          <template x-for="c in cohortData?.cohorts ?? []" :key="c.group">
+            <th x-text="c.group + ' (n=' + c.count.toLocaleString() + ')'"></th>
+          </template>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="row in cohortSlotRows()" :key="row.slot">
+          <tr>
+            <td x-text="row.slot"></td>
+            <template x-for="g in row.perGroup" :key="g.group">
+              <td x-text="(g.total >= 0 ? '+' : '') + g.total.toFixed(4)"></td>
+            </template>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <details class="help">
+      <summary>What am I looking at here?</summary>
+      <h4>What this tab shows</h4>
+      <p>
+        For each cohort (e.g. all Guelin pairs), the mean per-pair SHAP for every
+        feature, summed per slot. Bars group by slot; each color is a cohort. Same
+        units as the Pair explorer: log-odds push per slot, positive = toward lysis.
+      </p>
+      <h4>How to read it</h4>
+      <ul>
+        <li>Direction & magnitude match the Pair-level semantics, but <em>averaged</em>
+          across the cohort. A slot that's always noisy and sign-flips pair-by-pair
+          averages toward 0; a slot that systematically pushes one way shows up here.</li>
+        <li>Different-magnitude bars for the same slot across cohorts =
+          <strong>systematic differential</strong>. For example, if
+          <code>phage_projection</code> averages +0.5 on Guelin but −0.1 on BASEL, the
+          model is leaning on phage-side signal much more for Guelin pairs.</li>
+        <li>Group by <code>label</code> to see what the model activates on for positives
+          vs negatives. Clean separation = model is well-differentiated; overlapping
+          bars = model is predicting close to base rate for that slot.</li>
+      </ul>
+      <h4>Caveats</h4>
+      <ul>
+        <li>Cohort sizes differ widely (Guelin 35k, BASEL 1.2k). Small-cohort bars have
+          more sampling noise.</li>
+        <li>This is a <em>snapshot-level</em> aggregate, not a causal-effect estimate.
+          Don't read "phage_projection is bad on BASEL" as "remove phage_projection";
+          it means "TL17-basis features behave differently on BASEL pairs," which is
+          the load-bearing TL17-bias finding already documented in
+          <a href="?tab=knowledge#chisel-unified-kfold-baseline">chisel-unified-kfold-baseline</a>.</li>
+      </ul>
+    </details>
+  </section>
+
   <!-- Glossary (renders GLOSSARY.md) -->
   <section x-show="active === 'glossary' && !loading && !error" x-cloak>
     <h2>Glossary</h2>

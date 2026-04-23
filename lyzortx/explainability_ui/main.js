@@ -76,10 +76,12 @@ const RELIABILITY_VARIANT_ORDER = [
 
 const PAIR_TABS = new Set(['pairExplorer', 'pairSlotWaterfall']);
 const MARKDOWN_TABS = new Set(['glossary', 'knowledge']);
+const DUCKDB_TABS = new Set(['pairExplorer', 'pairSlotWaterfall', 'cohortShap']);
 const AXIS_VALUES_LONG = ['bacteria_axis', 'phage_axis'];
 const AXIS_VALUES_SHORT = ['bacteria', 'phage'];
 const PRED_SOURCES = ['all', 'guelin', 'basel'];
 const PRED_SORTS = ['absErrDesc', 'predictedDesc', 'predictedAsc', 'bacteria', 'phage'];
+const COHORT_GROUPINGS = ['source', 'label'];
 
 const URL_BINDINGS = [
   // `tab` is validated against state.tabs (the authoritative keyset), not a static list.
@@ -93,6 +95,8 @@ const URL_BINDINGS = [
   { param: 'pred_axis',   state: 'predAxis',        default: 'bacteria',      allowed: AXIS_VALUES_SHORT, onTab: (s) => s.active === 'predictions' },
   { param: 'pred_source', state: 'predSource',      default: 'all',           allowed: PRED_SOURCES,      onTab: (s) => s.active === 'predictions' },
   { param: 'pred_sort',   state: 'predSort',        default: 'absErrDesc',    allowed: PRED_SORTS,        onTab: (s) => s.active === 'predictions' },
+  { param: 'cohort_axis',    state: 'cohortAxis',    default: 'bacteria_axis', allowed: AXIS_VALUES_LONG, onTab: (s) => s.active === 'cohortShap' },
+  { param: 'cohort_groupby', state: 'cohortGroupBy', default: 'source',        allowed: COHORT_GROUPINGS, onTab: (s) => s.active === 'cohortShap' },
 ];
 
 function applyUrlStateToComponent(state) {
@@ -133,6 +137,7 @@ function ui() {
       predictions: { label: 'Predictions table' },
       pairExplorer: { label: 'Pair explorer' },
       pairSlotWaterfall: { label: 'Pair slot waterfall' },
+      cohortShap: { label: 'Cohort SHAP' },
       glossary: { label: 'Glossary' },
       knowledge: { label: 'Knowledge' },
     },
@@ -173,6 +178,13 @@ function ui() {
     knowledgeHtml: null,
     markdownLoading: false,
     markdownError: null,
+
+    cohortAxis: 'bacteria_axis',
+    cohortGroupBy: 'source',       // 'source' | 'label'
+    cohortData: null,              // { groups: ['guelin', 'basel'], slotTotals: { guelin: {...}, basel: {...} } }
+    cohortLoading: false,
+    cohortError: null,
+    cohortCache: {},               // keyed by `${axis}|${groupBy}` so tab switches don't re-query
 
     async init() {
       applyUrlStateToComponent(this);
@@ -215,6 +227,8 @@ function ui() {
         this.maybeAutoLoadPair();
       } else if (MARKDOWN_TABS.has(this.active)) {
         this.loadMarkdownForActiveTab();
+      } else if (this.active === 'cohortShap') {
+        this.loadCohortShap();
       }
     },
 
@@ -254,14 +268,15 @@ function ui() {
     onTabClick(key) {
       this.active = key;
       // Kick off tab-specific lazy loads. DuckDB-WASM init is fire-and-forget —
-      // selectCustomPair awaits it via loadShapForPair.
-      if (PAIR_TABS.has(key) && !this.duckdbConn && !this.duckdbInitPromise) {
+      // selectCustomPair / loadCohortShap await it.
+      if (DUCKDB_TABS.has(key) && !this.duckdbConn && !this.duckdbInitPromise) {
         this.initDuckDB().catch((err) => {
           console.warn('DuckDB-WASM init failed', err);
           this.shapError = `DuckDB-WASM unavailable: ${err.message}`;
         });
       }
       if (MARKDOWN_TABS.has(key)) this.loadMarkdownForActiveTab();
+      if (key === 'cohortShap') this.loadCohortShap();
       this.syncUrl();
     },
 
@@ -724,6 +739,170 @@ function ui() {
           margin: { l: 320, r: 40, t: 10, b: 40 },
           height: Math.max(480, reversed.length * 24),
           showlegend: false,
+        },
+        { displayModeBar: false, responsive: true },
+      );
+    },
+
+    // ---- Cohort SHAP (slot aggregates across pairs, grouped by source/label) ----
+    //
+    // A single DuckDB-WASM query computes mean signed SHAP per feature per cohort; JS then
+    // rolls features up to slots (same featureToSlot helper as the Pair explorer). The result
+    // is a comparison view: "how does phage_projection typically push predictions for Guelin
+    // vs BASEL pairs?" — not a per-pair story but a cohort-level signal.
+    //
+    // Group-by options are the stable non-leaky metadata we have in-snapshot:
+    //   * source:  shap_values.source column (guelin / basel)
+    //   * label:   joined in from predictions JSON (0 / 1)
+
+    async loadCohortShap() {
+      const cacheKey = `${this.cohortAxis}|${this.cohortGroupBy}`;
+      if (this.cohortCache[cacheKey]) {
+        this.cohortData = this.cohortCache[cacheKey];
+        this.cohortError = null;
+        await this.$nextTick();
+        this.renderCohortShap(this.cohortData);
+        return;
+      }
+      this.cohortLoading = true;
+      this.cohortError = null;
+      try {
+        await this.initDuckDB();
+        const conn = this.duckdbConn;
+        if (!conn) throw new Error('DuckDB connection not initialised');
+        const url = this.parquetUrl(`${this.cohortAxis}_shap_values.parquet`);
+
+        // Discover SHAP feature columns once. DESCRIBE is cheap (metadata only).
+        const describe = await conn.query(`DESCRIBE SELECT * FROM read_parquet('${url}')`);
+        const shapCols = describe.toArray()
+          .map((row) => String(row.column_name ?? row.toArray?.()[0] ?? ''))
+          .filter((name) => name.startsWith('shap__'));
+        if (!shapCols.length) throw new Error('No shap__ columns in parquet');
+
+        // Per-group aggregate query. Dynamically building SELECT AVG(...) over ~325 columns
+        // keeps the wire transfer to one row per group (tens of KB) rather than streaming the
+        // whole parquet back to the browser.
+        const groupCol = this.cohortGroupBy === 'source' ? 'source' : '__label';
+        const aggSelects = shapCols.map((c) => `AVG("${c}") AS "${c}"`).join(', ');
+        let sql;
+        if (this.cohortGroupBy === 'source') {
+          sql = `SELECT source AS grp, COUNT(*) AS n, ${aggSelects}
+                 FROM read_parquet('${url}')
+                 GROUP BY source
+                 ORDER BY source`;
+        } else {
+          // Label is not on the shap parquet — we inline it from the predictions JSON as a
+          // VALUES list join. Keeps the source of truth on the JS side (no separate label
+          // parquet needed).
+          const predictionsForAxis = this.cohortAxis === 'bacteria_axis'
+            ? this.predictionsBact
+            : this.predictionsPhage;
+          if (!predictionsForAxis) throw new Error('Predictions JSON not loaded');
+          const rows = predictionsForAxis
+            .map((r) => `('${r.bacteria.replace(/'/g, "''")}','${r.phage.replace(/'/g, "''")}',${r.label})`)
+            .join(', ');
+          sql = `WITH labels(bacteria, phage, label) AS (VALUES ${rows})
+                 SELECT CAST(labels.label AS VARCHAR) AS grp, COUNT(*) AS n, ${aggSelects}
+                 FROM read_parquet('${url}') sv
+                 JOIN labels USING (bacteria, phage)
+                 GROUP BY labels.label
+                 ORDER BY labels.label`;
+        }
+
+        const res = await conn.query(sql);
+        const rows = res.toArray().map((r) => {
+          const obj = Object.fromEntries(
+            r.toArray().map((v, i) => [res.schema.fields[i].name, v]),
+          );
+          return obj;
+        });
+
+        // Roll features → slots per cohort (summed mean-SHAP). "Summed mean" is defensible
+        // as a cohort-representative push per slot: each feature's contribution averaged
+        // across the cohort, then slots accumulate the average pushes of their member
+        // features, matching the per-pair slot waterfall semantics.
+        const cohorts = rows.map((r) => {
+          const slotTotals = {};
+          const featureMeans = {};
+          for (const col of shapCols) {
+            const v = Number(r[col]);
+            if (!Number.isFinite(v)) continue;
+            const featureName = col.slice('shap__'.length);
+            featureMeans[featureName] = v;
+            const slot = featureToSlot(featureName);
+            slotTotals[slot] = (slotTotals[slot] ?? 0) + v;
+          }
+          return {
+            group: String(r.grp),
+            count: Number(r.n),
+            slotTotals,
+            featureMeans,
+          };
+        });
+
+        this.cohortData = {
+          axis: this.cohortAxis,
+          groupBy: this.cohortGroupBy,
+          cohorts,
+        };
+        this.cohortCache[cacheKey] = this.cohortData;
+        this.cohortLoading = false;
+        await this.$nextTick();
+        this.renderCohortShap(this.cohortData);
+      } catch (err) {
+        console.error(err);
+        this.cohortError = err.message;
+        this.cohortLoading = false;
+      }
+    },
+
+    cohortSlotRows() {
+      if (!this.cohortData) return [];
+      // Union of all slot names observed across cohorts, ranked by max |total|.
+      const allSlots = new Set();
+      this.cohortData.cohorts.forEach((c) => Object.keys(c.slotTotals).forEach((s) => allSlots.add(s)));
+      return [...allSlots]
+        .map((slot) => ({
+          slot,
+          perGroup: this.cohortData.cohorts.map((c) => ({
+            group: c.group,
+            total: c.slotTotals[slot] ?? 0,
+          })),
+        }))
+        .sort((a, b) => {
+          const ma = Math.max(...a.perGroup.map((g) => Math.abs(g.total)));
+          const mb = Math.max(...b.perGroup.map((g) => Math.abs(g.total)));
+          return mb - ma;
+        });
+    },
+
+    renderCohortShap(cohortData) {
+      if (!cohortData || !cohortData.cohorts.length) return;
+      const rows = this.cohortSlotRows();
+      if (!rows.length) return;
+      const reversed = [...rows].reverse();
+      const groupPalette = ['#268bd2', '#dc322f', '#b58900', '#2aa198'];
+      const traces = cohortData.cohorts.map((cohort, i) => ({
+        type: 'bar',
+        orientation: 'h',
+        name: `${cohort.group} (n=${cohort.count})`,
+        x: reversed.map((r) => r.perGroup.find((g) => g.group === cohort.group)?.total ?? 0),
+        y: reversed.map((r) => r.slot),
+        marker: { color: groupPalette[i % groupPalette.length] },
+        hovertemplate:
+          `<b>${cohort.group}</b> (n=${cohort.count})<br>` +
+          'slot %{y}<br>Σ mean SHAP: %{x:.4f}<extra></extra>',
+      }));
+      Plotly.react(
+        'cohort-shap-plot',
+        traces,
+        {
+          barmode: 'group',
+          xaxis: { title: 'Σ mean SHAP per slot (log-odds)' },
+          yaxis: { automargin: true, tickfont: { size: 12 } },
+          margin: { l: 240, r: 40, t: 10, b: 40 },
+          height: Math.max(360, reversed.length * 44),
+          legend: { orientation: 'h', x: 0, y: -0.18 },
         },
         { displayModeBar: false, responsive: true },
       );
