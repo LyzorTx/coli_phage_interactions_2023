@@ -93,8 +93,100 @@ round-trip per pair regardless of Parquet size.
 
 ## Policies
 
+### Hosting and data flow
+
 - Do not commit any generated JSON under this directory or under
   `lyzortx/explainability_ui/data/` — follow the `lyzortx/AGENTS.md` "Generated Outputs"
   rule.
 - Do not hardcode owner/repo strings in `main.js` — resolve from `window.location` at
   runtime so the same HTML works on Pages, raw.githack, and local preview.
+- **GitHub Release asset URLs do not serve `Access-Control-Allow-Origin`.** Do not
+  `fetch()` from `github.com/.../releases/latest/download/...` from the UI; the browser
+  will block the request. The workflow bundles release assets into the Pages deploy
+  artifact under `_site/explainability/data/` so the UI fetches same-origin via
+  `./data/`. This was the EX05 bug (PR #473) — do not re-introduce runtime release URLs.
+- **api.github.com DOES send `Access-Control-Allow-Origin: *`.** It's safe to fetch
+  release metadata (the footer tag) from `api.github.com/repos/:owner/:repo/releases/
+  latest` at runtime.
+
+### URL-first state
+
+- **The URL is the source of truth for all view state.** Every tab, axis toggle,
+  filter, and pair selection must sync to `window.location.search` via the
+  `URL_BINDINGS` table in `main.js`. Any reload or shared link must reconstruct the
+  exact view. Do not introduce ad-hoc state that does not have a URL binding.
+- Add new URL-backed state by appending one row to `URL_BINDINGS` (param name, state
+  field, default, allowlist, tab gate). Do NOT open-code `new URLSearchParams(...)`
+  reads or writes elsewhere in `main.js`.
+- Defaults are omitted from URLs. A view at the default tab / default axes has a bare
+  URL with no query string; shared links only carry the non-default bits.
+- Use `history.replaceState`, not `pushState`, for filter/toggle changes. We don't
+  spam back-button history for every axis click.
+
+### DuckDB-WASM gotchas
+
+- **Use absolute URLs, not relative, when the DuckDB worker reads Parquets.** Inside
+  the worker, `self.location` is the worker's blob URL, so `./data/foo.parquet`
+  resolves to `blob:...` and 404s. Compute absolute URLs via `new URL(rel,
+  window.location.href).href` before passing to `read_parquet(...)`. This was the
+  EX06 bug (PR #474).
+- Prefer `read_parquet('<abs-url>')` inline in queries over the old
+  `registerFileURL(...)` pattern. The registration API silently fails on 404s and
+  produces confusing downstream "No files found that match the pattern" errors.
+
+### Third-party library posture
+
+- **marked.js does not sanitize HTML output and dropped `headerIds` in v13.** When
+  rendering markdown into `x-html`, always:
+  1. Register the `marked-gfm-heading-id` extension (`marked.use(gfmHeadingId())`)
+     so heading anchors work for deep-links.
+  2. Wrap the parse result in `DOMPurify.sanitize(...)` to prevent XSS from any
+     untrusted content that could leak in via `/sleeponit` rewriting `KNOWLEDGE.md`
+     from lab-notebook prose.
+  Both deps are lazy-loaded from jsDelivr on first Glossary/Knowledge visit so
+  initial page load stays light.
+
+## Development workflow
+
+### Local feedback loop beats deploy-and-check
+
+- **Always preview locally before pushing.** The Pages deploy pipeline is ~2 min per
+  iteration; a local `python3 -m http.server` iteration is seconds. Do not commit
+  UI changes without serving them locally first.
+- Canonical preview layout matches the Pages deploy structure:
+
+  ```bash
+  mkdir -p .scratch/ex_preview/explainability/{data,docs}
+  cp lyzortx/explainability_ui/{index.html,main.js,style.css} .scratch/ex_preview/explainability/
+  cp .scratch/release_snapshot/*.{json,parquet} .scratch/ex_preview/explainability/data/
+  cp lyzortx/research_notes/GLOSSARY.md lyzortx/KNOWLEDGE.md .scratch/ex_preview/explainability/docs/
+  python3 -m http.server 8767 --directory .scratch/ex_preview
+  # → http://localhost:8767/explainability/
+  ```
+
+- Verify all URL routing permutations locally before pushing — `?tab=X`, `?tab=X&bact=
+  Y&phage=Z`, anchor deep-links like `?tab=glossary#slot-feature-slot`.
+
+### Release publishing
+
+- Releases publish from the local laptop via `gh release create`, not from CI. The
+  upstream pipeline (ST01 → CH05 → derive_shap_snapshot) depends on gitignored
+  `lyzortx/generated_outputs/` artifacts, which CI runners don't have. The
+  `snapshot-explainability-data.yml` workflow was removed for exactly this reason
+  (EX05).
+- The Pages deploy fires automatically on any push to `lyzortx/explainability_ui/**`
+  and re-downloads the latest release assets. Publishing a new release does NOT
+  auto-redeploy — trigger `publish-explainability-ui.yml` via `workflow_dispatch` to
+  force a fresh bundle of the new assets.
+
+### Commit cadence
+
+- UI iteration commits can go directly to `main` when the user explicitly invites it
+  — UI changes don't have the orchestrator-ticket reviewer requirement from the root
+  `AGENTS.md`. Split large changes into logically named commits (glossary entry,
+  workflow update, UI bundle, cleanup refactor) so `git log --oneline` tells the
+  change story.
+- Spawn the self-review subagent only for logic-heavy commits (URL state machines,
+  SHAP aggregation, DuckDB query refactors). Trivial edits (docs, workflow cp
+  additions, single-line fixes) don't warrant it. Use judgement: "could a future
+  reader reasonably misunderstand this?" → yes means review.
