@@ -365,6 +365,48 @@ vs 39 non-zero BASEL phages (Brier 0.31) on bacteria-axis. See the CH05 entry un
 help more than engineering new phage features — the deficiency is reference-bank coverage, not
 feature representation.
 
+## Slot (feature slot)
+
+A logical group of features that come from the same source or feature-engineering block.
+Each slot owns a column-name prefix — every feature inside it starts with that prefix
+(e.g. `host_defense__`, `phage_projection__`) — so the slot a feature belongs to is
+recoverable from the feature name alone. Defined in
+`lyzortx/pipeline/autoresearch/runtime_contract.py::SLOT_SPECS`.
+
+The seven canonical slots map to distinct biological questions:
+
+- `host_surface` (bacterium) — capsule clusters, adsorption-related surface proteins.
+- `host_typing` (bacterium) — serotype, phylogroup, O-type, H-type.
+- `host_defense` (bacterium) — DefenseFinder hit counts per system (CRISPR, Abi, R-M…).
+- `host_stats` (bacterium) — cheap assembly QC (N50, contig count, genome length).
+- `phage_projection` (phage) — **Arm 3 Moriniere per-receptor-class k-mer fractions as of
+  CH13** (13 dim, panel-independent); previously Guelin-derived TL17 BLAST presence vectors.
+- `phage_stats` (phage) — genome length, GC content.
+- `phage_kmer` (phage) — raw tetranucleotide (k=4) frequency vectors.
+
+Plus two **pair-level blocks** assembled from other slots at feature-assembly time (not
+in `SLOT_SPECS` proper, but scorecarded like slots):
+
+- `pair_depo_capsule` — cross-terms of phage depolymerase × host capsule cluster (Gate 1
+  mechanism; see `depo-capsule-validated`).
+- `pair_receptor_omp` — cross-terms of phage predicted receptor × host OMP (Gate 2
+  mechanism; host-side collapses under `omp-score-homogeneity` so contribution is small).
+
+Plus one standalone feature `pair_concentration__log10_pfu_ml` that encodes the
+evaluation concentration directly (see `chisel-baseline`).
+
+**Why slot-level aggregates matter for SHAP.** Correlated features inside a slot split
+LightGBM's attribution arbitrarily depending on which branch it splits first — e.g. the
+SHAP of `pair_depo_capsule__in_cluster_6` vs `pair_depo_capsule__in_cluster_3` on one pair
+can flip sign on a sibling pair even though the *total* slot contribution is stable. When
+reading a pair explorer waterfall, trust the slot-sum over any individual feature's
+magnitude unless the slot has only one or two features.
+
+See also: `chisel-baseline` (which slots are in the canonical SX10 feature bundle),
+`moriniere-receptor-fractions-validated` (why `phage_projection` changed meaning at
+CH13), `defense-lineage-confounding` (why `host_defense` split-gain importance is smaller
+than its biological prior would suggest).
+
 ## Spearman correlation (Spearman's ρ)
 
 A measure of how monotonically two variables move together, ranging from −1 to +1.
